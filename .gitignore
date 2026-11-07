@@ -1,0 +1,26 @@
+node_modules/
+dist/
+target/
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+work/
+outputs/*.zip
+
+# Local running data and private imports
+*.fit
+*.FIT
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.backup.json
+private-data/
+imports/
+backups/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
