@@ -13,6 +13,9 @@ import { validatePlanRows, type ImportValidation } from "../domain/imports";
 import { reviseSession } from "../domain/rules";
 import type { AppData } from "../domain/types";
 import { parseBackup, serializeBackup } from "../domain/backup";
+import { FitFileParserDecoder } from "../domain/fit-decoder";
+import { runFitImportBatch } from "../data/fit-import-controller";
+import { createFitSourceStore } from "../data/fit-source-store";
 
 export function DataScreen() {
   const { data, replaceData, resetDemo, updateSettings } = useAppData();
@@ -23,6 +26,11 @@ export function DataScreen() {
   } | null>(null);
   const [message, setMessage] = useState("");
   const restoreInput = useRef<HTMLInputElement>(null);
+  const fitImportController = useRef<AbortController | null>(null);
+  const [fitImportProgress, setFitImportProgress] = useState<{
+    completed: number;
+    total: number;
+  } | null>(null);
 
   function downloadJson(contents: unknown, name: string) {
     const serialized =
@@ -204,6 +212,53 @@ export function DataScreen() {
       setMessage("That file is not a valid Stride Plan backup.");
     }
   }
+
+  async function importFitFiles(files: FileList) {
+    if (files.length === 0) return;
+    const controller = new AbortController();
+    fitImportController.current = controller;
+    setFitImportProgress({ completed: 0, total: files.length });
+    setMessage(`Reading ${files.length} FIT file(s)…`);
+    const result = await runFitImportBatch({
+      files: Array.from(files, (file) => ({
+        name: file.name,
+        loadBytes: async () => new Uint8Array(await file.arrayBuffer()),
+      })),
+      existingSources: data.fitSources,
+      decoder: new FitFileParserDecoder(),
+      sourceStore: createFitSourceStore(),
+      createdAt: new Date().toISOString(),
+      signal: controller.signal,
+      onProgress: (completed, total) =>
+        setFitImportProgress({ completed, total }),
+    });
+    replaceData({
+      ...data,
+      fitSources: [...data.fitSources, ...result.sources],
+      fitSourceActivities: [...data.fitSourceActivities, ...result.activities],
+      fitImportBatches: [...data.fitImportBatches, result.batch],
+    });
+    const counts = result.batch.sourceResults.reduce<Record<string, number>>(
+      (current, item) => ({
+        ...current,
+        [item.status]: (current[item.status] ?? 0) + 1,
+      }),
+      {},
+    );
+    setMessage(
+      [
+        counts.decoded && `${counts.decoded} ready to review`,
+        counts["exact-duplicate"] &&
+          `${counts["exact-duplicate"]} exact duplicate(s) skipped`,
+        counts.failed && `${counts.failed} failed`,
+        counts.cancelled && `${counts.cancelled} cancelled`,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    );
+    fitImportController.current = null;
+    setFitImportProgress(null);
+  }
   return (
     <div className="screen">
       <header className="page-header">
@@ -252,8 +307,10 @@ export function DataScreen() {
           <div>
             <h2>Import FIT activities</h2>
             <p>
-              Source files and laps are preserved. Duplicates are checked by
-              source fingerprint.
+              Decode one or more activities, check exact duplicates, and send
+              successful files to Activity Review. The packaged app preserves a
+              verified untouched copy; browser development cannot provide
+              durable source-file preservation.
             </p>
             <label className="button secondary file-button">
               <Upload size={17} /> Choose FIT files
@@ -261,13 +318,26 @@ export function DataScreen() {
                 type="file"
                 accept=".fit"
                 multiple
+                disabled={fitImportProgress !== null}
                 onChange={(event) =>
-                  setMessage(
-                    `${event.target.files?.length ?? 0} FIT file(s) selected. FIT decoding requires the packaged adapter.`,
-                  )
+                  event.target.files && void importFitFiles(event.target.files)
                 }
               />
             </label>
+            {fitImportProgress && (
+              <div className="fit-import-progress" role="status">
+                <p>
+                  Processed {fitImportProgress.completed} of{" "}
+                  {fitImportProgress.total} files.
+                </p>
+                <button
+                  className="text-button"
+                  onClick={() => fitImportController.current?.abort()}
+                >
+                  Stop after current file
+                </button>
+              </div>
+            )}
           </div>
         </section>
         <section className="panel settings-panel">

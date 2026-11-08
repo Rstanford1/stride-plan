@@ -81,14 +81,14 @@ Dates use `YYYY-MM-DD`; session type is `rest`, `easy`, `recovery`, `workout`, o
 
 ## Current limitations
 
-- FIT selection and review UI are implemented, but binary FIT decoding still needs the packaged Garmin SDK adapter. No source FIT file is altered.
-- The Tauri/SQLite source and migrations are present, but this environment did not include Rust, MSVC, or .NET, so an installer was not produced here.
+- The FIT foundation decodes files, keeps immutable normalized samples and laps, detects byte-identical duplicates, and records partial-success import batches. The packaged app preserves a verified untouched source copy; browser development labels durable preservation unavailable. Activity Review confirmation is still being implemented.
+- The Tauri/SQLite source and migrations are present. Rust and the Windows toolchain are available, but packaging currently stops because the project does not yet contain the required `src-tauri/icons/icon.ico` application icon.
 - The browser fallback stores the canonical state as one local snapshot; the packaged repository stores that snapshot in SQLite while the normalized tables are ready for incremental persistence.
 - The built-in plan is the 13-week November 2, 2026–January 31, 2027 block: Monday flexible recovery, Friday rest, cutbacks in weeks 4/8/12, threshold sessions from week 6, and a 50-mile peak.
 - Import preview supports the reference `Plan` and `Daily Plan` structures plus the documented row format. Arbitrary workbook layouts are intentionally rejected.
 
 ## Next improvements
 
-1. Add the packaged FIT decoding adapter, file preservation, and bulk-import fixture tests.
+1. Complete the approved Activity Review decisions, validation, draft persistence, and atomic confirmation on top of the FIT ingest foundation.
 2. Persist each domain aggregate through the normalized SQLite tables and add migration/restore integration tests.
 3. Add optional session drag-and-drop with a fully keyboard-equivalent move command and richer multi-activity bundle suggestions.
