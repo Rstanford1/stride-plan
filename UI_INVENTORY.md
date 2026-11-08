@@ -18,7 +18,7 @@ All entries start as **Not reviewed**. “Potential” findings are audit observ
 
 ## 2. Today dashboard
 
-Source: `src/screens/TodayScreen.tsx`, shared `Metric`, `StatusBadge`, `Modal`, and `RunEntryForm`.
+Source: `src/screens/TodayDashboard.tsx`, shared `Metric`, `StatusBadge`, `Modal`, and `RunEntryWorkflow`.
 
 | Component/group    | Purpose and current behavior                                                                    | Appearance / interaction                                       | Dependencies                              | Potential issues                                                                                                                                    | Status       |
 | ------------------ | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
@@ -34,7 +34,9 @@ Source: `src/screens/TodayScreen.tsx`, shared `Metric`, `StatusBadge`, `Modal`, 
 
 ## 3. Run result dialog
 
-Source: `src/components/RunEntryForm.tsx`, opened by Today and Plan.
+Source: `src/components/RunEntryWorkflow.tsx` and `src/components/FormControls.tsx`, opened by Today and Plan.
+
+Approved manual-entry redesign status: **Testing**. FIT file decoding remains a separate backlog adapter; the current FIT tab is deliberately an honest selection placeholder.
 
 | Component/group          | Purpose and current behavior                            | Appearance / interaction                                | Dependencies                             | Potential issues                                                                                                                | Status       |
 | ------------------------ | ------------------------------------------------------- | ------------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------ |
@@ -130,3 +132,12 @@ Source: `src/screens/DataScreen.tsx`, import/backup domain modules.
 | Inputs        | Shared text/select/number/textarea styling.                          | `src/styles.css`                 | No standardized help/error/required pattern; global outline removal depends on `:focus-visible`. | Not reviewed |
 | Tables        | Shared headings/cells plus compact variants.                         | `src/styles.css`                 | No horizontal-scroll wrapper for every table and no stacked alternative.                         | Not reviewed |
 | Empty states  | Dashed generic panel plus specialized activity/observation variants. | Multiple screens/CSS             | Tone and available next action vary.                                                             | Not reviewed |
+
+## 10. Approved slice verification status
+
+| Component             | Implemented behavior                                                                                    | Status  |
+| --------------------- | ------------------------------------------------------------------------------------------------------- | ------- |
+| Today date navigation | Literal local date, previous/next, horizontal week selector, recorded and missing-data states           | Testing |
+| Manual run entry      | FIT-first shell, actual-vs-plan separation, time/pace entry, RPE, soreness, sleep, shoes, notes, review | Testing |
+| Shared form controls  | Consistent labels, segmented controls, fixed module geometry, auto-growing note                         | Testing |
+| Persistence           | Atomic session/journal/shoe update, schema-v3 upgrade, SQLite migration                                 | Testing |

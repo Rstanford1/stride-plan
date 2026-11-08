@@ -12,7 +12,7 @@ import type { PlannedSession } from "../domain/types";
 import { formatDate, formatMiles } from "../utils/format";
 import { Metric } from "../components/Metric";
 import { Modal } from "../components/Modal";
-import { RunEntryForm } from "../components/RunEntryForm";
+import { RunEntryWorkflow } from "../components/RunEntryWorkflow";
 import { StatusBadge } from "../components/StatusBadge";
 
 const TODAY = "2026-11-06";
@@ -244,7 +244,11 @@ export function TodayScreen({
           title={`Review · ${editing.title}`}
           onClose={() => setEditing(null)}
         >
-          <RunEntryForm session={editing} onSaved={() => setEditing(null)} />
+          <RunEntryWorkflow
+            session={editing}
+            onSaved={() => setEditing(null)}
+            onCancel={() => setEditing(null)}
+          />
         </Modal>
       )}
     </div>

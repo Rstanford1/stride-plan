@@ -67,8 +67,21 @@ export interface Activity {
   laps: Lap[];
 }
 
-export type SleepChoice = "a-lot" | "normal" | "a-little" | "barely";
+export type SleepChoice =
+  "restorative" | "adequate" | "limited" | "severely-limited";
 export type SorenessChoice = "none" | "mild" | "moderate" | "severe";
+
+export type TimeEntryMode = "duration" | "pace";
+export type PaceUnit = "min-mi" | "min-km";
+export type SleepEntryMode = "subjective" | "garmin";
+
+export interface Shoe {
+  id: string;
+  name: string;
+  mileageMiles: number;
+  isDefault: boolean;
+  retired?: boolean;
+}
 
 export interface JournalEntry {
   id: string;
@@ -76,12 +89,20 @@ export interface JournalEntry {
   date: string;
   actualDistanceMiles?: number;
   durationSeconds?: number;
+  timeEntryMode?: TimeEntryMode;
+  paceSecondsPerUnit?: number;
+  paceUnit?: PaceUnit;
   averageHr?: number;
   rpe?: number;
   sleep?: SleepChoice;
+  sleepEntryMode?: SleepEntryMode;
+  sleepScore?: number;
+  sleepDurationMinutes?: number;
   soreness?: SorenessChoice;
   sorenessLocation?: string;
+  shoeId?: string;
   note?: string;
+  createdAt?: string;
   updatedAt: string;
 }
 
@@ -97,6 +118,7 @@ export interface AppData {
   sessions: PlannedSession[];
   activities: Activity[];
   journals: JournalEntry[];
+  shoes: Shoe[];
   settings: AppSettings;
   importFingerprints: string[];
 }

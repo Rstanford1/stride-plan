@@ -17,6 +17,7 @@ import type {
   JournalEntry,
   LapRole,
   PlannedSession,
+  Shoe,
 } from "../domain/types";
 
 interface AppContextValue {
@@ -29,6 +30,12 @@ interface AppContextValue {
   ) => void;
   addSession: (session: PlannedSession) => void;
   saveJournal: (entry: JournalEntry) => void;
+  saveRunEntry: (
+    sessionId: string,
+    update: SessionUpdate,
+    entry: JournalEntry,
+  ) => void;
+  addShoe: (shoe: Shoe) => void;
   updateActivity: (activityId: string, update: Partial<Activity>) => void;
   updateLapRole: (activityId: string, lapId: string, role: LapRole) => void;
   updateSettings: (update: Partial<AppSettings>) => void;
@@ -76,6 +83,40 @@ export function AppProvider({ children }: PropsWithChildren) {
         entry,
       ],
     }));
+  }, []);
+
+  const saveRunEntry = useCallback(
+    (sessionId: string, update: SessionUpdate, entry: JournalEntry) => {
+      setData((current) => {
+        const previous = current.journals.find((item) => item.id === entry.id);
+        const previousMiles = previous?.actualDistanceMiles ?? 0;
+        const nextMiles = entry.actualDistanceMiles ?? 0;
+        const shoes = current.shoes.map((shoe) => {
+          let mileage = shoe.mileageMiles;
+          if (previous?.shoeId === shoe.id) mileage -= previousMiles;
+          if (entry.shoeId === shoe.id) mileage += nextMiles;
+          return { ...shoe, mileageMiles: Math.max(0, mileage) };
+        });
+        return {
+          ...current,
+          sessions: current.sessions.map((session) =>
+            session.id === sessionId
+              ? reviseSession(session, update, "Daily review")
+              : session,
+          ),
+          journals: [
+            ...current.journals.filter((item) => item.id !== entry.id),
+            entry,
+          ],
+          shoes,
+        };
+      });
+    },
+    [],
+  );
+
+  const addShoe = useCallback((shoe: Shoe) => {
+    setData((current) => ({ ...current, shoes: [...current.shoes, shoe] }));
   }, []);
 
   const addSession = useCallback((session: PlannedSession) => {
@@ -130,6 +171,8 @@ export function AppProvider({ children }: PropsWithChildren) {
       saveSession,
       addSession,
       saveJournal,
+      saveRunEntry,
+      addShoe,
       updateActivity,
       updateLapRole,
       updateSettings,
@@ -142,6 +185,8 @@ export function AppProvider({ children }: PropsWithChildren) {
       saveSession,
       addSession,
       saveJournal,
+      saveRunEntry,
+      addShoe,
       updateActivity,
       updateLapRole,
       updateSettings,

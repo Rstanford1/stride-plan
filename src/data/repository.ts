@@ -9,6 +9,39 @@ export interface AppRepository {
   save(data: AppData): Promise<void>;
 }
 
+function upgradeData(value: AppData): AppData {
+  if (value.schemaVersion === 3 && Array.isArray(value.shoes)) return value;
+  if (value.schemaVersion === 2) {
+    const sleepMap = {
+      "a-lot": "restorative",
+      normal: "adequate",
+      "a-little": "limited",
+      barely: "severely-limited",
+    } as const;
+    return {
+      ...value,
+      schemaVersion: 3,
+      journals: value.journals.map((entry) => ({
+        ...entry,
+        sleep: entry.sleep
+          ? sleepMap[entry.sleep as keyof typeof sleepMap]
+          : undefined,
+        sleepEntryMode: entry.sleep ? "subjective" : undefined,
+        createdAt: entry.createdAt ?? entry.updatedAt,
+      })),
+      shoes: [
+        {
+          id: "shoe-daily-trainer",
+          name: "Daily trainer",
+          mileageMiles: 0,
+          isDefault: true,
+        },
+      ],
+    };
+  }
+  return createInitialData();
+}
+
 export class BrowserRepository implements AppRepository {
   constructor(
     private readonly storage: Pick<
@@ -22,7 +55,7 @@ export class BrowserRepository implements AppRepository {
     if (!stored) return createInitialData();
     try {
       const parsed = JSON.parse(stored) as AppData;
-      return parsed.schemaVersion === 2 ? parsed : createInitialData();
+      return upgradeData(parsed);
     } catch {
       return createInitialData();
     }
@@ -52,10 +85,9 @@ export class SqliteRepository implements AppRepository {
       return initial;
     }
     const parsed = JSON.parse(rows[0].payload) as AppData;
-    if (parsed.schemaVersion === 2) return parsed;
-    const initial = createInitialData();
-    await this.save(initial);
-    return initial;
+    const upgraded = upgradeData(parsed);
+    if (upgraded !== parsed) await this.save(upgraded);
+    return upgraded;
   }
 
   async save(data: AppData): Promise<void> {
