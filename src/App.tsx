@@ -9,7 +9,7 @@ import {
   Sun,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { TodayScreen } from "./screens/TodayScreen";
+import { TodayDashboard } from "./screens/TodayDashboard";
 import { PlanScreen } from "./screens/PlanScreen";
 import { ActivityReviewScreen } from "./screens/ActivityReviewScreen";
 import { WeeklyReviewScreen } from "./screens/WeeklyReviewScreen";
@@ -98,7 +98,7 @@ export default function App() {
       </aside>
       <main id="main-content" tabIndex={-1}>
         {screen === "today" && (
-          <TodayScreen
+          <TodayDashboard
             openActivityReview={() => setScreen("activities")}
             openPlan={() => setScreen("plan")}
           />

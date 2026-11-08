@@ -156,10 +156,24 @@ export function createSeedSessions(): PlannedSession[] {
 
 export function createInitialData(): AppData {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     sessions: createSeedSessions(),
     activities: [],
     journals: [],
+    shoes: [
+      {
+        id: "shoe-daily-trainer",
+        name: "Daily trainer",
+        mileageMiles: 0,
+        isDefault: true,
+      },
+      {
+        id: "shoe-workout",
+        name: "Workout shoe",
+        mileageMiles: 0,
+        isDefault: false,
+      },
+    ],
     settings: {
       distanceUnit: "mi",
       easyHrLow: 146,

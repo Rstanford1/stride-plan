@@ -2,7 +2,7 @@
 
 ## Status
 
-This file records the observed design baseline from the Phase 1–2 audit. It is not an approved redesign. Component specifications will be added only after discussion and user approval.
+This file records the observed design baseline and approved component specifications. The Today date navigation and manual run-entry workflow below were approved through iterative review and are now implemented for testing.
 
 ## Product principles
 
@@ -57,9 +57,27 @@ This file records the observed design baseline from the Phase 1–2 audit. It is
 - `html` has a 940 px minimum width (680 px under the 800 px media query). This creates horizontal scrolling at constrained widths and is unlikely to satisfy comfortable 200% text scaling.
 - Large plan and lap tables have no small-window alternative.
 
-## Component specification register
+## Approved component specifications
 
-No component specification is approved yet. Approved specifications will be added here with purpose, layout, information, interactions, states, edge cases, accessibility, dependencies, and acceptance criteria.
+### Date-aware Today dashboard
+
+- The heading always begins on the literal local calendar date; it may never substitute a nearby planned session.
+- Previous/next-day controls and a compact horizontal week picker allow direct navigation. A Today action returns to the literal date.
+- A completed prior day shows its saved result. An incomplete prior day shows an inline prompt to add data, never a blocking pop-up.
+- A date with no planned session uses an explicit empty state. Next session, imported-activity window, and reference guidance derive from current data.
+- Date buttons are native keyboard controls with selected/today labels that do not rely on color alone.
+
+### Run-entry workflow
+
+- The focused dialog opens on FIT import because it is the expected primary path. Until decoding is implemented, the interface states that selection is only a preview and offers manual entry without claiming an import succeeded.
+- Manual entry preserves the original prescription and records actual results separately. Outcomes are Completed, Modified, or Skipped; Modified requires a plain-language explanation.
+- Distance and average HR are optional validated numeric values. Time may be entered as duration or average pace. Ambiguous one/two-part durations expose a compact interpretation selector; unambiguous h:mm:ss displays the same control geometry without a misleading arrow.
+- RPE applies to the main session. Soreness defaults to None; location occupies stable geometry and becomes editable only when severity is above None. Sleep supports professional subjective labels or Garmin score plus duration.
+- Shoe selection defaults to the current/default shoe and shows accumulated mileage. Saving adjusts mileage atomically with the journal and session revision.
+- Notes grow automatically and cannot be manually resized. All field labels use the same label-to-control spacing, fixed-height widget rows do not jump as modes change, and the dialog provides a review step before saving.
+- The modal title is programmatically associated; controls use native keyboard semantics and visible focus. Validation preserves valid zeroes and distinguishes missing values.
+
+Acceptance criteria: the workflow can record completed, modified, and skipped results; accepts supported time formats and pace units; exposes conditional soreness/sleep fields without layout shift; reviews before save; persists after reload; and has pure domain plus rendered component tests.
 
 ## Audit evidence
 

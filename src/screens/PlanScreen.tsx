@@ -5,7 +5,7 @@ import type { PlannedSession } from "../domain/types";
 import { formatDate, formatMiles } from "../utils/format";
 import { Modal } from "../components/Modal";
 import { PlanEditForm } from "../components/PlanEditForm";
-import { RunEntryForm } from "../components/RunEntryForm";
+import { RunEntryWorkflow } from "../components/RunEntryWorkflow";
 import { StatusBadge } from "../components/StatusBadge";
 
 export function PlanScreen() {
@@ -187,9 +187,11 @@ export function PlanScreen() {
           title={`Log result · ${reviewing.title} · ${formatDate(reviewing.scheduledDate)}`}
           onClose={() => setReviewing(null)}
         >
-          <RunEntryForm
+          <RunEntryWorkflow
             session={reviewing}
             onSaved={() => setReviewing(null)}
+            onCancel={() => setReviewing(null)}
+            initialMethod="manual"
           />
         </Modal>
       )}
