@@ -67,6 +67,85 @@ export interface Activity {
   laps: Lap[];
 }
 
+export type FitPreservationStatus =
+  "pending" | "verified" | "unavailable" | "failed";
+
+export type FitImportSourceStatus =
+  | "decoded"
+  | "failed"
+  | "cancelled"
+  | "exact-duplicate"
+  | "possible-duplicate"
+  | "excluded"
+  | "unresolved";
+
+export interface FitSourceRecord {
+  id: string;
+  sourceHash: string;
+  originalFileName: string;
+  byteLength: number;
+  importedAt: string;
+  decoderId: string;
+  decoderVersion: string;
+  preservationStatus: FitPreservationStatus;
+  storedRelativePath?: string;
+  preservationError?: string;
+}
+
+export interface FitSourceLap {
+  id: string;
+  sourceIndex: number;
+  startTime?: string;
+  distanceMeters: number;
+  durationSeconds: number;
+  averageHr?: number;
+}
+
+export interface FitSourceSample {
+  id: string;
+  sourceIndex: number;
+  timestamp?: string;
+  elapsedSeconds?: number;
+  distanceMeters?: number;
+  speedMetersPerSecond?: number;
+  heartRate?: number;
+  altitudeMeters?: number;
+  cadence?: number;
+  powerWatts?: number;
+}
+
+export interface FitSourceActivity {
+  id: string;
+  sourceId: string;
+  sourceIndex: number;
+  occurredAt: string;
+  localDate?: string;
+  sport: string;
+  subSport?: string;
+  distanceMeters: number;
+  durationSeconds?: number;
+  averageHr?: number;
+  totalAscentMeters?: number;
+  recordCount: number;
+  laps: FitSourceLap[];
+  samples: FitSourceSample[];
+}
+
+export interface FitImportSourceResult {
+  sourceId: string;
+  status: FitImportSourceStatus;
+  activityIds: string[];
+  errorCode?: string;
+  errorMessage?: string;
+}
+
+export interface FitImportBatch {
+  id: string;
+  createdAt: string;
+  completedAt?: string;
+  sourceResults: FitImportSourceResult[];
+}
+
 export type SleepChoice =
   "restorative" | "adequate" | "limited" | "severely-limited";
 export type SorenessChoice = "none" | "mild" | "moderate" | "severe";
@@ -117,6 +196,9 @@ export interface AppData {
   schemaVersion: number;
   sessions: PlannedSession[];
   activities: Activity[];
+  fitSources: FitSourceRecord[];
+  fitSourceActivities: FitSourceActivity[];
+  fitImportBatches: FitImportBatch[];
   journals: JournalEntry[];
   shoes: Shoe[];
   settings: AppSettings;

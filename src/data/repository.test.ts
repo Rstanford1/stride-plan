@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { BrowserRepository } from "./repository";
+import { createInitialData } from "../domain/seed";
+import type { AppData } from "../domain/types";
+import {
+  BrowserRepository,
+  type AppRepository,
+  SerializedRepository,
+} from "./repository";
 
 describe("browser persistence", () => {
   it("survives a repository restart", async () => {
@@ -39,8 +45,56 @@ describe("browser persistence", () => {
     };
     values.set("stride-plan:data:v1", JSON.stringify(versionTwo));
     const upgraded = await repository.load();
-    expect(upgraded.schemaVersion).toBe(3);
+    expect(upgraded.schemaVersion).toBe(4);
     expect(upgraded.journals[0].sleep).toBe("limited");
     expect(upgraded.shoes[0].isDefault).toBe(true);
+    expect(upgraded.fitSources).toEqual([]);
+  });
+
+  it("upgrades version 3 snapshots with empty FIT source collections", async () => {
+    const values = new Map<string, string>();
+    const repository = new BrowserRepository({
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+    });
+    const versionThree = { ...createInitialData(), schemaVersion: 3 };
+    delete (versionThree as Partial<AppData>).fitSources;
+    delete (versionThree as Partial<AppData>).fitSourceActivities;
+    delete (versionThree as Partial<AppData>).fitImportBatches;
+    values.set("stride-plan:data:v1", JSON.stringify(versionThree));
+    const upgraded = await repository.load();
+    expect(upgraded.schemaVersion).toBe(4);
+    expect(upgraded.fitSources).toEqual([]);
+    expect(upgraded.fitSourceActivities).toEqual([]);
+    expect(upgraded.fitImportBatches).toEqual([]);
+  });
+});
+
+describe("serialized persistence", () => {
+  it("does not let a slower save overwrite a newer snapshot", async () => {
+    const calls: number[] = [];
+    const releases: Array<() => void> = [];
+    const inner: AppRepository = {
+      load: async () => createInitialData(),
+      save: async (data) => {
+        calls.push(data.settings.easyHrHigh ?? 0);
+        await new Promise<void>((resolve) => releases.push(resolve));
+      },
+    };
+    const repository = new SerializedRepository(inner);
+    const firstData = createInitialData();
+    firstData.settings.easyHrHigh = 151;
+    const secondData = createInitialData();
+    secondData.settings.easyHrHigh = 152;
+    const first = repository.save(firstData);
+    const second = repository.save(secondData);
+    await Promise.resolve();
+    expect(calls).toEqual([151]);
+    releases.shift()?.();
+    await first;
+    await Promise.resolve();
+    expect(calls).toEqual([151, 152]);
+    releases.shift()?.();
+    await second;
   });
 });

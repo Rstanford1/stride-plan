@@ -1,5 +1,6 @@
 import type { AppData } from "../domain/types";
 import { createInitialData } from "../domain/seed";
+import { upgradeAppData } from "../domain/app-data";
 import Database from "@tauri-apps/plugin-sql";
 
 const STORAGE_KEY = "stride-plan:data:v1";
@@ -7,39 +8,6 @@ const STORAGE_KEY = "stride-plan:data:v1";
 export interface AppRepository {
   load(): Promise<AppData>;
   save(data: AppData): Promise<void>;
-}
-
-function upgradeData(value: AppData): AppData {
-  if (value.schemaVersion === 3 && Array.isArray(value.shoes)) return value;
-  if (value.schemaVersion === 2) {
-    const sleepMap = {
-      "a-lot": "restorative",
-      normal: "adequate",
-      "a-little": "limited",
-      barely: "severely-limited",
-    } as const;
-    return {
-      ...value,
-      schemaVersion: 3,
-      journals: value.journals.map((entry) => ({
-        ...entry,
-        sleep: entry.sleep
-          ? sleepMap[entry.sleep as keyof typeof sleepMap]
-          : undefined,
-        sleepEntryMode: entry.sleep ? "subjective" : undefined,
-        createdAt: entry.createdAt ?? entry.updatedAt,
-      })),
-      shoes: [
-        {
-          id: "shoe-daily-trainer",
-          name: "Daily trainer",
-          mileageMiles: 0,
-          isDefault: true,
-        },
-      ],
-    };
-  }
-  return createInitialData();
 }
 
 export class BrowserRepository implements AppRepository {
@@ -55,7 +23,7 @@ export class BrowserRepository implements AppRepository {
     if (!stored) return createInitialData();
     try {
       const parsed = JSON.parse(stored) as AppData;
-      return upgradeData(parsed);
+      return upgradeAppData(parsed);
     } catch {
       return createInitialData();
     }
@@ -85,7 +53,7 @@ export class SqliteRepository implements AppRepository {
       return initial;
     }
     const parsed = JSON.parse(rows[0].payload) as AppData;
-    const upgraded = upgradeData(parsed);
+    const upgraded = upgradeAppData(parsed);
     if (upgraded !== parsed) await this.save(upgraded);
     return upgraded;
   }
@@ -99,7 +67,24 @@ export class SqliteRepository implements AppRepository {
   }
 }
 
+export class SerializedRepository implements AppRepository {
+  private saveQueue: Promise<void> = Promise.resolve();
+
+  constructor(private readonly repository: AppRepository) {}
+
+  load(): Promise<AppData> {
+    return this.repository.load();
+  }
+
+  save(data: AppData): Promise<void> {
+    const operation = this.saveQueue.then(() => this.repository.save(data));
+    this.saveQueue = operation.catch(() => undefined);
+    return operation;
+  }
+}
+
 export function createRepository(): AppRepository {
   const isTauri = "__TAURI_INTERNALS__" in window;
-  return isTauri ? new SqliteRepository() : new BrowserRepository();
+  const repository = isTauri ? new SqliteRepository() : new BrowserRepository();
+  return new SerializedRepository(repository);
 }
