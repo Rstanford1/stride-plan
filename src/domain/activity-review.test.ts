@@ -169,4 +169,97 @@ describe("Activity Review", () => {
     expect(second.activityReviewConfirmations).toHaveLength(2);
     expect(second.activityReviewConfirmations[1].revisionNumber).toBe(2);
   });
+
+  it("validates complete segment coverage and allocates mileage by segment shoe", () => {
+    const { data, batch } = addImportedActivity();
+    data.shoes[1].mileageMiles = 10;
+    const draft = createActivityReviewDraft(
+      batch,
+      data.fitSourceActivities,
+      data.sessions,
+      data.shoes,
+    );
+    draft.decisions[0].segments = [
+      {
+        id: "segment-1",
+        startSeconds: 0,
+        endSeconds: 1_800,
+        role: "warm-up",
+      },
+      {
+        id: "segment-2",
+        startSeconds: 1_800,
+        endSeconds: 3_600,
+        role: "work",
+        shoeId: "shoe-workout",
+      },
+    ];
+    expect(validateActivityReview(draft, data)).toEqual([]);
+    const confirmed = confirmActivityReview(data, draft);
+    expect(confirmed.activities[0].shoeAllocations?.[0].shoeId).toBe(
+      "shoe-daily-trainer",
+    );
+    expect(
+      confirmed.activities[0].shoeAllocations?.[0].distanceMiles,
+    ).toBeCloseTo(3.5);
+    expect(confirmed.activities[0].shoeAllocations?.[1].shoeId).toBe(
+      "shoe-workout",
+    );
+    expect(
+      confirmed.activities[0].shoeAllocations?.[1].distanceMiles,
+    ).toBeCloseTo(3.5);
+    expect(confirmed.shoes[0].mileageMiles).toBeCloseTo(3.5);
+    expect(confirmed.shoes[1].mileageMiles).toBeCloseTo(13.5);
+
+    draft.decisions[0].segments[1].startSeconds = 1_900;
+    expect(validateActivityReview(draft, data)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: "Segments cannot overlap or leave time unallocated.",
+        }),
+      ]),
+    );
+  });
+
+  it("requires an explicit choice for a possible duplicate", () => {
+    const { data, batch, sourceActivity } = addImportedActivity();
+    data.activities.push({
+      id: "existing-activity",
+      sourceHash: "existing",
+      fileName: "existing.fit",
+      occurredAt: sourceActivity.occurredAt,
+      distanceMiles: 7,
+      durationSeconds: 3_600,
+      role: "primary-long",
+      plannedSessionId: "plan-w1-d7",
+      isPrimary: true,
+      importedAt: "2026-11-08T15:30:00.000Z",
+      laps: [],
+    });
+    const draft = createActivityReviewDraft(
+      batch,
+      data.fitSourceActivities,
+      data.sessions,
+      data.shoes,
+      "2026-11-08T16:01:00.000Z",
+      data.activities,
+    );
+    expect(draft.decisions[0].duplicateCandidates[0].activityId).toBe(
+      "existing-activity",
+    );
+    expect(validateActivityReview(draft, data)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: "Choose which activity should represent this recorded run.",
+        }),
+      ]),
+    );
+    draft.decisions[0].duplicateChoice = {
+      kind: "use-existing",
+      activityId: "existing-activity",
+    };
+    const confirmed = confirmActivityReview(data, draft);
+    expect(confirmed.activities).toHaveLength(1);
+    expect(confirmed.activities[0].id).toBe("existing-activity");
+  });
 });

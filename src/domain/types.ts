@@ -14,6 +14,8 @@ export type ActivityRole =
   | "unrelated";
 
 export type LapRole = "work" | "recovery" | "warm-up" | "cooldown" | "other";
+export type ActivitySegmentRole =
+  "warm-up" | "work" | "recovery" | "cooldown" | "strides" | "other";
 
 export interface SessionRevision {
   id: string;
@@ -68,6 +70,7 @@ export interface Activity {
   sourceActivityId?: string;
   reviewId?: string;
   shoeId?: string;
+  shoeAllocations?: Array<{ shoeId: string; distanceMiles: number }>;
   laps: Lap[];
 }
 
@@ -157,7 +160,27 @@ export interface ActivityReviewDecision {
   isPrimary: boolean;
   shoeId?: string;
   lapRoles: Record<string, LapRole>;
+  segments: ActivityReviewSegment[];
+  segmentUndoStack: ActivityReviewSegment[][];
+  segmentRedoStack: ActivityReviewSegment[][];
+  duplicateCandidates: PossibleDuplicateCandidate[];
+  duplicateChoice?:
+    { kind: "use-imported" } | { kind: "use-existing"; activityId: string };
   suggestionEvidence: string[];
+}
+
+export interface ActivityReviewSegment {
+  id: string;
+  startSeconds: number;
+  endSeconds: number;
+  role: ActivitySegmentRole;
+  shoeId?: string;
+}
+
+export interface PossibleDuplicateCandidate {
+  activityId: string;
+  comparisonVersion: 1;
+  evidence: string[];
 }
 
 export interface ActivityReviewDraft {

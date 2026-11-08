@@ -45,7 +45,7 @@ describe("browser persistence", () => {
     };
     values.set("stride-plan:data:v1", JSON.stringify(versionTwo));
     const upgraded = await repository.load();
-    expect(upgraded.schemaVersion).toBe(5);
+    expect(upgraded.schemaVersion).toBe(6);
     expect(upgraded.journals[0].sleep).toBe("limited");
     expect(upgraded.shoes[0].isDefault).toBe(true);
     expect(upgraded.fitSources).toEqual([]);
@@ -63,7 +63,7 @@ describe("browser persistence", () => {
     delete (versionThree as Partial<AppData>).fitImportBatches;
     values.set("stride-plan:data:v1", JSON.stringify(versionThree));
     const upgraded = await repository.load();
-    expect(upgraded.schemaVersion).toBe(5);
+    expect(upgraded.schemaVersion).toBe(6);
     expect(upgraded.fitSources).toEqual([]);
     expect(upgraded.fitSourceActivities).toEqual([]);
     expect(upgraded.fitImportBatches).toEqual([]);
@@ -82,9 +82,46 @@ describe("browser persistence", () => {
     delete (versionFour as Partial<AppData>).activityReviewConfirmations;
     values.set("stride-plan:data:v1", JSON.stringify(versionFour));
     const upgraded = await repository.load();
-    expect(upgraded.schemaVersion).toBe(5);
+    expect(upgraded.schemaVersion).toBe(6);
     expect(upgraded.activityReviewDrafts).toEqual([]);
     expect(upgraded.activityReviewConfirmations).toEqual([]);
+  });
+
+  it("upgrades version 5 review decisions with segment and duplicate state", async () => {
+    const values = new Map<string, string>();
+    const repository = new BrowserRepository({
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+    });
+    const versionFive = {
+      ...createInitialData(),
+      schemaVersion: 5,
+      activityReviewDrafts: [
+        {
+          id: "legacy-draft",
+          batchId: "legacy-batch",
+          createdAt: "2026-11-08T12:00:00.000Z",
+          updatedAt: "2026-11-08T12:00:00.000Z",
+          decisions: [
+            {
+              sourceActivityId: "legacy-activity",
+              isPrimary: false,
+              lapRoles: {},
+              suggestionEvidence: [],
+            },
+          ],
+        },
+      ],
+    };
+    values.set("stride-plan:data:v1", JSON.stringify(versionFive));
+    const upgraded = await repository.load();
+    expect(upgraded.schemaVersion).toBe(6);
+    expect(upgraded.activityReviewDrafts[0].decisions[0]).toMatchObject({
+      segments: [],
+      segmentUndoStack: [],
+      segmentRedoStack: [],
+      duplicateCandidates: [],
+    });
   });
 });
 

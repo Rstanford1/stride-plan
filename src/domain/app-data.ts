@@ -1,9 +1,28 @@
 import { createInitialData } from "./seed";
-import type { AppData } from "./types";
+import type { ActivityReviewDecision, AppData } from "./types";
+
+function upgradeReviewDecision(
+  decision: ActivityReviewDecision,
+): ActivityReviewDecision {
+  const raw = decision as unknown as Record<string, unknown>;
+  return {
+    ...decision,
+    segments: Array.isArray(raw.segments) ? decision.segments : [],
+    segmentUndoStack: Array.isArray(raw.segmentUndoStack)
+      ? decision.segmentUndoStack
+      : [],
+    segmentRedoStack: Array.isArray(raw.segmentRedoStack)
+      ? decision.segmentRedoStack
+      : [],
+    duplicateCandidates: Array.isArray(raw.duplicateCandidates)
+      ? decision.duplicateCandidates
+      : [],
+  };
+}
 
 export function upgradeAppData(value: AppData): AppData {
   if (
-    value.schemaVersion === 5 &&
+    value.schemaVersion === 6 &&
     Array.isArray(value.shoes) &&
     Array.isArray(value.fitSources) &&
     Array.isArray(value.fitSourceActivities) &&
@@ -13,6 +32,26 @@ export function upgradeAppData(value: AppData): AppData {
   )
     return value;
   if (
+    value.schemaVersion === 5 &&
+    Array.isArray(value.activityReviewDrafts) &&
+    Array.isArray(value.activityReviewConfirmations)
+  ) {
+    return {
+      ...value,
+      schemaVersion: 6,
+      activityReviewDrafts: value.activityReviewDrafts.map((draft) => ({
+        ...draft,
+        decisions: draft.decisions.map(upgradeReviewDecision),
+      })),
+      activityReviewConfirmations: value.activityReviewConfirmations.map(
+        (confirmation) => ({
+          ...confirmation,
+          decisions: confirmation.decisions.map(upgradeReviewDecision),
+        }),
+      ),
+    };
+  }
+  if (
     value.schemaVersion === 4 &&
     Array.isArray(value.fitSources) &&
     Array.isArray(value.fitSourceActivities) &&
@@ -20,7 +59,7 @@ export function upgradeAppData(value: AppData): AppData {
   ) {
     return {
       ...value,
-      schemaVersion: 5,
+      schemaVersion: 6,
       activityReviewDrafts: [],
       activityReviewConfirmations: [],
     };
@@ -28,7 +67,7 @@ export function upgradeAppData(value: AppData): AppData {
   if (value.schemaVersion === 3 && Array.isArray(value.shoes)) {
     return {
       ...value,
-      schemaVersion: 5,
+      schemaVersion: 6,
       fitSources: [],
       fitSourceActivities: [],
       fitImportBatches: [],
@@ -45,7 +84,7 @@ export function upgradeAppData(value: AppData): AppData {
     } as const;
     return {
       ...value,
-      schemaVersion: 5,
+      schemaVersion: 6,
       journals: value.journals.map((entry) => ({
         ...entry,
         sleep: entry.sleep

@@ -4,10 +4,11 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type { PropsWithChildren } from "react";
-import { createRepository } from "./repository";
+import { createRepository, type AppRepository } from "./repository";
 import { createInitialData } from "../domain/seed";
 import { reviseSession, type SessionUpdate } from "../domain/rules";
 import {
@@ -28,6 +29,8 @@ import type {
 interface AppContextValue {
   data: AppData;
   ready: boolean;
+  persistenceState: "idle" | "saving" | "saved" | "error";
+  persistenceError?: string;
   saveSession: (
     sessionId: string,
     update: SessionUpdate,
@@ -47,16 +50,28 @@ interface AppContextValue {
   saveActivityReviewDraft: (draft: ActivityReviewDraft) => void;
   confirmActivityReviewDraft: (draft: ActivityReviewDraft) => void;
   reviseActivityReview: (batchId: string) => void;
+  retryPersistence: () => void;
   replaceData: (data: AppData) => void;
   resetDemo: () => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
 
-export function AppProvider({ children }: PropsWithChildren) {
-  const repository = useMemo(() => createRepository(), []);
+export function AppProvider({
+  children,
+  repositoryOverride,
+}: PropsWithChildren<{ repositoryOverride?: AppRepository }>) {
+  const repository = useMemo(
+    () => repositoryOverride ?? createRepository(),
+    [repositoryOverride],
+  );
   const [data, setData] = useState<AppData>(createInitialData);
   const [ready, setReady] = useState(false);
+  const [persistenceState, setPersistenceState] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
+  const [persistenceError, setPersistenceError] = useState<string>();
+  const saveVersion = useRef(0);
 
   useEffect(() => {
     repository.load().then((loaded) => {
@@ -66,8 +81,41 @@ export function AppProvider({ children }: PropsWithChildren) {
   }, [repository]);
 
   useEffect(() => {
-    if (ready) void repository.save(data);
+    if (!ready) return;
+    const version = ++saveVersion.current;
+    setPersistenceState("saving");
+    setPersistenceError(undefined);
+    void repository
+      .save(data)
+      .then(() => {
+        if (saveVersion.current === version) setPersistenceState("saved");
+      })
+      .catch((error: unknown) => {
+        if (saveVersion.current !== version) return;
+        setPersistenceState("error");
+        setPersistenceError(
+          error instanceof Error ? error.message : "Local save failed.",
+        );
+      });
   }, [data, ready, repository]);
+
+  const retryPersistence = useCallback(() => {
+    const version = ++saveVersion.current;
+    setPersistenceState("saving");
+    setPersistenceError(undefined);
+    void repository
+      .save(data)
+      .then(() => {
+        if (saveVersion.current === version) setPersistenceState("saved");
+      })
+      .catch((error: unknown) => {
+        if (saveVersion.current !== version) return;
+        setPersistenceState("error");
+        setPersistenceError(
+          error instanceof Error ? error.message : "Local save failed.",
+        );
+      });
+  }, [data, repository]);
 
   const saveSession = useCallback(
     (sessionId: string, update: SessionUpdate, reason: string) => {
@@ -209,6 +257,8 @@ export function AppProvider({ children }: PropsWithChildren) {
     () => ({
       data,
       ready,
+      persistenceState,
+      persistenceError,
       saveSession,
       addSession,
       saveJournal,
@@ -220,12 +270,15 @@ export function AppProvider({ children }: PropsWithChildren) {
       saveActivityReviewDraft,
       confirmActivityReviewDraft,
       reviseActivityReview,
+      retryPersistence,
       replaceData: setData,
       resetDemo: () => setData(createInitialData()),
     }),
     [
       data,
       ready,
+      persistenceState,
+      persistenceError,
       saveSession,
       addSession,
       saveJournal,
@@ -237,6 +290,7 @@ export function AppProvider({ children }: PropsWithChildren) {
       saveActivityReviewDraft,
       confirmActivityReviewDraft,
       reviseActivityReview,
+      retryPersistence,
     ],
   );
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

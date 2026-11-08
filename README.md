@@ -81,7 +81,7 @@ Dates use `YYYY-MM-DD`; session type is `rest`, `easy`, `recovery`, `workout`, o
 
 ## Current limitations
 
-- The FIT foundation decodes files, keeps immutable normalized samples and laps, detects byte-identical duplicates, and records partial-success import batches. Activity Review now supports evidence-based matching, autosaved decisions, validation, shoes, atomic confirmation, read-only reopening, and revisions. User-defined segment boundaries and possible-duplicate choices remain in progress.
+- The FIT foundation decodes files, keeps immutable normalized samples and laps, detects byte-identical duplicates, and records partial-success import batches. Activity Review supports evidence-based matching, possible-duplicate choices, autosaved decisions, validated user segments, optional metric overlays, segment shoe allocation, atomic confirmation, read-only reopening, and revisions.
 - The Tauri/SQLite source and migrations are present. Rust and the Windows toolchain are available, but packaging currently stops because the project does not yet contain the required `src-tauri/icons/icon.ico` application icon.
 - The browser fallback stores the canonical state as one local snapshot; the packaged repository stores that snapshot in SQLite while the normalized tables are ready for incremental persistence.
 - The built-in plan is the 13-week November 2, 2026–January 31, 2027 block: Monday flexible recovery, Friday rest, cutbacks in weeks 4/8/12, threshold sessions from week 6, and a 50-mile peak.
@@ -89,6 +89,6 @@ Dates use `YYYY-MM-DD`; session type is `rest`, `easy`, `recovery`, `workout`, o
 
 ## Next improvements
 
-1. Complete Activity Review segment-boundary editing and possible-duplicate resolution on top of the confirmed draft/transaction workflow.
+1. Finish Activity Review polish: pause/gap and suggested-transition landmarks, zoom/drag enhancements, and visible revision history.
 2. Persist each domain aggregate through the normalized SQLite tables and add migration/restore integration tests.
 3. Add optional session drag-and-drop with a fully keyboard-equivalent move command and richer multi-activity bundle suggestions.

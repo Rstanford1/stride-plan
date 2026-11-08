@@ -3,6 +3,7 @@ import type {
   Activity,
   ActivityReviewDecision,
   ActivityReviewDraft,
+  ActivityReviewSegment,
   AppData,
   FitImportBatch,
   FitSourceActivity,
@@ -107,12 +108,69 @@ function defaultShoe(shoes: Shoe[]): Shoe | undefined {
   );
 }
 
+export function findPossibleDuplicates(
+  source: FitSourceActivity,
+  existingActivities: Activity[],
+) {
+  const sourceStart = new Date(source.occurredAt).getTime();
+  const sourceMiles = source.distanceMeters / METERS_PER_MILE;
+  return existingActivities
+    .flatMap((activity) => {
+      const startDifferenceSeconds =
+        Math.abs(new Date(activity.occurredAt).getTime() - sourceStart) / 1000;
+      const durationDifference =
+        source.durationSeconds === undefined ||
+        activity.durationSeconds === undefined
+          ? undefined
+          : Math.abs(source.durationSeconds - activity.durationSeconds);
+      const distanceDifference = Math.abs(sourceMiles - activity.distanceMiles);
+      const durationTolerance = Math.max(
+        60,
+        (source.durationSeconds ?? activity.durationSeconds ?? 0) * 0.02,
+      );
+      if (
+        startDifferenceSeconds > 120 ||
+        distanceDifference > Math.max(0.1, sourceMiles * 0.02) ||
+        (durationDifference !== undefined &&
+          durationDifference > durationTolerance)
+      ) {
+        return [];
+      }
+      return [
+        {
+          candidate: {
+            activityId: activity.id,
+            comparisonVersion: 1 as const,
+            evidence: [
+              `Starts ${Math.round(startDifferenceSeconds)} seconds from the existing activity.`,
+              `Distance differs by ${distanceDifference.toFixed(2)} mi.`,
+              durationDifference === undefined
+                ? "One record does not include timer duration."
+                : `Timer duration differs by ${Math.round(durationDifference)} seconds.`,
+            ],
+          },
+          score:
+            startDifferenceSeconds +
+            distanceDifference * 100 +
+            (durationDifference ?? 0),
+        },
+      ];
+    })
+    .sort(
+      (left, right) =>
+        left.score - right.score ||
+        left.candidate.activityId.localeCompare(right.candidate.activityId),
+    )
+    .map((item) => item.candidate);
+}
+
 export function createActivityReviewDraft(
   batch: FitImportBatch,
   sourceActivities: FitSourceActivity[],
   sessions: PlannedSession[],
   shoes: Shoe[],
   now = new Date().toISOString(),
+  existingActivities: Activity[] = [],
 ): ActivityReviewDraft {
   const activities = activitiesForBatch(batch, sourceActivities);
   const suggestions = activities.map((activity) => ({
@@ -148,6 +206,13 @@ export function createActivityReviewDraft(
         shoeId: session ? shoe?.id : undefined,
         lapRoles: Object.fromEntries(
           activity.laps.map((lap) => [lap.id, "other" as const]),
+        ),
+        segments: [],
+        segmentUndoStack: [],
+        segmentRedoStack: [],
+        duplicateCandidates: findPossibleDuplicates(
+          activity,
+          existingActivities,
         ),
         suggestionEvidence: match.evidence,
       };
@@ -249,6 +314,27 @@ export function validateActivityReview(
     const source = data.fitSources.find(
       (item) => item.id === sourceActivity.sourceId,
     );
+    if (decision.duplicateCandidates.length > 0 && !decision.duplicateChoice) {
+      issues.push({
+        id: `possible-duplicate:${decision.sourceActivityId}`,
+        sourceActivityId: decision.sourceActivityId,
+        message: "Choose which activity should represent this recorded run.",
+      });
+    }
+    const duplicateChoice = decision.duplicateChoice;
+    if (
+      duplicateChoice?.kind === "use-existing" &&
+      !decision.duplicateCandidates.some(
+        (candidate) => candidate.activityId === duplicateChoice.activityId,
+      )
+    ) {
+      issues.push({
+        id: `duplicate-choice:${decision.sourceActivityId}`,
+        sourceActivityId: decision.sourceActivityId,
+        message: "Choose an available existing activity or use the import.",
+      });
+    }
+    if (decision.duplicateChoice?.kind === "use-existing") continue;
     if (
       source?.preservationStatus === "failed" ||
       source?.preservationStatus === "pending"
@@ -261,6 +347,62 @@ export function validateActivityReview(
             ? "Re-import the original FIT file to retry source preservation before confirming."
             : "Wait for source-file preservation before confirming.",
       });
+    }
+    if (decision.segments.length > 0) {
+      const ordered = [...decision.segments].sort(
+        (left, right) => left.startSeconds - right.startSeconds,
+      );
+      const duration = sourceActivity.durationSeconds;
+      if (duration === undefined) {
+        issues.push({
+          id: `segment-duration:${decision.sourceActivityId}`,
+          sourceActivityId: decision.sourceActivityId,
+          message: "Segments require a recorded activity duration.",
+        });
+      } else {
+        const tolerance = 0.01;
+        if (
+          Math.abs(ordered[0].startSeconds) > tolerance ||
+          Math.abs(ordered.at(-1)!.endSeconds - duration) > tolerance
+        ) {
+          issues.push({
+            id: `segment-coverage:${decision.sourceActivityId}`,
+            sourceActivityId: decision.sourceActivityId,
+            message: "Segments must cover the complete recorded duration.",
+          });
+        }
+        for (const [index, segment] of ordered.entries()) {
+          if (
+            segment.startSeconds < 0 ||
+            segment.endSeconds > duration + tolerance ||
+            segment.endSeconds - segment.startSeconds <= tolerance
+          ) {
+            issues.push({
+              id: `segment-range:${segment.id}`,
+              sourceActivityId: decision.sourceActivityId,
+              message: "Every segment must have a positive in-range duration.",
+            });
+          }
+          if (
+            index > 0 &&
+            Math.abs(ordered[index - 1].endSeconds - segment.startSeconds) >
+              tolerance
+          ) {
+            issues.push({
+              id: `segment-order:${segment.id}`,
+              sourceActivityId: decision.sourceActivityId,
+              message: "Segments cannot overlap or leave time unallocated.",
+            });
+          }
+          if (segment.shoeId && !shoes.has(segment.shoeId)) {
+            issues.push({
+              id: `segment-shoe:${segment.id}`,
+              sourceActivityId: decision.sourceActivityId,
+              message: "Choose an available shoe for every segment override.",
+            });
+          }
+        }
+      }
     }
     if (!decision.role) {
       issues.push({
@@ -308,7 +450,9 @@ export function validateActivityReview(
   }
   const sessionIds = new Set(
     draft.decisions.flatMap((decision) =>
-      decision.role !== "unrelated" && decision.plannedSessionId
+      decision.duplicateChoice?.kind !== "use-existing" &&
+      decision.role !== "unrelated" &&
+      decision.plannedSessionId
         ? [decision.plannedSessionId]
         : [],
     ),
@@ -329,6 +473,76 @@ export function validateActivityReview(
     }
   }
   return issues;
+}
+
+function distanceAtTime(
+  activity: FitSourceActivity,
+  elapsedSeconds: number,
+): number {
+  const duration = activity.durationSeconds ?? 0;
+  if (elapsedSeconds <= 0) return 0;
+  if (duration > 0 && elapsedSeconds >= duration)
+    return activity.distanceMeters;
+  const samples = activity.samples
+    .filter(
+      (sample) =>
+        sample.elapsedSeconds !== undefined &&
+        sample.distanceMeters !== undefined,
+    )
+    .sort((left, right) => left.elapsedSeconds! - right.elapsedSeconds!);
+  if (!samples.length) {
+    return duration > 0
+      ? activity.distanceMeters * (elapsedSeconds / duration)
+      : 0;
+  }
+  if (elapsedSeconds <= (samples[0].elapsedSeconds ?? 0)) {
+    return samples[0].distanceMeters ?? 0;
+  }
+  for (let index = 1; index < samples.length; index += 1) {
+    const left = samples[index - 1];
+    const right = samples[index];
+    if (elapsedSeconds <= right.elapsedSeconds!) {
+      const range = right.elapsedSeconds! - left.elapsedSeconds!;
+      const ratio = range ? (elapsedSeconds - left.elapsedSeconds!) / range : 0;
+      return (
+        left.distanceMeters! +
+        (right.distanceMeters! - left.distanceMeters!) * ratio
+      );
+    }
+  }
+  return samples.at(-1)?.distanceMeters ?? activity.distanceMeters;
+}
+
+export function calculateShoeAllocations(
+  decision: ActivityReviewDecision,
+  activity: FitSourceActivity,
+): Array<{ shoeId: string; distanceMiles: number }> {
+  if (decision.role === "unrelated") return [];
+  if (!decision.segments.length) {
+    return decision.shoeId
+      ? [
+          {
+            shoeId: decision.shoeId,
+            distanceMiles: activity.distanceMeters / METERS_PER_MILE,
+          },
+        ]
+      : [];
+  }
+  const allocations = new Map<string, number>();
+  for (const segment of decision.segments) {
+    const shoeId = segment.shoeId ?? decision.shoeId;
+    if (!shoeId) continue;
+    const meters = Math.max(
+      0,
+      distanceAtTime(activity, segment.endSeconds) -
+        distanceAtTime(activity, segment.startSeconds),
+    );
+    allocations.set(shoeId, (allocations.get(shoeId) ?? 0) + meters);
+  }
+  return Array.from(allocations, ([shoeId, meters]) => ({
+    shoeId,
+    distanceMiles: meters / METERS_PER_MILE,
+  }));
 }
 
 function projectActivity(
@@ -357,6 +571,7 @@ function projectActivity(
     bundleId: `bundle:${reviewId}:${bundleKey}`,
     isPrimary: decision.isPrimary,
     shoeId: decision.shoeId,
+    shoeAllocations: calculateShoeAllocations(decision, sourceActivity),
     importedAt: source?.importedAt ?? new Date().toISOString(),
     laps: sourceActivity.laps.map((lap) => ({
       id: `activity-lap:${lap.id}`,
@@ -394,28 +609,34 @@ export function confirmActivityReview(
     Math.max(0, ...previousConfirmations.map((item) => item.revisionNumber)) +
     1;
   const reviewId = `review:${draft.batchId}:${revisionNumber}`;
-  const projected = draft.decisions.map((decision) => {
+  const projected = draft.decisions.flatMap((decision) => {
+    if (decision.duplicateChoice?.kind === "use-existing") return [];
     const source = data.fitSourceActivities.find(
       (activity) => activity.id === decision.sourceActivityId,
     );
     if (!source) throw new Error("The source activity is no longer available.");
-    return projectActivity(decision, source, data, reviewId);
+    return [projectActivity(decision, source, data, reviewId)];
   });
 
   const shoeDelta = new Map<string, number>();
   for (const activity of previousActivities) {
-    if (activity.role !== "unrelated" && activity.shoeId) {
+    const allocations =
+      activity.shoeAllocations ??
+      (activity.role !== "unrelated" && activity.shoeId
+        ? [{ shoeId: activity.shoeId, distanceMiles: activity.distanceMiles }]
+        : []);
+    for (const allocation of allocations) {
       shoeDelta.set(
-        activity.shoeId,
-        (shoeDelta.get(activity.shoeId) ?? 0) - activity.distanceMiles,
+        allocation.shoeId,
+        (shoeDelta.get(allocation.shoeId) ?? 0) - allocation.distanceMiles,
       );
     }
   }
   for (const activity of projected) {
-    if (activity.role !== "unrelated" && activity.shoeId) {
+    for (const allocation of activity.shoeAllocations ?? []) {
       shoeDelta.set(
-        activity.shoeId,
-        (shoeDelta.get(activity.shoeId) ?? 0) + activity.distanceMiles,
+        allocation.shoeId,
+        (shoeDelta.get(allocation.shoeId) ?? 0) + allocation.distanceMiles,
       );
     }
   }

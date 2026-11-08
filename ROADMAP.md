@@ -38,17 +38,17 @@ Strengths:
 ## Known technical findings
 
 - Today, Next Up, and recent imports use fixed November 2026 dates.
-- FIT selection now decodes files, records immutable samples and laps, detects exact duplicates, preserves verified source bytes in the packaged app, and records partial-success batches. Activity Review decisions and confirmation remain to be implemented.
-- Activity Review now stores reversible suggested decisions, validates required roles/primaries/shoes/preservation, and atomically confirms activity projections, session completion, and shoe mileage. User-defined segment boundaries and possible-duplicate choices remain.
+- FIT selection decodes files, records immutable samples and laps, detects exact duplicates, preserves verified source bytes in the packaged app, and records partial-success batches for Activity Review.
+- Activity Review now stores reversible suggested decisions, resolves possible duplicates explicitly, validates roles/primaries/shoes/preservation/segments, allocates segment shoe mileage, surfaces save failures with safe retry, and atomically confirms activity projections and session completion. Pause/gap landmarks, zoom/drag enhancements, and visible revision history remain.
 - Distance-unit preference is stored but formatting always displays miles.
 - Manual journal mileage is counted, but manual journal dates do not count as run days.
 - Session `week` is not recalculated when a move crosses week boundaries.
 - The SQLite migration defines normalized tables, while runtime persistence uses one JSON row in `app_state`.
 - Windows packaging reaches the Tauri resource step but cannot produce an installer until an approved `src-tauri/icons/icon.ico` is added.
-- Repository save failures are not surfaced; rapid updates may complete out of order.
+- Repository saves are serialized and Activity Review surfaces saving failures with safe retry; other screens still need the same status treatment.
 - Backup validation checks top-level shapes only.
 - Plan import is repeat-safe for an identical file but is not a complete current-vs-imported diff.
-- Only domain/repository tests exist; there are no rendered component or end-to-end tests.
+- Domain, repository, and focused rendered-component tests exist; broader end-to-end coverage remains.
 - The hard minimum page width has been removed; remaining screens still need systematic 200% scaling verification.
 - The Tauri capabilities include broad default filesystem/dialog/SQL permissions and should be reviewed against actual use.
 
@@ -72,4 +72,4 @@ Strengths:
 - FIT import and Activity Review specification: **Design approved on `codex/approved-fit-activity-review`**.
 - Approved interface: issue-first planned-session summary, imported-source rail, compact reversible suggestions, easy-run and structured-workout disclosure levels, optional pace/segment editing, contextual decisions, roles/bundles, activity/segment shoes, autosaved drafts, atomic confirmation, and read-only reopening with revisions.
 - Supporting engineering retained from the later investigation: import batches, exact/possible duplicate explanations, verified source preservation, typed decode/persistence failures, cancellation/retry, deterministic matching, and idempotent confirmation.
-- Implementation is in progress on `feature/activity-review`. Matching evidence, separate drafts, issue-first validation, source rail, optional pace/lap detail, atomic confirmation, read-only reopening, and revisions are implemented; segment-boundary editing and possible-duplicate resolution remain.
+- Implementation is in progress on `feature/activity-review`. Matching evidence, separate drafts, issue-first validation, source rail, pace/metric detail, keyboard-complete segment boundaries with undo/redo, segment shoes, possible-duplicate resolution, atomic confirmation, read-only reopening, and revision snapshots are implemented. Remaining work is interaction polish and difficult-state visibility.
