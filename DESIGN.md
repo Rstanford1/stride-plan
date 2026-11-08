@@ -103,11 +103,22 @@ Status: **Approved**. This specification reconciles the previously approved time
 
 #### Workspace layout
 
-- A persistent top summary shows the planned session/date, unchanged original prescription, imported-file count, total distance/duration, auto-match explanation or confidence, unresolved issue count, review status, and **Confirm review** action.
+- A persistent top summary shows the planned session/date, unchanged original prescription, imported-file count, total distance/duration, auto-match explanation, unresolved issue count, review status, and confirmation action. Do not reduce match evidence to an unexplained confidence adjective such as **Strong**.
+- Directly below the summary, an issue queue lists only decisions that still require attention and links each item to the relevant activity or control. A disabled confirmation action must always have a nearby plain-language reason.
 - A compact imported-activity rail shows each source activity's start time, distance, duration, suggested role, match/review status, shoe, and duplicate warning. Selecting an item changes the details, timeline, and table without losing draft edits.
 - The selected-activity header uses compact aligned summaries for distance, duration, average pace, average heart rate, elevation when present, source filename, start time, role, primary state, and assigned shoe. Avoid decorative dashboard cards.
 - The pace timeline is the main review and editing surface. A synchronized lap/segment table sits below or beside it and is the complete non-visual alternative.
 - The final bundle summary shows the planned session, every attached activity and role, primary activity, total distance/duration, shoe-mileage allocation, unresolved warnings, and journal data that applies to the main session.
+
+#### Progressive disclosure and decision load
+
+- The default screen emphasizes unresolved decisions, not every available control. High-confidence suggestions may be applied to the draft automatically only when they are labeled as suggested, reversible, and not yet confirmed.
+- Easy or otherwise unstructured runs use a compact state containing source facts, planned-session match, activity role, shoe, journal fields, and confirmation. The timeline and segment editor remain available through **Review activity details** but are not expanded by default.
+- Structured workouts expand a pace preview and detected segment summary. Precise boundaries, overlays, source laps, shoe overrides, and the complete table appear only after **Review segments** or when validation identifies a segment problem.
+- Match, role, primary, and shoe choices appear as a compact decision summary. **Edit details** opens the contextual decision panel; the panel does not permanently consume a third column when no decision is being edited.
+- The activity rail and selected-activity status use the same derived review state. Resolving the last issue updates every status, issue count, and confirmation action together.
+- Draft decisions autosave locally and show a concise saved/saving/error state. Navigation never silently discards an in-progress review.
+- There is one primary confirmation action in the persistent final summary. If a second shortcut is retained for long desktop pages, it mirrors the same label, enabled state, explanation, and focus target.
 - At constrained widths and 200% scaling, the summary, activity rail, selected-activity details, timeline, segment table, and bundle summary stack in reading order without requiring horizontal scrolling for core actions.
 
 #### Timeline and metric overlays
@@ -138,7 +149,7 @@ Status: **Approved**. This specification reconciles the previously approved time
 #### Matching, duplicates, and import safety
 
 - SHA-256 of original bytes identifies exact duplicates. An exact duplicate creates no second activity or source copy and explains the prior import it matches.
-- A versioned deterministic comparison of the strongest shared facts—device identity, session start, normalized timer duration, and distance—may flag a possible duplicate. It is a warning requiring **Exclude new file** or **Import anyway**, never an automatic rejection.
+- A versioned deterministic comparison of the strongest shared facts—device identity, session start, normalized timer duration, and distance—may flag a possible duplicate. It is a warning requiring an explicit record choice, never an automatic rejection. Actions use consequence-oriented labels such as **Use existing activity** and **Use imported activity**, explain which record will represent the workout, and preview any change to bundle totals, primary ownership, or source preservation. Resolving a duplicate must not silently remove the bundle's primary activity or leave totals stale.
 - Plan-match suggestions consider explicit activity local date, planned/recorded distance, directly observable sport or segment structure, and whether another confirmed primary owns the session. Suggestions include plain-language evidence, remain editable, and leave exact ties unresolved.
 - Import batches record decoded, failed, cancelled, exact-duplicate, possible-duplicate, excluded, and unresolved sources. Status text uses **New**, **Needs attention**, **Ready**, and **Reviewed**.
 - Missing optional FIT fields produce omissions or warnings rather than failed decoding. Non-FIT, corrupt/truncated, failed-integrity, unsupported, and ambiguous multi-session sources return typed user-readable errors.
@@ -149,8 +160,18 @@ Status: **Approved**. This specification reconciles the previously approved time
 - Confirmation explains and blocks duplicate decisions that remain unresolved, multiple or missing primaries, missing roles, required shoes not assigned, overlapping/invalid/unallocated segments, implausible-date matches, incoherent bundle associations, and material differences from the original prescription.
 - Warnings are review prompts, not diagnoses, coaching, or automatic plan changes.
 - Draft edits persist without affecting confirmed activity decisions or downstream calculations. Confirmation stores source links, match/role/bundle decisions, segments, shoe allocations, review status, and the allowed session-completion transition atomically and idempotently.
+- Confirmation copy states the concrete result: which planned session will be completed, which activities will be attached, and which shoe mileages will change. Material differences from the prescription remain visible beside a reminder that the original plan will not be rewritten.
 - A reviewed import reopens read only. **Revise review** creates a new draft from the latest confirmed decisions; reconfirming appends revision history and never rewrites source facts or prior revisions.
 - Persistence or preservation failures preserve the review draft, explain what was not saved, and offer a safe retry without creating duplicate mileage, activities, bundles, or completion changes.
+
+#### Difficult and recovery states
+
+- Optional metrics that are absent display **Not recorded** or are omitted; they never appear as zero. Unknown local time or timezone, stopped-clock gaps, distance resets, impossible sample order, and sensor dropouts are identified without inventing corrected source values.
+- Switching activities, collapsing detail, resizing the window, or reopening the app preserves draft selection, scroll context where practical, and all edits. A changed source file cannot overwrite its earlier preserved copy.
+- When suggestions conflict, the interface presents the competing evidence and leaves the decision unresolved. It does not choose by arbitrary ordering.
+- Long activity names, shoe names, localized dates, metric units, large distances, and 200% scaling must not hide status or actions. Tables may scroll horizontally, but every editing action also has a stacked or labeled control path.
+- Boundary changes announce the affected segment and new time, remain undoable until confirmation, and cannot create negative, overlapping, or zero-length segments. Dragging is optional; keyboard and button controls are complete.
+- Confirming, retrying, or revising shows a stable in-progress state and prevents double activation. Closing or navigating away during a save cannot produce a partially confirmed review.
 
 #### Accessibility and responsive behavior
 
