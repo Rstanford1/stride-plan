@@ -54,7 +54,7 @@ This file records the observed design baseline and approved component specificat
 
 - At 1100 px, two-column content collapses and metric grids reduce to three columns.
 - At 800 px, the sidebar becomes icon-only and settings stack.
-- `html` has a 940 px minimum width (680 px under the 800 px media query). This creates horizontal scrolling at constrained widths and is unlikely to satisfy comfortable 200% text scaling.
+- The hard page minimum width has been removed. At constrained widths the sidebar compacts, settings stack, and Activity Review moves its source rail above the details so core actions remain in bounds.
 - Large plan and lap tables have no small-window alternative.
 
 ## Approved component specifications
@@ -81,7 +81,7 @@ Acceptance criteria: the workflow can record completed, modified, and skipped re
 
 ### FIT import and Activity Review
 
-Status: **Approved**. This specification reconciles the previously approved timeline-and-segmentation workspace with the later engineering investigation. It supersedes the unmerged activity-level timeline proposal; import batches and safety states support this interface but do not replace its selected-activity pace timeline.
+Status: **Implementation in progress**. This specification reconciles the previously approved timeline-and-segmentation workspace with the later engineering investigation. It supersedes the unmerged activity-level timeline proposal; import batches and safety states support this interface but do not replace its selected-activity pace timeline.
 
 #### Purpose and source-data boundary
 

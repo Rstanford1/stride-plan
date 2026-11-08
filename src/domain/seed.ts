@@ -156,12 +156,14 @@ export function createSeedSessions(): PlannedSession[] {
 
 export function createInitialData(): AppData {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     sessions: createSeedSessions(),
     activities: [],
     fitSources: [],
     fitSourceActivities: [],
     fitImportBatches: [],
+    activityReviewDrafts: [],
+    activityReviewConfirmations: [],
     journals: [],
     shoes: [
       {

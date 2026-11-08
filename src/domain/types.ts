@@ -10,6 +10,7 @@ export type ActivityRole =
   | "warm-up"
   | "cooldown"
   | "strides"
+  | "supporting-recovery"
   | "unrelated";
 
 export type LapRole = "work" | "recovery" | "warm-up" | "cooldown" | "other";
@@ -64,6 +65,9 @@ export interface Activity {
   bundleId?: string;
   isPrimary: boolean;
   importedAt: string;
+  sourceActivityId?: string;
+  reviewId?: string;
+  shoeId?: string;
   laps: Lap[];
 }
 
@@ -146,6 +150,34 @@ export interface FitImportBatch {
   sourceResults: FitImportSourceResult[];
 }
 
+export interface ActivityReviewDecision {
+  sourceActivityId: string;
+  plannedSessionId?: string;
+  role?: ActivityRole;
+  isPrimary: boolean;
+  shoeId?: string;
+  lapRoles: Record<string, LapRole>;
+  suggestionEvidence: string[];
+}
+
+export interface ActivityReviewDraft {
+  id: string;
+  batchId: string;
+  createdAt: string;
+  updatedAt: string;
+  selectedSourceActivityId?: string;
+  decisions: ActivityReviewDecision[];
+}
+
+export interface ActivityReviewConfirmation {
+  id: string;
+  batchId: string;
+  bundleId: string;
+  revisionNumber: number;
+  confirmedAt: string;
+  decisions: ActivityReviewDecision[];
+}
+
 export type SleepChoice =
   "restorative" | "adequate" | "limited" | "severely-limited";
 export type SorenessChoice = "none" | "mild" | "moderate" | "severe";
@@ -199,6 +231,8 @@ export interface AppData {
   fitSources: FitSourceRecord[];
   fitSourceActivities: FitSourceActivity[];
   fitImportBatches: FitImportBatch[];
+  activityReviewDrafts: ActivityReviewDraft[];
+  activityReviewConfirmations: ActivityReviewConfirmation[];
   journals: JournalEntry[];
   shoes: Shoe[];
   settings: AppSettings;

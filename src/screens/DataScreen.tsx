@@ -234,8 +234,22 @@ export function DataScreen() {
     });
     replaceData({
       ...data,
-      fitSources: [...data.fitSources, ...result.sources],
-      fitSourceActivities: [...data.fitSourceActivities, ...result.activities],
+      fitSources: [
+        ...data.fitSources.filter(
+          (source) =>
+            !result.sources.some((replacement) => replacement.id === source.id),
+        ),
+        ...result.sources,
+      ],
+      fitSourceActivities: [
+        ...data.fitSourceActivities.filter(
+          (activity) =>
+            !result.activities.some(
+              (replacement) => replacement.id === activity.id,
+            ),
+        ),
+        ...result.activities,
+      ],
       fitImportBatches: [...data.fitImportBatches, result.batch],
     });
     const counts = result.batch.sourceResults.reduce<Record<string, number>>(

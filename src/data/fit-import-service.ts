@@ -25,7 +25,10 @@ export class FitImportService {
   }): Promise<FitImportInspection> {
     const sourceHash = await sha256Hex(input.bytes);
     const duplicate = input.existingSources.find(
-      (source) => source.sourceHash === sourceHash,
+      (source) =>
+        source.sourceHash === sourceHash &&
+        source.preservationStatus !== "failed" &&
+        source.preservationStatus !== "pending",
     );
     if (duplicate) {
       return { status: "exact-duplicate", sourceId: duplicate.id, sourceHash };

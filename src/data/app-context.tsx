@@ -10,8 +10,13 @@ import type { PropsWithChildren } from "react";
 import { createRepository } from "./repository";
 import { createInitialData } from "../domain/seed";
 import { reviseSession, type SessionUpdate } from "../domain/rules";
+import {
+  confirmActivityReview,
+  createRevisionDraft,
+} from "../domain/activity-review";
 import type {
   Activity,
+  ActivityReviewDraft,
   AppData,
   AppSettings,
   JournalEntry,
@@ -39,6 +44,9 @@ interface AppContextValue {
   updateActivity: (activityId: string, update: Partial<Activity>) => void;
   updateLapRole: (activityId: string, lapId: string, role: LapRole) => void;
   updateSettings: (update: Partial<AppSettings>) => void;
+  saveActivityReviewDraft: (draft: ActivityReviewDraft) => void;
+  confirmActivityReviewDraft: (draft: ActivityReviewDraft) => void;
+  reviseActivityReview: (batchId: string) => void;
   replaceData: (data: AppData) => void;
   resetDemo: () => void;
 }
@@ -164,6 +172,39 @@ export function AppProvider({ children }: PropsWithChildren) {
     }));
   }, []);
 
+  const saveActivityReviewDraft = useCallback((draft: ActivityReviewDraft) => {
+    setData((current) => ({
+      ...current,
+      activityReviewDrafts: [
+        ...current.activityReviewDrafts.filter((item) => item.id !== draft.id),
+        draft,
+      ],
+    }));
+  }, []);
+
+  const confirmActivityReviewDraft = useCallback(
+    (draft: ActivityReviewDraft) => {
+      setData((current) => confirmActivityReview(current, draft));
+    },
+    [],
+  );
+
+  const reviseActivityReview = useCallback((batchId: string) => {
+    setData((current) => {
+      const draft = createRevisionDraft(current, batchId);
+      if (!draft) return current;
+      return {
+        ...current,
+        activityReviewDrafts: [
+          ...current.activityReviewDrafts.filter(
+            (item) => item.batchId !== batchId,
+          ),
+          draft,
+        ],
+      };
+    });
+  }, []);
+
   const value = useMemo(
     () => ({
       data,
@@ -176,6 +217,9 @@ export function AppProvider({ children }: PropsWithChildren) {
       updateActivity,
       updateLapRole,
       updateSettings,
+      saveActivityReviewDraft,
+      confirmActivityReviewDraft,
+      reviseActivityReview,
       replaceData: setData,
       resetDemo: () => setData(createInitialData()),
     }),
@@ -190,6 +234,9 @@ export function AppProvider({ children }: PropsWithChildren) {
       updateActivity,
       updateLapRole,
       updateSettings,
+      saveActivityReviewDraft,
+      confirmActivityReviewDraft,
+      reviseActivityReview,
     ],
   );
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

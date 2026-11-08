@@ -91,8 +91,21 @@ export function TodayDashboard({
     [data, referenceSession],
   );
   const importCutoff = addDays(today, -3);
-  const newActivities = data.activities.filter(
-    (activity) => activity.importedAt.slice(0, 10) >= importCutoff,
+  const pendingActivityIds = new Set(
+    data.fitImportBatches
+      .filter(
+        (batch) =>
+          batch.createdAt.slice(0, 10) >= importCutoff &&
+          !data.activityReviewConfirmations.some(
+            (confirmation) => confirmation.batchId === batch.id,
+          ),
+      )
+      .flatMap((batch) =>
+        batch.sourceResults.flatMap((result) => result.activityIds),
+      ),
+  );
+  const newActivities = data.fitSourceActivities.filter((activity) =>
+    pendingActivityIds.has(activity.id),
   );
   const nextSession = data.sessions
     .filter((item) => item.scheduledDate > selectedDate && item.kind !== "rest")

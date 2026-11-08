@@ -39,8 +39,20 @@ export function TodayScreen({
       ),
     [data, session.week],
   );
-  const newActivities = data.activities.filter(
-    (activity) => activity.importedAt.slice(0, 10) >= "2026-11-03",
+  const pendingActivityIds = new Set(
+    data.fitImportBatches
+      .filter(
+        (batch) =>
+          !data.activityReviewConfirmations.some(
+            (confirmation) => confirmation.batchId === batch.id,
+          ),
+      )
+      .flatMap((batch) =>
+        batch.sourceResults.flatMap((result) => result.activityIds),
+      ),
+  );
+  const newActivities = data.fitSourceActivities.filter((activity) =>
+    pendingActivityIds.has(activity.id),
   );
   const weekSessions = data.sessions.filter(
     (item) => item.week === session.week,

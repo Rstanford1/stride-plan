@@ -45,7 +45,7 @@ describe("browser persistence", () => {
     };
     values.set("stride-plan:data:v1", JSON.stringify(versionTwo));
     const upgraded = await repository.load();
-    expect(upgraded.schemaVersion).toBe(4);
+    expect(upgraded.schemaVersion).toBe(5);
     expect(upgraded.journals[0].sleep).toBe("limited");
     expect(upgraded.shoes[0].isDefault).toBe(true);
     expect(upgraded.fitSources).toEqual([]);
@@ -63,10 +63,28 @@ describe("browser persistence", () => {
     delete (versionThree as Partial<AppData>).fitImportBatches;
     values.set("stride-plan:data:v1", JSON.stringify(versionThree));
     const upgraded = await repository.load();
-    expect(upgraded.schemaVersion).toBe(4);
+    expect(upgraded.schemaVersion).toBe(5);
     expect(upgraded.fitSources).toEqual([]);
     expect(upgraded.fitSourceActivities).toEqual([]);
     expect(upgraded.fitImportBatches).toEqual([]);
+    expect(upgraded.activityReviewDrafts).toEqual([]);
+    expect(upgraded.activityReviewConfirmations).toEqual([]);
+  });
+
+  it("upgrades version 4 snapshots with empty review collections", async () => {
+    const values = new Map<string, string>();
+    const repository = new BrowserRepository({
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+    });
+    const versionFour = { ...createInitialData(), schemaVersion: 4 };
+    delete (versionFour as Partial<AppData>).activityReviewDrafts;
+    delete (versionFour as Partial<AppData>).activityReviewConfirmations;
+    values.set("stride-plan:data:v1", JSON.stringify(versionFour));
+    const upgraded = await repository.load();
+    expect(upgraded.schemaVersion).toBe(5);
+    expect(upgraded.activityReviewDrafts).toEqual([]);
+    expect(upgraded.activityReviewConfirmations).toEqual([]);
   });
 });
 

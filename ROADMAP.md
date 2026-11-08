@@ -23,7 +23,7 @@ Strengths:
 | P0       | Make Today derive the actual local date, current plan week, next session, and recent-import window.                                                                                                | Critical: the primary screen currently shows stale information.                            | Medium      | Date service and deterministic date tests              | Testing     |
 | P0       | Complete the run-recording workflow for today and planned prior days, with review and save feedback.                                                                                               | Critical daily workflow.                                                                   | Medium      | Unplanned/rest-day entry remains a follow-up           | Testing     |
 | P0       | Implement the approved shared FIT ingest foundation: decoding, immutable samples/laps, source preservation, structured duplicates, batches, and recoverable failures.                              | Makes the primary import path real and safe.                                               | High        | FIT decoder, fixtures, migrations, ordered persistence | In progress |
-| P0       | Implement the approved Activity Review workspace: issue-first progressive disclosure, source rail, optional pace/segment editing, bundles, shoes, validation, confirmation, drafts, and revisions. | Completes imported-run review without overwhelming simple imports or altering source data. | High        | FIT samples, matching/bundle/segment/shoe domain rules | Approved    |
+| P0       | Implement the approved Activity Review workspace: issue-first progressive disclosure, source rail, optional pace/segment editing, bundles, shoes, validation, confirmation, drafts, and revisions. | Completes imported-run review without overwhelming simple imports or altering source data. | High        | FIT samples, matching/bundle/segment/shoe domain rules | In progress |
 | P1       | Correct metric consistency, especially run days from manual journals and unit conversion.                                                                                                          | Weekly review trust.                                                                       | Medium      | Date/unit formatting services                          | Backlog     |
 | P1       | Make plan moves update week membership and make new-session week/date behavior explicit.                                                                                                           | Protects plan accuracy.                                                                    | Medium      | Session scheduling rule                                | Backlog     |
 | P1       | Harden restore/import flows with full schema validation, preview, confirmation, rollback, and an actual plan diff.                                                                                 | Protects local data.                                                                       | Medium–high | Versioned backup/import service                        | Backlog     |
@@ -39,7 +39,7 @@ Strengths:
 
 - Today, Next Up, and recent imports use fixed November 2026 dates.
 - FIT selection now decodes files, records immutable samples and laps, detects exact duplicates, preserves verified source bytes in the packaged app, and records partial-success batches. Activity Review decisions and confirmation remain to be implemented.
-- “Confirm reviewed” has no action.
+- Activity Review now stores reversible suggested decisions, validates required roles/primaries/shoes/preservation, and atomically confirms activity projections, session completion, and shoe mileage. User-defined segment boundaries and possible-duplicate choices remain.
 - Distance-unit preference is stored but formatting always displays miles.
 - Manual journal mileage is counted, but manual journal dates do not count as run days.
 - Session `week` is not recalculated when a move crosses week boundaries.
@@ -49,7 +49,7 @@ Strengths:
 - Backup validation checks top-level shapes only.
 - Plan import is repeat-safe for an identical file but is not a complete current-vs-imported diff.
 - Only domain/repository tests exist; there are no rendered component or end-to-end tests.
-- The hard minimum page width produces horizontal scrolling and threatens 200% scaling support.
+- The hard minimum page width has been removed; remaining screens still need systematic 200% scaling verification.
 - The Tauri capabilities include broad default filesystem/dialog/SQL permissions and should be reviewed against actual use.
 
 ## Recommended component review order
@@ -72,4 +72,4 @@ Strengths:
 - FIT import and Activity Review specification: **Design approved on `codex/approved-fit-activity-review`**.
 - Approved interface: issue-first planned-session summary, imported-source rail, compact reversible suggestions, easy-run and structured-workout disclosure levels, optional pace/segment editing, contextual decisions, roles/bundles, activity/segment shoes, autosaved drafts, atomic confirmation, and read-only reopening with revisions.
 - Supporting engineering retained from the later investigation: import batches, exact/possible duplicate explanations, verified source preservation, typed decode/persistence failures, cancellation/retry, deterministic matching, and idempotent confirmation.
-- Implementation has not started. The approved specification, relevant tests, verification evidence, and explicit user acceptance remain required before the component can advance beyond Testing or become Complete.
+- Implementation is in progress on `feature/activity-review`. Matching evidence, separate drafts, issue-first validation, source rail, optional pace/lap detail, atomic confirmation, read-only reopening, and revisions are implemented; segment-boundary editing and possible-duplicate resolution remain.

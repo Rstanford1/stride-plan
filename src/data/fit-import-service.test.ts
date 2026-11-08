@@ -62,4 +62,35 @@ describe("FIT import service", () => {
       sourceId: first.source.id,
     });
   });
+
+  it("allows re-import to retry a failed source preservation", async () => {
+    const bytes = createFitFixture();
+    const failed = await new FitImportService(new FitFileParserDecoder(), {
+      preserve: async () => {
+        throw new Error("Disk unavailable");
+      },
+      read: async () => undefined,
+    }).inspect({
+      fileName: "retry.fit",
+      bytes,
+      importedAt: "2026-11-08T17:00:00.000Z",
+      existingSources: [],
+    });
+    if (failed.status !== "decoded") throw new Error("Expected decoded FIT");
+    expect(failed.source.preservationStatus).toBe("failed");
+
+    const retried = await new FitImportService(
+      new FitFileParserDecoder(),
+      new MemoryFitSourceStore(),
+    ).inspect({
+      fileName: "retry.fit",
+      bytes,
+      importedAt: "2026-11-08T17:01:00.000Z",
+      existingSources: [failed.source],
+    });
+    expect(retried.status).toBe("decoded");
+    if (retried.status !== "decoded") throw new Error("Expected retry");
+    expect(retried.source.preservationStatus).toBe("verified");
+    expect(retried.source.id).toBe(failed.source.id);
+  });
 });
