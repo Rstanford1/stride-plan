@@ -177,8 +177,8 @@ export function buildObservations(
   const strainEntries = weeklyJournals.filter(
     (entry) =>
       (entry.rpe ?? 0) >= 7 ||
-      entry.sleep === "a-little" ||
-      entry.sleep === "barely" ||
+      entry.sleep === "limited" ||
+      entry.sleep === "severely-limited" ||
       entry.soreness === "moderate" ||
       entry.soreness === "severe",
   );
