@@ -9,14 +9,20 @@ import {
 } from "react";
 import type { PropsWithChildren } from "react";
 import { createRepository, type AppRepository } from "./repository";
+import { runFitImportBatch } from "./fit-import-controller";
+import { createFitSourceStore } from "./fit-source-store";
 import { createInitialData } from "../domain/seed";
+import { FitFileParserDecoder } from "../domain/fit-decoder";
 import { reviseSession, type SessionUpdate } from "../domain/rules";
 import {
   confirmActivityReview,
+  createActivityReviewDraft,
   createRevisionDraft,
+  findPossibleDuplicates,
 } from "../domain/activity-review";
 import type {
   Activity,
+  ActivityRole,
   ActivityReviewDraft,
   AppData,
   AppSettings,
@@ -26,11 +32,43 @@ import type {
   Shoe,
 } from "../domain/types";
 
+export interface FitImportFileSummary {
+  fileName: string;
+  sourceId: string;
+  status:
+    "ready" | "exact-duplicate" | "possible-duplicate" | "failed" | "canceled";
+  activityIds: string[];
+  errorMessage?: string;
+  startTime?: string;
+  distanceMeters?: number;
+  durationSeconds?: number;
+  lapCount?: number;
+  proposedRole?: ActivityRole;
+}
+
+export interface FitImportResult {
+  batchId: string;
+  reviewableActivities: number;
+  summary: string;
+  files: FitImportFileSummary[];
+}
+
 interface AppContextValue {
   data: AppData;
   ready: boolean;
   persistenceState: "idle" | "saving" | "saved" | "error";
   persistenceError?: string;
+  fitImportProgress?: { completed: number; total: number };
+  importFitFiles: (
+    files: File[],
+    appendToBatchId?: string,
+  ) => Promise<FitImportResult>;
+  prepareActivityReview: (
+    batchId: string,
+    includedActivityIds: string[],
+    roleOverrides: Record<string, ActivityRole>,
+  ) => void;
+  cancelFitImport: () => void;
   saveSession: (
     sessionId: string,
     update: SessionUpdate,
@@ -71,7 +109,17 @@ export function AppProvider({
     "idle" | "saving" | "saved" | "error"
   >("idle");
   const [persistenceError, setPersistenceError] = useState<string>();
+  const [fitImportProgress, setFitImportProgress] = useState<{
+    completed: number;
+    total: number;
+  }>();
   const saveVersion = useRef(0);
+  const dataRef = useRef(data);
+  const fitImportController = useRef<AbortController | undefined>(undefined);
+
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
 
   useEffect(() => {
     repository.load().then((loaded) => {
@@ -116,6 +164,229 @@ export function AppProvider({
         );
       });
   }, [data, repository]);
+
+  const importFitFiles = useCallback(
+    async (files: File[], appendToBatchId?: string) => {
+      if (!files.length) throw new Error("Choose at least one FIT file.");
+      if (fitImportController.current)
+        throw new Error("Another FIT import is already running.");
+      const controller = new AbortController();
+      fitImportController.current = controller;
+      setFitImportProgress({ completed: 0, total: files.length });
+      try {
+        const result = await runFitImportBatch({
+          files: files.map((file) => ({
+            name: file.name,
+            loadBytes: async () => new Uint8Array(await file.arrayBuffer()),
+          })),
+          existingSources: dataRef.current.fitSources,
+          decoder: new FitFileParserDecoder(),
+          sourceStore: createFitSourceStore(),
+          createdAt: new Date().toISOString(),
+          signal: controller.signal,
+          onProgress: (completed, total) =>
+            setFitImportProgress({ completed, total }),
+        });
+        const snapshot = dataRef.current;
+        const reviewedSourceResults = result.batch.sourceResults.map(
+          (sourceResult) => {
+            if (sourceResult.status !== "decoded") return sourceResult;
+            const possible = sourceResult.activityIds.some((activityId) => {
+              const activity = result.activities.find(
+                (item) => item.id === activityId,
+              );
+              return (
+                activity &&
+                findPossibleDuplicates(activity, snapshot.activities).length > 0
+              );
+            });
+            return possible
+              ? { ...sourceResult, status: "possible-duplicate" as const }
+              : sourceResult;
+          },
+        );
+        const appendBatch = appendToBatchId
+          ? snapshot.fitImportBatches.find(
+              (item) => item.id === appendToBatchId,
+            )
+          : undefined;
+        const reviewedBatch = {
+          ...result.batch,
+          id: appendBatch?.id ?? result.batch.id,
+          createdAt: appendBatch?.createdAt ?? result.batch.createdAt,
+          sourceResults: [
+            ...(appendBatch?.sourceResults ?? []),
+            ...reviewedSourceResults,
+          ],
+        };
+        const previewDraft = createActivityReviewDraft(
+          reviewedBatch,
+          [...snapshot.fitSourceActivities, ...result.activities],
+          snapshot.sessions,
+          snapshot.shoes,
+          result.batch.createdAt,
+          snapshot.activities,
+        );
+        setData((current) => ({
+          ...current,
+          fitSources: [
+            ...current.fitSources.filter(
+              (source) =>
+                !result.sources.some(
+                  (replacement) => replacement.id === source.id,
+                ),
+            ),
+            ...result.sources,
+          ],
+          fitSourceActivities: [
+            ...current.fitSourceActivities.filter(
+              (activity) =>
+                !result.activities.some(
+                  (replacement) => replacement.id === activity.id,
+                ),
+            ),
+            ...result.activities,
+          ],
+          fitImportBatches: [
+            ...current.fitImportBatches.filter(
+              (batch) => batch.id !== reviewedBatch.id,
+            ),
+            reviewedBatch,
+          ],
+        }));
+        const counts = reviewedSourceResults.reduce<Record<string, number>>(
+          (current, item) => ({
+            ...current,
+            [item.status]: (current[item.status] ?? 0) + 1,
+          }),
+          {},
+        );
+        const summary = [
+          counts.decoded && `${counts.decoded} ready to review`,
+          counts["exact-duplicate"] &&
+            `${counts["exact-duplicate"]} exact duplicate(s) skipped`,
+          counts.failed && `${counts.failed} failed`,
+          counts.cancelled && `${counts.cancelled} cancelled`,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        return {
+          batchId: reviewedBatch.id,
+          reviewableActivities: result.activities.length,
+          summary: summary || "No new activities were imported.",
+          files: reviewedSourceResults.map((sourceResult, index) => {
+            const activity = result.activities.find((item) =>
+              sourceResult.activityIds.includes(item.id),
+            );
+            const decision = previewDraft.decisions.find((item) =>
+              sourceResult.activityIds.includes(item.sourceActivityId),
+            );
+            const status =
+              sourceResult.status === "decoded"
+                ? "ready"
+                : sourceResult.status === "possible-duplicate"
+                  ? "possible-duplicate"
+                  : sourceResult.status === "exact-duplicate"
+                    ? "exact-duplicate"
+                    : sourceResult.status === "cancelled"
+                      ? "canceled"
+                      : "failed";
+            return {
+              fileName: files[index]?.name ?? "FIT file",
+              sourceId: sourceResult.sourceId,
+              status,
+              activityIds: sourceResult.activityIds,
+              errorMessage: sourceResult.errorMessage,
+              startTime: activity?.occurredAt,
+              distanceMeters: activity?.distanceMeters,
+              durationSeconds: activity?.durationSeconds,
+              lapCount: activity?.laps.length,
+              proposedRole: decision?.role,
+            } satisfies FitImportFileSummary;
+          }),
+        };
+      } finally {
+        fitImportController.current = undefined;
+        setFitImportProgress(undefined);
+      }
+    },
+    [],
+  );
+
+  const cancelFitImport = useCallback(() => {
+    fitImportController.current?.abort();
+  }, []);
+
+  const prepareActivityReview = useCallback(
+    (
+      batchId: string,
+      includedActivityIds: string[],
+      roleOverrides: Record<string, ActivityRole>,
+    ) => {
+      const included = new Set(includedActivityIds);
+      setData((current) => {
+        const batch = current.fitImportBatches.find(
+          (item) => item.id === batchId,
+        );
+        if (!batch) return current;
+        const existing = current.activityReviewDrafts.find(
+          (item) => item.batchId === batchId,
+        );
+        const generated = createActivityReviewDraft(
+          batch,
+          current.fitSourceActivities,
+          current.sessions,
+          current.shoes,
+          new Date().toISOString(),
+          current.activities,
+        );
+        const existingByActivity = new Map(
+          existing?.decisions.map((decision) => [
+            decision.sourceActivityId,
+            decision,
+          ]),
+        );
+        const base = existing ?? generated;
+        const decisions = generated.decisions
+          .map(
+            (decision) =>
+              existingByActivity.get(decision.sourceActivityId) ?? decision,
+          )
+          .filter((decision) => included.has(decision.sourceActivityId))
+          .map((decision) => {
+            const role = roleOverrides[decision.sourceActivityId];
+            return role
+              ? {
+                  ...decision,
+                  role,
+                  isPrimary: role.startsWith("primary-"),
+                }
+              : decision;
+          });
+        const draft = {
+          ...base,
+          selectedSourceActivityId:
+            decisions.find(
+              (decision) =>
+                decision.duplicateCandidates.length > 0 &&
+                !decision.duplicateChoice,
+            )?.sourceActivityId ?? decisions[0]?.sourceActivityId,
+          decisions,
+          updatedAt: new Date().toISOString(),
+        };
+        return {
+          ...current,
+          activityReviewDrafts: [
+            ...current.activityReviewDrafts.filter(
+              (item) => item.batchId !== batchId,
+            ),
+            draft,
+          ],
+        };
+      });
+    },
+    [],
+  );
 
   const saveSession = useCallback(
     (sessionId: string, update: SessionUpdate, reason: string) => {
@@ -259,6 +530,10 @@ export function AppProvider({
       ready,
       persistenceState,
       persistenceError,
+      fitImportProgress,
+      importFitFiles,
+      prepareActivityReview,
+      cancelFitImport,
       saveSession,
       addSession,
       saveJournal,
@@ -279,6 +554,10 @@ export function AppProvider({
       ready,
       persistenceState,
       persistenceError,
+      fitImportProgress,
+      importFitFiles,
+      prepareActivityReview,
+      cancelFitImport,
       saveSession,
       addSession,
       saveJournal,

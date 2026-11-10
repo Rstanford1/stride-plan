@@ -101,24 +101,34 @@ Status: **Implementation in progress**. This specification reconciles the previo
 7. Review the assembled session bundle, total distance/duration, journal fields that apply to the primary session, and unresolved warnings.
 8. Confirm and save the coherent review atomically. Draft work must not affect plan completion, metrics, observations, or shoe mileage before confirmation.
 
+#### Approved UI handoff revision — November 8, 2026
+
+- Every **Choose FIT files** control performs the same real multi-file decode. The Log Workout dialog keeps a compact selected-file list with per-file status, metadata, proposed role, duplicate result, removal/retry controls, and an explicit **Continue to Activity Review** action. Selection alone never changes weekly totals or navigates away.
+- The FIT activity's explicit local calendar date is preserved when available, with a documented local-system fallback. An unambiguous runnable plan session on that date is selected automatically; the runner is asked only when the date is unmatched or genuinely ambiguous.
+- Activity Review is a dedicated timeline-first workspace: compact header, horizontal source-file rail, dominant always-visible pace timeline/editor, persistent desktop right inspector, and stable footer with draft state, Next file, and **Confirm all {N} activities**.
+- Segment editing uses a timeline cursor, split action, draggable/keyboard-adjustable boundaries, proportional segment strip, merge, undo/redo, zoom/pan, source-lap landmarks, and one synchronized inspector instead of repeated segment cards.
+- A compact bundle summary and contextual issues remain available without displacing the timeline. Confirmed reviews reopen read only; **Revise review** creates traceable new decisions.
+- Today treats a confirmed primary FIT activity as the day's recorded result and shows its distance, duration, pace, heart rate, and shoe where available. It never shows **Completed** beside **No result recorded** for the same session.
+- Plan and Weekly Review become one table-first **Week** destination with explicit upcoming/current/completed states. Rearrangement is a deliberate mode with vertical day bars; pointer drag and keyboard Move call the same atomic group-swap rule, linked doubles stay together, Rest is a swappable placeholder, and long-run identity uses purple plus text.
+
 #### Workspace layout
 
 - A persistent top summary shows the planned session/date, unchanged original prescription, imported-file count, total distance/duration, auto-match explanation, unresolved issue count, review status, and confirmation action. Do not reduce match evidence to an unexplained confidence adjective such as **Strong**.
 - Directly below the summary, an issue queue lists only decisions that still require attention and links each item to the relevant activity or control. A disabled confirmation action must always have a nearby plain-language reason.
-- A compact imported-activity rail shows each source activity's start time, distance, duration, suggested role, match/review status, shoe, and duplicate warning. Selecting an item changes the details, timeline, and table without losing draft edits.
+- A compact horizontal imported-activity rail shows each source activity's sequence/review state, role/title, distance, duration, shoe, mileage, and duplicate warning. Selecting an item changes the timeline and inspector without losing draft edits; **+ Add FIT files** remains available.
 - The selected-activity header uses compact aligned summaries for distance, duration, average pace, average heart rate, elevation when present, source filename, start time, role, primary state, and assigned shoe. Avoid decorative dashboard cards.
 - The pace timeline is the main review and editing surface. A synchronized lap/segment table sits below or beside it and is the complete non-visual alternative.
-- The final bundle summary shows the planned session, every attached activity and role, primary activity, total distance/duration, shoe-mileage allocation, unresolved warnings, and journal data that applies to the main session.
+- The timeline/editor and proportional segment strip occupy the flexible main column. A persistent desktop inspector holds selected-segment label/stats/shoe plus activity role and primary controls. A stable footer holds Discard draft, autosave state, Next file, and final confirmation.
 
 #### Progressive disclosure and decision load
 
 - The default screen emphasizes unresolved decisions, not every available control. High-confidence suggestions may be applied to the draft automatically only when they are labeled as suggested, reversible, and not yet confirmed.
-- Easy or otherwise unstructured runs use a compact state containing source facts, planned-session match, activity role, shoe, journal fields, and confirmation. The timeline and segment editor remain available through **Review activity details** but are not expanded by default.
-- Structured workouts expand a pace preview and detected segment summary. Precise boundaries, overlays, source laps, shoe overrides, and the complete table appear only after **Review segments** or when validation identifies a segment problem.
-- Match, role, primary, and shoe choices appear as a compact decision summary. **Edit details** opens the contextual decision panel directly below the selected activity at the same content width; opening it never adds a third column or pushes controls beyond the window.
+- Easy and unstructured runs still show the timeline immediately, normally with one whole-activity segment and proposed match/role/primary/shoe already selected.
+- Structured workouts use the same workspace with multiple visible segments, stronger work/recovery distinction, suggested transitions, boundary correction tools, and per-segment overrides.
+- Match and duplicate issues appear as compact contextual banners or inspector sections; they never replace the timeline or create a tall issue dashboard above it.
 - The activity rail and selected-activity status use the same derived review state. Resolving the last issue updates every status, issue count, and confirmation action together.
 - Draft decisions autosave locally and show a concise saved/saving/error state. Navigation never silently discards an in-progress review.
-- There is one primary confirmation action in the persistent final summary. If a second shortcut is retained for long desktop pages, it mirrors the same label, enabled state, explanation, and focus target.
+- There is one primary **Confirm all {N} activities** action in the stable footer. A disabled action always has a nearby plain-language reason.
 - At constrained widths and 200% scaling, the summary, activity rail, selected-activity details, timeline, segment table, and bundle summary stack in reading order without requiring horizontal scrolling for core actions.
 
 #### Timeline and metric overlays
@@ -161,7 +171,7 @@ Status: **Implementation in progress**. This specification reconciles the previo
 - Warnings are review prompts, not diagnoses, coaching, or automatic plan changes.
 - Draft edits persist without affecting confirmed activity decisions or downstream calculations. Confirmation stores source links, match/role/bundle decisions, segments, shoe allocations, review status, and the allowed session-completion transition atomically and idempotently.
 - Confirmation copy states the concrete result: which planned session will be completed, which activities will be attached, and which shoe mileages will change. Material differences from the prescription remain visible beside a reminder that the original plan will not be rewritten.
-- A reviewed import reopens read only. **Revise review** creates a new draft from the latest confirmed decisions; reconfirming appends revision history and never rewrites source facts or prior revisions.
+- A confirmed import reopens read only. **Revise review** creates a new draft from the latest confirmed decisions; reconfirming appends revision history and never rewrites source facts or prior revisions.
 - Persistence or preservation failures preserve the review draft, explain what was not saved, and offer a safe retry without creating duplicate mileage, activities, bundles, or completion changes.
 
 #### Difficult and recovery states
@@ -185,6 +195,7 @@ Acceptance criteria: generated or redistributable fixtures cover decoding and er
 ## Audit evidence
 
 - Code inspected: all React screens/components, state and repositories, domain rules, tests, CSS, Tauri shell, capabilities, and migration.
-- Rendered inspection: all six screens plus the historical run-entry dialog at the local browser-development viewport.
-- Verified checks: formatting, TypeScript, 17 automated tests, and production build.
-- Not visually verified: populated Activity Review, import validation preview, triggered observation details, native Tauri/SQLite behavior, Windows installer, 200% Windows scaling, and forced-colors rendering.
+- Rendered inspection: the five-screen shell, populated Week table and Rearrange mode, populated Activity Review, and the FIT-first Log Workout dialog at a constrained local browser-development viewport. The review graph, source rail, and table were confirmed to stay within the page bounds.
+- Verified checks on November 9, 2026: Prettier formatting, TypeScript, 60 automated tests, and the production frontend build all pass with `pnpm verify`.
+- Windows package attempt: the Rust/Tauri build reached the application resource step, then stopped because the already-known required `src-tauri/icons/icon.ico` asset is absent. Native Tauri/SQLite behavior and an installer therefore remain unverified.
+- Not visually verified: triggered observation details, exact 200% Windows scaling, and forced-colors rendering. User acceptance is still required before these components can be marked Complete.

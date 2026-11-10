@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { createFitFixture } from "../test/fit-fixture";
-import { FitDecodeError, FitFileParserDecoder } from "./fit-decoder";
+import {
+  activityLocalDate,
+  FitDecodeError,
+  FitFileParserDecoder,
+} from "./fit-decoder";
 
 describe("FIT decoder", () => {
   it("decodes a generated running activity without relying on personal data", async () => {
@@ -9,6 +13,7 @@ describe("FIT decoder", () => {
     expect(result.activities).toHaveLength(1);
     expect(result.activities[0]).toMatchObject({
       occurredAt: "2026-11-07T14:56:00.000Z",
+      localDate: "2026-11-07",
       sport: "running",
       distanceMeters: 5_000,
       durationSeconds: 1_800,
@@ -25,6 +30,16 @@ describe("FIT decoder", () => {
       distanceMeters: 5_000,
       heartRate: 178,
     });
+  });
+
+  it("derives the activity calendar date from the FIT local-time offset", () => {
+    expect(
+      activityLocalDate(
+        new Date("2026-11-08T01:30:00.000Z"),
+        new Date("2026-11-07T17:30:00.000Z"),
+        new Date("2026-11-08T01:30:00.000Z"),
+      ),
+    ).toBe("2026-11-07");
   });
 
   it("rejects empty input with a typed error", async () => {

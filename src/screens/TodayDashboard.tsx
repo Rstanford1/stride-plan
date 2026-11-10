@@ -11,7 +11,7 @@ import { useAppData } from "../data/app-context";
 import { calculateWeeklyMetrics } from "../domain/metrics";
 import type { PlannedSession } from "../domain/types";
 import { formatDuration } from "../domain/run-entry";
-import { formatDate, formatMiles } from "../utils/format";
+import { formatDate, formatMiles, paceFrom } from "../utils/format";
 import { Metric } from "../components/Metric";
 import { Modal } from "../components/Modal";
 import { RunEntryWorkflow } from "../components/RunEntryWorkflow";
@@ -58,7 +58,7 @@ export function TodayDashboard({
   openActivityReview,
   openPlan,
 }: {
-  openActivityReview: () => void;
+  openActivityReview: (batchId?: string) => void;
   openPlan: () => void;
 }) {
   const { data } = useAppData();
@@ -73,6 +73,18 @@ export function TodayDashboard({
     (entry) =>
       entry.date === selectedDate &&
       (!session || !entry.sessionId || entry.sessionId === session.id),
+  );
+  const recordedActivity = session
+    ? (data.activities.find(
+        (activity) =>
+          activity.plannedSessionId === session.id && activity.isPrimary,
+      ) ??
+      data.activities.find(
+        (activity) => activity.plannedSessionId === session.id,
+      ))
+    : undefined;
+  const activityShoe = data.shoes.find(
+    (shoe) => shoe.id === recordedActivity?.shoeId,
   );
   const weekSessions = data.sessions
     .filter((item) => selectedWeek.includes(item.scheduledDate))
@@ -159,7 +171,14 @@ export function TodayDashboard({
           const item = data.sessions.find(
             (candidate) => candidate.scheduledDate === date,
           );
-          const hasResult = data.journals.some((entry) => entry.date === date);
+          const hasResult =
+            data.journals.some((entry) => entry.date === date) ||
+            Boolean(
+              item &&
+              data.activities.some(
+                (activity) => activity.plannedSessionId === item.id,
+              ),
+            );
           return (
             <button
               key={date}
@@ -243,6 +262,39 @@ export function TodayDashboard({
                   </strong>
                 </div>
               </div>
+            ) : recordedActivity ? (
+              <div className="recorded-day-summary">
+                <div>
+                  <span>Recorded activity</span>
+                  <strong>{formatMiles(recordedActivity.distanceMiles)}</strong>
+                </div>
+                <div>
+                  <span>Duration</span>
+                  <strong>
+                    {recordedActivity.durationSeconds === undefined
+                      ? "Not recorded"
+                      : formatDuration(recordedActivity.durationSeconds)}
+                  </strong>
+                </div>
+                <div>
+                  <span>Pace</span>
+                  <strong>
+                    {paceFrom(
+                      recordedActivity.distanceMiles,
+                      recordedActivity.durationSeconds,
+                    )}
+                  </strong>
+                </div>
+                <div>
+                  <span>Heart rate</span>
+                  <strong>
+                    {recordedActivity.averageHr === undefined
+                      ? "Not recorded"
+                      : `${recordedActivity.averageHr} bpm`}
+                  </strong>
+                  {activityShoe && <small>{activityShoe.name}</small>}
+                </div>
+              </div>
             ) : isPast && session.kind !== "rest" ? (
               <p className="missing-day-message">
                 No result has been recorded for this day. Add the run data when
@@ -253,6 +305,13 @@ export function TodayDashboard({
               {session.kind === "rest" ? (
                 <button className="button primary" onClick={openPlan}>
                   View weekly plan
+                </button>
+              ) : recordedActivity ? (
+                <button
+                  className="button primary"
+                  onClick={() => openActivityReview()}
+                >
+                  View activity
                 </button>
               ) : (
                 <button
@@ -358,7 +417,7 @@ export function TodayDashboard({
             <Route size={20} />
           </div>
           <p>Matches are suggested and remain editable.</p>
-          <button className="text-button" onClick={openActivityReview}>
+          <button className="text-button" onClick={() => openActivityReview()}>
             Review activities <ChevronRight size={16} />
           </button>
         </div>
@@ -393,13 +452,25 @@ export function TodayDashboard({
       </p>
       {editing && (
         <Modal
-          title={`${formatDate(editing.scheduledDate)} · ${editing.title}`}
+          className="log-workout-modal"
+          eyebrow={formatDate(editing.scheduledDate, {
+            weekday: "long",
+            month: "long",
+            day: "numeric",
+          })}
+          title="Log workout"
+          subtitle={`Planned: ${editing.title} · ${formatMiles(editing.plannedDistanceMiles)}`}
+          closeLabel="Close log workout"
           onClose={() => setEditing(null)}
         >
           <RunEntryWorkflow
             session={editing}
             onSaved={() => setEditing(null)}
             onCancel={() => setEditing(null)}
+            onFitImported={(batchId) => {
+              setEditing(null);
+              openActivityReview(batchId);
+            }}
           />
         </Modal>
       )}

@@ -8,6 +8,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppProvider, useAppData } from "../data/app-context";
 import { createSeedSessions } from "../domain/seed";
+import { createFitFixture } from "../test/fit-fixture";
 import { RunEntryWorkflow } from "./RunEntryWorkflow";
 
 const session = createSeedSessions().find((item) => item.kind === "easy")!;
@@ -17,6 +18,7 @@ function ReadyGate({ children }: { children: React.ReactNode }) {
 }
 
 function renderWorkflow(onSaved = vi.fn()) {
+  const onFitImported = vi.fn();
   render(
     <AppProvider>
       <ReadyGate>
@@ -24,11 +26,12 @@ function renderWorkflow(onSaved = vi.fn()) {
           session={session}
           onSaved={onSaved}
           onCancel={vi.fn()}
+          onFitImported={onFitImported}
         />
       </ReadyGate>
     </AppProvider>,
   );
-  return onSaved;
+  return { onSaved, onFitImported };
 }
 
 beforeEach(() => window.localStorage.clear());
@@ -36,7 +39,7 @@ afterEach(cleanup);
 
 describe("manual run entry workflow", () => {
   it("opens on FIT import and supports the manual review-and-save flow", async () => {
-    const onSaved = renderWorkflow();
+    const { onSaved } = renderWorkflow();
     expect(
       await screen.findByRole("tab", { name: "Import FIT files" }),
     ).toHaveAttribute("aria-selected", "true");
@@ -78,6 +81,39 @@ describe("manual run entry workflow", () => {
           ?.actualDistanceMiles,
       ).toBe(4.5);
     });
+  });
+
+  it("decodes multiple FIT files and waits for an explicit continue", async () => {
+    const { onFitImported } = renderWorkflow();
+    const makeFile = (bytes: Uint8Array, name: string) => {
+      const buffer = bytes.slice().buffer as ArrayBuffer;
+      const file = new File([buffer], name);
+      Object.defineProperty(file, "arrayBuffer", {
+        value: async () => buffer.slice(0),
+      });
+      return file;
+    };
+    const first = makeFile(createFitFixture(), "warmup.fit");
+    const second = makeFile(
+      createFitFixture({
+        start: new Date("2026-11-07T15:30:00.000Z"),
+        distanceMeters: 8_000,
+      }),
+      "workout.fit",
+    );
+    fireEvent.change(await screen.findByLabelText("FIT files"), {
+      target: { files: [first, second] },
+    });
+    expect(await screen.findByText("warmup.fit")).toBeInTheDocument();
+    expect(screen.getByText("workout.fit")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Ready")).toHaveLength(2);
+    });
+    expect(onFitImported).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Continue to Activity Review" }),
+    );
+    expect(onFitImported).toHaveBeenCalledOnce();
   });
 
   it("locks unambiguous duration interpretation and keeps location geometry", async () => {

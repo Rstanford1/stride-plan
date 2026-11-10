@@ -113,7 +113,7 @@ describe("Activity Review screen", () => {
     expect(
       await screen.findByRole("combobox", { name: "Activity role" }),
     ).toHaveValue("primary-long");
-    fireEvent.click(screen.getByRole("button", { name: "Confirm review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm all 1" }));
     expect(
       await screen.findByRole("heading", { name: "Reviewed import" }),
     ).toBeInTheDocument();
@@ -141,9 +141,9 @@ describe("Activity Review screen", () => {
         </ReadyGate>
       </AppProvider>,
     );
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Review activity details" }),
-    );
+    await screen.findByRole("img", {
+      name: "Recorded pace by distance; faster pace appears higher",
+    });
     fireEvent.change(
       screen.getByRole("combobox", { name: "Optional overlay" }),
       { target: { value: "heartRate" } },
@@ -163,6 +163,13 @@ describe("Activity Review screen", () => {
       screen.getByRole("button", { name: "Move boundary 1 forward 5 seconds" }),
     );
     expect(boundary).toHaveValue(1705);
+    fireEvent.keyDown(
+      screen.getByRole("slider", { name: "Boundary 1 on graph" }),
+      { key: "ArrowRight" },
+    );
+    expect(boundary).toHaveValue(1706);
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    expect(screen.getByRole("button", { name: "Pan right" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Undo" })).toBeEnabled();
   });
 
@@ -182,7 +189,7 @@ describe("Activity Review screen", () => {
         name: "Choose which record represents this run",
       }),
     ).toBeInTheDocument();
-    const confirm = screen.getByRole("button", { name: "Confirm review" });
+    const confirm = screen.getByRole("button", { name: "Confirm all 1" });
     expect(confirm).toBeDisabled();
     fireEvent.click(
       screen.getByRole("button", { name: "Use existing activity" }),

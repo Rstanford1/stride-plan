@@ -1,4 +1,4 @@
-import { ChevronDown, FileUp } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useAppData } from "../data/app-context";
 import {
@@ -20,6 +20,7 @@ import type {
   TimeEntryMode,
 } from "../domain/types";
 import { AutoGrowTextarea, FormField, SegmentedControl } from "./FormControls";
+import { FitImportPanel } from "./FitImportPanel";
 
 const rpeChoices = [
   [2, "Very easy"],
@@ -51,11 +52,13 @@ export function RunEntryWorkflow({
   session,
   onSaved,
   onCancel,
+  onFitImported,
   initialMethod = "fit",
 }: {
   session: PlannedSession;
   onSaved: () => void;
   onCancel?: () => void;
+  onFitImported?: (batchId: string) => void;
   initialMethod?: "fit" | "manual";
 }) {
   const { data, saveRunEntry } = useAppData();
@@ -63,7 +66,6 @@ export function RunEntryWorkflow({
     (entry) => entry.sessionId === session.id,
   );
   const [method, setMethod] = useState<"fit" | "manual">(initialMethod);
-  const [files, setFiles] = useState<string[]>([]);
   const [step, setStep] = useState<"entry" | "review">("entry");
   const [status, setStatus] = useState<"completed" | "modified" | "skipped">(
     session.status === "modified" || session.status === "skipped"
@@ -218,8 +220,15 @@ export function RunEntryWorkflow({
         type="button"
         role="tab"
         aria-selected={method === "fit"}
+        aria-controls="fit-entry-panel"
         className={method === "fit" ? "active" : ""}
         onClick={() => setMethod("fit")}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+            event.preventDefault();
+            setMethod("manual");
+          }
+        }}
       >
         Import FIT files
       </button>
@@ -227,8 +236,15 @@ export function RunEntryWorkflow({
         type="button"
         role="tab"
         aria-selected={method === "manual"}
+        aria-controls="manual-entry-panel"
         className={method === "manual" ? "active" : ""}
         onClick={() => setMethod("manual")}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+            event.preventDefault();
+            setMethod("fit");
+          }
+        }}
       >
         Enter manually
       </button>
@@ -237,49 +253,12 @@ export function RunEntryWorkflow({
 
   if (method === "fit") {
     return (
-      <div className="run-entry-shell">
+      <div className="run-entry-shell fit-run-entry-shell">
         {methodTabs}
-        <div className="fit-entry-placeholder">
-          <FileUp size={25} aria-hidden="true" />
-          <label className="button secondary file-choice">
-            Choose FIT files
-            <input
-              type="file"
-              accept=".fit"
-              multiple
-              onChange={(event) =>
-                setFiles(
-                  Array.from(event.target.files ?? []).map((file) => file.name),
-                )
-              }
-            />
-          </label>
-          <p>
-            {files.length
-              ? `${files.length} file${files.length === 1 ? "" : "s"} selected. Decoding and source-preserving review are completed in the next slice.`
-              : "Warm-up, workout, cooldown, strides, and doubles can be selected together."}
-          </p>
-          {files.length > 0 && (
-            <ul>
-              {files.map((file) => (
-                <li key={file}>{file}</li>
-              ))}
-            </ul>
-          )}
-          <button
-            type="button"
-            className="text-button"
-            onClick={() => setMethod("manual")}
-          >
-            Enter this run manually instead
-          </button>
-        </div>
-        <div className="run-entry-footer">
-          <span>FIT import is the default entry method</span>
-          <button type="button" className="button secondary" onClick={onCancel}>
-            Cancel
-          </button>
-        </div>
+        <FitImportPanel
+          onCancel={onCancel}
+          onContinue={(batchId) => onFitImported?.(batchId)}
+        />
       </div>
     );
   }
@@ -373,7 +352,13 @@ export function RunEntryWorkflow({
 
   const skipped = status === "skipped";
   return (
-    <form className="run-entry-shell" onSubmit={review} noValidate>
+    <form
+      id="manual-entry-panel"
+      role="tabpanel"
+      className="run-entry-shell"
+      onSubmit={review}
+      noValidate
+    >
       {methodTabs}
       <div className="run-entry-body">
         <section className="outcome-row" aria-labelledby="outcome-title">

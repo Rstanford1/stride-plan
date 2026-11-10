@@ -4,9 +4,20 @@ import type { PropsWithChildren } from "react";
 
 export function Modal({
   title,
+  eyebrow,
+  subtitle,
+  className,
+  closeLabel = "Close",
   onClose,
   children,
-}: PropsWithChildren<{ title: string; onClose: () => void }>) {
+}: PropsWithChildren<{
+  title: string;
+  eyebrow?: string;
+  subtitle?: string;
+  className?: string;
+  closeLabel?: string;
+  onClose: () => void;
+}>) {
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   useEffect(() => {
@@ -17,13 +28,21 @@ export function Modal({
   return (
     <dialog
       ref={dialog}
-      className="modal"
+      className={`modal${className ? ` ${className}` : ""}`}
       onCancel={onClose}
       aria-labelledby={titleId}
     >
       <div className="modal-header">
-        <h2 id={titleId}>{title}</h2>
-        <button className="icon-button" onClick={onClose} aria-label="Close">
+        <div>
+          {eyebrow && <p className="eyebrow">{eyebrow}</p>}
+          <h2 id={titleId}>{title}</h2>
+          {subtitle && <p>{subtitle}</p>}
+        </div>
+        <button
+          className="icon-button"
+          onClick={onClose}
+          aria-label={closeLabel}
+        >
           <X size={20} />
         </button>
       </div>

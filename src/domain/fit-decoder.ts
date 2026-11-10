@@ -32,6 +32,7 @@ export interface DecodedFitLap {
 export interface DecodedFitActivity {
   sourceIndex: number;
   occurredAt: string;
+  localDate: string;
   sport: string;
   subSport?: string;
   distanceMeters: number;
@@ -70,6 +71,32 @@ export interface FitDecoder {
 function optionalIso(value: Date | undefined): string | undefined {
   if (!value || Number.isNaN(value.getTime())) return undefined;
   return value.toISOString();
+}
+
+function isoCalendarDate(year: number, month: number, day: number): string {
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+export function activityLocalDate(
+  start: Date,
+  localTimestamp?: Date,
+  absoluteTimestamp?: Date,
+): string {
+  if (localTimestamp && absoluteTimestamp) {
+    const shifted = new Date(
+      start.getTime() + localTimestamp.getTime() - absoluteTimestamp.getTime(),
+    );
+    return isoCalendarDate(
+      shifted.getUTCFullYear(),
+      shifted.getUTCMonth() + 1,
+      shifted.getUTCDate(),
+    );
+  }
+  return isoCalendarDate(
+    start.getFullYear(),
+    start.getMonth() + 1,
+    start.getDate(),
+  );
 }
 
 function normalizeLap(lap: ParsedLap, sourceIndex: number): DecodedFitLap {
@@ -130,7 +157,8 @@ function normalizeDocument(
 ): DecodedFitActivity[] {
   const sessions = document.sessions ?? [];
   return sessions.map((session, sessionIndex) => {
-    const occurredAt = optionalIso(session.start_time ?? session.timestamp);
+    const start = session.start_time ?? session.timestamp;
+    const occurredAt = optionalIso(start);
     if (!occurredAt) {
       throw new FitDecodeError(
         "decode-failed",
@@ -144,6 +172,11 @@ function normalizeDocument(
     return {
       sourceIndex: documentIndex * 1000 + sessionIndex,
       occurredAt,
+      localDate: activityLocalDate(
+        start!,
+        document.activity.local_timestamp,
+        document.activity.timestamp,
+      ),
       sport: String(session.sport ?? "unknown"),
       subSport:
         session.sub_sport === undefined ? undefined : String(session.sub_sport),

@@ -1,4 +1,11 @@
-import { AlertCircle, Check, FileClock, Link2, Route } from "lucide-react";
+import {
+  AlertCircle,
+  Check,
+  FileClock,
+  Link2,
+  Route,
+  Upload,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useAppData } from "../data/app-context";
 import {
@@ -53,13 +60,22 @@ function PaceTimeline({
   overlay,
   selectedSegmentId,
   onSelectSegment,
+  placingBoundary,
+  onPlaceBoundary,
+  onMoveBoundary,
 }: {
   activity: FitSourceActivity;
   segments: ActivityReviewSegment[];
   overlay: TimelineOverlay;
   selectedSegmentId?: string;
   onSelectSegment: (segmentId: string) => void;
+  placingBoundary: boolean;
+  onPlaceBoundary: (seconds: number) => void;
+  onMoveBoundary: (index: number, seconds: number) => void;
 }) {
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState(0);
+  const [dragBoundaryIndex, setDragBoundaryIndex] = useState<number>();
   const samples = activity.samples.filter(
     (sample) =>
       sample.distanceMeters !== undefined &&
@@ -148,13 +164,66 @@ function PaceTimeline({
     }
     return activity.distanceMeters;
   };
+  const elapsedAtDistance = (meters: number) => {
+    const timedSamples = samples.filter(
+      (sample) =>
+        sample.elapsedSeconds !== undefined &&
+        sample.distanceMeters !== undefined,
+    );
+    if (!timedSamples.length || !activity.durationSeconds) {
+      return (
+        (meters / Math.max(activity.distanceMeters, 1)) *
+        (activity.durationSeconds ?? 0)
+      );
+    }
+    for (let index = 1; index < timedSamples.length; index += 1) {
+      const left = timedSamples[index - 1];
+      const right = timedSamples[index];
+      if (meters <= right.distanceMeters!) {
+        const distanceRange = right.distanceMeters! - left.distanceMeters!;
+        const ratio = distanceRange
+          ? (meters - left.distanceMeters!) / distanceRange
+          : 0;
+        return (
+          left.elapsedSeconds! +
+          (right.elapsedSeconds! - left.elapsedSeconds!) * ratio
+        );
+      }
+    }
+    return activity.durationSeconds;
+  };
+  const viewWidth = 800 / zoom;
+  const viewStart = pan * (800 - viewWidth);
+  const elapsedForPointer = (element: SVGSVGElement, clientX: number) => {
+    const bounds = element.getBoundingClientRect();
+    const viewX =
+      viewStart + ((clientX - bounds.left) / bounds.width) * viewWidth;
+    const meters = ((Math.min(780, Math.max(20, viewX)) - 20) / 760) * distance;
+    return elapsedAtDistance(meters);
+  };
   let lapDistance = 0;
   return (
     <figure className="pace-timeline">
       <svg
-        viewBox="0 0 800 165"
+        viewBox={`${viewStart} 0 ${viewWidth} 165`}
         role="img"
         aria-label="Recorded pace by distance; faster pace appears higher"
+        className={placingBoundary ? "placing-boundary" : undefined}
+        onClick={(event) => {
+          if (!placingBoundary) return;
+          onPlaceBoundary(
+            elapsedForPointer(event.currentTarget, event.clientX),
+          );
+        }}
+        onPointerUp={(event) => {
+          if (dragBoundaryIndex === undefined) return;
+          onMoveBoundary(
+            dragBoundaryIndex,
+            elapsedForPointer(event.currentTarget, event.clientX),
+          );
+          setDragBoundaryIndex(undefined);
+        }}
+        onPointerCancel={() => setDragBoundaryIndex(undefined)}
       >
         <title>Recorded pace by distance</title>
         {segments.map((segment, index) => {
@@ -174,14 +243,66 @@ function PaceTimeline({
               role="button"
               tabIndex={0}
               aria-label={`Select segment ${index + 1}`}
-              onClick={() => onSelectSegment(segment.id)}
+              onClick={(event) => {
+                if (placingBoundary) return;
+                event.stopPropagation();
+                onSelectSegment(segment.id);
+              }}
               onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
+                if (
+                  !placingBoundary &&
+                  (event.key === "Enter" || event.key === " ")
+                ) {
                   event.preventDefault();
                   onSelectSegment(segment.id);
                 }
               }}
             />
+          );
+        })}
+        {segments.slice(0, -1).map((segment, index) => {
+          const boundaryDistance = distanceAtElapsed(segment.endSeconds);
+          const x = (boundaryDistance / Math.max(distance, 1)) * 760 + 20;
+          return (
+            <g key={`boundary:${segment.id}`}>
+              <line
+                className="segment-boundary"
+                x1={x}
+                y1="14"
+                x2={x}
+                y2="140"
+              />
+              <line
+                className="segment-boundary-hitbox"
+                x1={x}
+                y1="14"
+                x2={x}
+                y2="140"
+                role="slider"
+                tabIndex={0}
+                aria-label={`Boundary ${index + 1} on graph`}
+                aria-valuemin={Math.ceil(segment.startSeconds + 1)}
+                aria-valuemax={Math.floor(segments[index + 1].endSeconds - 1)}
+                aria-valuenow={Math.round(segment.endSeconds)}
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  setDragBoundaryIndex(index);
+                }}
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => {
+                  const change = event.shiftKey ? 5 : 1;
+                  if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
+                    event.preventDefault();
+                    onMoveBoundary(index, segment.endSeconds - change);
+                  }
+                  if (event.key === "ArrowRight" || event.key === "ArrowUp") {
+                    event.preventDefault();
+                    onMoveBoundary(index, segment.endSeconds + change);
+                  }
+                }}
+              />
+            </g>
           );
         })}
         <line x1="20" y1="140" x2="780" y2="140" />
@@ -202,6 +323,42 @@ function PaceTimeline({
           <polyline className="metric-overlay" points={overlayPoints} />
         )}
       </svg>
+      <div
+        className="timeline-zoom-controls"
+        aria-label="Timeline view controls"
+      >
+        <button
+          type="button"
+          disabled={zoom === 1}
+          onClick={() => setPan((value) => Math.max(0, value - 0.2))}
+        >
+          Pan left
+        </button>
+        <button
+          type="button"
+          disabled={zoom === 1}
+          onClick={() => setPan((value) => Math.min(1, value + 0.2))}
+        >
+          Pan right
+        </button>
+        <button
+          type="button"
+          disabled={zoom <= 1}
+          onClick={() => {
+            setZoom((value) => Math.max(1, value / 2));
+            setPan(0);
+          }}
+        >
+          Zoom out
+        </button>
+        <button
+          type="button"
+          disabled={zoom >= 4}
+          onClick={() => setZoom((value) => Math.min(4, value * 2))}
+        >
+          Zoom in
+        </button>
+      </div>
       <figcaption>
         Pace is primary. Dashed lines are recorded FIT laps, not automatic
         workout segments.
@@ -212,7 +369,11 @@ function PaceTimeline({
   );
 }
 
-export function ActivityReviewScreen() {
+export function ActivityReviewScreen({
+  requestedBatchId,
+}: {
+  requestedBatchId?: string;
+}) {
   const {
     data,
     saveActivityReviewDraft,
@@ -221,6 +382,10 @@ export function ActivityReviewScreen() {
     persistenceState,
     persistenceError,
     retryPersistence,
+    importFitFiles,
+    prepareActivityReview,
+    fitImportProgress,
+    cancelFitImport,
   } = useAppData();
   const batches = data.fitImportBatches.filter((batch) =>
     batch.sourceResults.some((result) => result.activityIds.length),
@@ -235,10 +400,11 @@ export function ActivityReviewScreen() {
           ),
       ) ?? batches.at(-1);
   const [batchId, setBatchId] = useState(initial?.id ?? "");
-  const [detailsOpen, setDetailsOpen] = useState(false);
   const [overlay, setOverlay] = useState<TimelineOverlay>("none");
   const [selectedSegmentId, setSelectedSegmentId] = useState<string>();
   const [segmentAnnouncement, setSegmentAnnouncement] = useState("");
+  const [placingBoundary, setPlacingBoundary] = useState(false);
+  const [importMessage, setImportMessage] = useState("");
   const batch = batches.find((item) => item.id === batchId);
   const draft = data.activityReviewDrafts.find(
     (item) => item.batchId === batchId,
@@ -246,6 +412,14 @@ export function ActivityReviewScreen() {
   const latestConfirmation = data.activityReviewConfirmations
     .filter((item) => item.batchId === batchId)
     .sort((left, right) => right.revisionNumber - left.revisionNumber)[0];
+
+  useEffect(() => {
+    if (
+      requestedBatchId &&
+      batches.some((item) => item.id === requestedBatchId)
+    )
+      setBatchId(requestedBatchId);
+  }, [batches, requestedBatchId]);
 
   useEffect(() => {
     if (!batch || draft || latestConfirmation) return;
@@ -340,10 +514,7 @@ export function ActivityReviewScreen() {
       )
     : [];
 
-  useEffect(() => {
-    if (session?.kind === "workout") setDetailsOpen(true);
-    setSelectedSegmentId(undefined);
-  }, [session?.kind, selectedId]);
+  useEffect(() => setSelectedSegmentId(undefined), [selectedId]);
 
   useEffect(() => {
     if (overlay !== "none" && !availableOverlays.includes(overlay)) {
@@ -489,6 +660,40 @@ export function ActivityReviewScreen() {
     );
   }
 
+  function placeBoundary(seconds: number) {
+    if (!decision || !selected?.durationSeconds || !draft) return;
+    const base = decision.segments.length
+      ? decision.segments
+      : [
+          {
+            id: `segment:${selected.id}:1`,
+            startSeconds: 0,
+            endSeconds: selected.durationSeconds,
+            role: "other" as const,
+          },
+        ];
+    const boundary = Math.round(seconds);
+    const index = base.findIndex(
+      (segment) =>
+        boundary > segment.startSeconds && boundary < segment.endSeconds,
+    );
+    if (index < 0) {
+      setSegmentAnnouncement("Choose a point inside a segment.");
+      return;
+    }
+    const current = base[index];
+    const next = [...base];
+    const created = {
+      ...current,
+      id: `segment:${selected.id}:${crypto.randomUUID()}`,
+      startSeconds: boundary,
+    };
+    next.splice(index, 1, { ...current, endSeconds: boundary }, created);
+    commitSegments(next, `Boundary added at ${formatDuration(boundary)}.`);
+    setSelectedSegmentId(created.id);
+    setPlacingBoundary(false);
+  }
+
   function mergeWithNext(index: number) {
     if (!decision || index >= decision.segments.length - 1) return;
     const next = [...decision.segments];
@@ -537,6 +742,35 @@ export function ActivityReviewScreen() {
     });
     setSegmentAnnouncement("Redid the segment change.");
   }
+
+  async function addFiles(files: File[]) {
+    if (!files.length || !batch) return;
+    setImportMessage("");
+    try {
+      const result = await importFitFiles(files, batch.id);
+      const existingIds = batch.sourceResults.flatMap(
+        (item) => item.activityIds,
+      );
+      const newIds = result.files.flatMap((item) => item.activityIds);
+      prepareActivityReview(batch.id, [...existingIds, ...newIds], {});
+      setImportMessage(result.summary);
+    } catch (error) {
+      setImportMessage(
+        error instanceof Error
+          ? error.message
+          : "The FIT files could not be read.",
+      );
+    }
+  }
+
+  const activeSegmentIndex = Math.max(
+    0,
+    decision?.segments.findIndex((item) => item.id === selectedSegmentId) ?? 0,
+  );
+  const selectedDecisionIndex = decisions.findIndex(
+    (item) => item.sourceActivityId === selectedId,
+  );
+  const nextDecision = decisions[selectedDecisionIndex + 1];
 
   if (!batches.length)
     return (
@@ -623,16 +857,6 @@ export function ActivityReviewScreen() {
                   </button>
                 </div>
               )}
-              <button
-                className="button primary"
-                disabled={issues.length > 0}
-                onClick={() => confirmActivityReviewDraft(draft)}
-              >
-                <Check size={17} /> Confirm review
-              </button>
-              {issues.length > 0 && (
-                <small>Resolve the items below before confirming.</small>
-              )}
             </>
           ) : latestConfirmation ? (
             <>
@@ -647,12 +871,6 @@ export function ActivityReviewScreen() {
                   Retry save
                 </button>
               )}
-              <button
-                className="button secondary"
-                onClick={() => reviseActivityReview(batchId)}
-              >
-                Revise review
-              </button>
             </>
           ) : (
             <>
@@ -695,6 +913,30 @@ export function ActivityReviewScreen() {
 
       <div className="review-layout">
         <aside className="activity-list" aria-label="Imported activities">
+          <div className="activity-list-actions">
+            <strong>Source activities</strong>
+            <label className="text-button add-source-files">
+              <Upload size={15} /> Add FIT files
+              <input
+                className="sr-only"
+                type="file"
+                accept=".fit"
+                multiple
+                disabled={Boolean(fitImportProgress)}
+                onChange={(event) => {
+                  void addFiles(Array.from(event.target.files ?? []));
+                  event.target.value = "";
+                }}
+              />
+            </label>
+            {fitImportProgress && (
+              <button className="text-button" onClick={cancelFitImport}>
+                Stop import ({fitImportProgress.completed}/
+                {fitImportProgress.total})
+              </button>
+            )}
+            {importMessage && <small role="status">{importMessage}</small>}
+          </div>
           {decisions.map((item) => {
             const activity = data.fitSourceActivities.find(
               (sourceItem) => sourceItem.id === item.sourceActivityId,
@@ -961,175 +1203,205 @@ export function ActivityReviewScreen() {
               </div>
             </div>
 
-            <button
-              className="text-button review-details-toggle"
-              onClick={() => setDetailsOpen((open) => !open)}
-              aria-expanded={detailsOpen}
-            >
-              {detailsOpen
-                ? "Hide activity details"
-                : "Review activity details"}
-            </button>
-            {detailsOpen && (
-              <div className="activity-review-details">
+            <div className="activity-review-details">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">Source detail</p>
+                  <h3>Pace and recorded laps</h3>
+                </div>
+                <FileClock size={19} />
+              </div>
+              <div className="timeline-toolbar">
+                <label>
+                  Optional overlay
+                  <select
+                    value={overlay}
+                    onChange={(event) =>
+                      setOverlay(event.target.value as TimelineOverlay)
+                    }
+                  >
+                    <option value="none">Pace only</option>
+                    {availableOverlays.includes("heartRate") && (
+                      <option value="heartRate">Heart rate</option>
+                    )}
+                    {availableOverlays.includes("elevation") && (
+                      <option value="elevation">Elevation</option>
+                    )}
+                    {availableOverlays.includes("cadence") && (
+                      <option value="cadence">Cadence</option>
+                    )}
+                    {availableOverlays.includes("power") && (
+                      <option value="power">Power</option>
+                    )}
+                  </select>
+                </label>
+                <div className="timeline-actions">
+                  <button
+                    className={
+                      placingBoundary ? "button primary" : "button secondary"
+                    }
+                    disabled={!draft || !selected.durationSeconds}
+                    onClick={() => setPlacingBoundary((active) => !active)}
+                  >
+                    {placingBoundary
+                      ? "Click graph to place split"
+                      : "Add split on graph"}
+                  </button>
+                  <button
+                    className="button secondary"
+                    disabled={!draft || !decision.segmentUndoStack.length}
+                    onClick={undoSegments}
+                  >
+                    Undo
+                  </button>
+                  <button
+                    className="button secondary"
+                    disabled={!draft || !decision.segmentRedoStack.length}
+                    onClick={redoSegments}
+                  >
+                    Redo
+                  </button>
+                </div>
+              </div>
+              <PaceTimeline
+                activity={selected}
+                segments={decision.segments}
+                overlay={overlay}
+                selectedSegmentId={selectedSegmentId}
+                onSelectSegment={setSelectedSegmentId}
+                placingBoundary={placingBoundary}
+                onPlaceBoundary={placeBoundary}
+                onMoveBoundary={moveBoundary}
+              />
+              {selected.laps.length ? (
+                <div
+                  className="table-scroll"
+                  tabIndex={0}
+                  aria-label="Recorded laps and classifications"
+                >
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Lap</th>
+                        <th>Distance</th>
+                        <th>Time</th>
+                        <th>Avg HR</th>
+                        <th>Classification</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selected.laps.map((lap, index) => (
+                        <tr key={lap.id}>
+                          <td>{index + 1}</td>
+                          <td>
+                            {formatMiles(lap.distanceMeters / METERS_PER_MILE)}
+                          </td>
+                          <td>{formatDuration(lap.durationSeconds)}</td>
+                          <td>{lap.averageHr ?? "Not recorded"}</td>
+                          <td>
+                            <select
+                              aria-label={`Lap ${index + 1} classification`}
+                              disabled={!draft}
+                              value={decision.lapRoles[lap.id] ?? "other"}
+                              onChange={(event) =>
+                                updateDecision(selected.id, {
+                                  lapRoles: {
+                                    ...decision.lapRoles,
+                                    [lap.id]: event.target.value as LapRole,
+                                  },
+                                })
+                              }
+                            >
+                              <option value="work">Work</option>
+                              <option value="recovery">Recovery</option>
+                              <option value="warm-up">Warm-up</option>
+                              <option value="cooldown">Cooldown</option>
+                              <option value="other">Other</option>
+                            </select>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="empty-state compact-empty">
+                  <p>No recorded laps in this source activity.</p>
+                </div>
+              )}
+
+              <section
+                className="segment-editor"
+                aria-labelledby="segment-editor-title"
+              >
                 <div className="section-heading">
                   <div>
-                    <p className="eyebrow">Source detail</p>
-                    <h3>Pace and recorded laps</h3>
+                    <p className="eyebrow">Optional interpretation</p>
+                    <h3 id="segment-editor-title">User-created segments</h3>
                   </div>
-                  <FileClock size={19} />
                 </div>
-                <div className="timeline-toolbar">
-                  <label>
-                    Optional overlay
-                    <select
-                      value={overlay}
-                      onChange={(event) =>
-                        setOverlay(event.target.value as TimelineOverlay)
-                      }
+                <p className="segment-editor-help">
+                  Segments interpret the continuous recording; they never
+                  rewrite FIT samples or recorded laps. Boundary inputs and
+                  buttons provide the complete keyboard path.
+                </p>
+                {!decision.segments.length ? (
+                  <div className="segment-empty-actions">
+                    <button
+                      className="button secondary"
+                      disabled={!draft || !selected.durationSeconds}
+                      onClick={createSegments}
                     >
-                      <option value="none">Pace only</option>
-                      {availableOverlays.includes("heartRate") && (
-                        <option value="heartRate">Heart rate</option>
-                      )}
-                      {availableOverlays.includes("elevation") && (
-                        <option value="elevation">Elevation</option>
-                      )}
-                      {availableOverlays.includes("cadence") && (
-                        <option value="cadence">Cadence</option>
-                      )}
-                      {availableOverlays.includes("power") && (
-                        <option value="power">Power</option>
-                      )}
-                    </select>
-                  </label>
-                  <span>
-                    Pace and overlays use independently normalized scales.
-                  </span>
-                </div>
-                <PaceTimeline
-                  activity={selected}
-                  segments={decision.segments}
-                  overlay={overlay}
-                  selectedSegmentId={selectedSegmentId}
-                  onSelectSegment={setSelectedSegmentId}
-                />
-                {selected.laps.length ? (
-                  <div
-                    className="table-scroll"
-                    tabIndex={0}
-                    aria-label="Recorded laps and classifications"
-                  >
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th>Lap</th>
-                          <th>Distance</th>
-                          <th>Time</th>
-                          <th>Avg HR</th>
-                          <th>Classification</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selected.laps.map((lap, index) => (
-                          <tr key={lap.id}>
-                            <td>{index + 1}</td>
-                            <td>
-                              {formatMiles(
-                                lap.distanceMeters / METERS_PER_MILE,
-                              )}
-                            </td>
-                            <td>{formatDuration(lap.durationSeconds)}</td>
-                            <td>{lap.averageHr ?? "Not recorded"}</td>
-                            <td>
-                              <select
-                                aria-label={`Lap ${index + 1} classification`}
-                                disabled={!draft}
-                                value={decision.lapRoles[lap.id] ?? "other"}
-                                onChange={(event) =>
-                                  updateDecision(selected.id, {
-                                    lapRoles: {
-                                      ...decision.lapRoles,
-                                      [lap.id]: event.target.value as LapRole,
-                                    },
-                                  })
-                                }
-                              >
-                                <option value="work">Work</option>
-                                <option value="recovery">Recovery</option>
-                                <option value="warm-up">Warm-up</option>
-                                <option value="cooldown">Cooldown</option>
-                                <option value="other">Other</option>
-                              </select>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="empty-state compact-empty">
-                    <p>No recorded laps in this source activity.</p>
-                  </div>
-                )}
-
-                <section
-                  className="segment-editor"
-                  aria-labelledby="segment-editor-title"
-                >
-                  <div className="section-heading">
-                    <div>
-                      <p className="eyebrow">Optional interpretation</p>
-                      <h3 id="segment-editor-title">User-created segments</h3>
-                    </div>
-                    <div className="segment-history-actions">
-                      <button
-                        className="button secondary"
-                        disabled={!draft || !decision.segmentUndoStack.length}
-                        onClick={undoSegments}
-                      >
-                        Undo
-                      </button>
-                      <button
-                        className="button secondary"
-                        disabled={!draft || !decision.segmentRedoStack.length}
-                        onClick={redoSegments}
-                      >
-                        Redo
-                      </button>
-                    </div>
-                  </div>
-                  <p className="segment-editor-help">
-                    Segments interpret the continuous recording; they never
-                    rewrite FIT samples or recorded laps. Boundary inputs and
-                    buttons provide the complete keyboard path.
-                  </p>
-                  {!decision.segments.length ? (
-                    <div className="segment-empty-actions">
+                      Create one segment
+                    </button>
+                    {selected.laps.length > 0 && (
                       <button
                         className="button secondary"
                         disabled={!draft || !selected.durationSeconds}
-                        onClick={createSegments}
+                        onClick={createSegmentsFromLaps}
                       >
-                        Create one segment
+                        Start from recorded laps
                       </button>
-                      {selected.laps.length > 0 && (
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <div
+                      className="segment-strip"
+                      aria-label="Logical segments"
+                    >
+                      {decision.segments.map((segment, index) => (
                         <button
-                          className="button secondary"
-                          disabled={!draft || !selected.durationSeconds}
-                          onClick={createSegmentsFromLaps}
+                          type="button"
+                          key={segment.id}
+                          className={
+                            index === activeSegmentIndex ? "selected" : ""
+                          }
+                          style={{
+                            flexGrow: Math.max(
+                              1,
+                              segment.endSeconds - segment.startSeconds,
+                            ),
+                          }}
+                          onClick={() => setSelectedSegmentId(segment.id)}
                         >
-                          Start from recorded laps
+                          <strong>{index + 1}</strong>
+                          <span>
+                            {
+                              segmentRoles.find(
+                                (item) => item.value === segment.role,
+                              )?.label
+                            }
+                          </span>
                         </button>
-                      )}
+                      ))}
                     </div>
-                  ) : (
-                    <>
-                      <div
-                        className="segment-card-list"
-                        aria-label="User-created segment editor"
-                      >
-                        {decision.segments.map((segment, index) => (
+                    <div
+                      className="segment-card-list"
+                      aria-label="User-created segment editor"
+                    >
+                      {decision.segments.map((segment, index) =>
+                        index === activeSegmentIndex ? (
                           <section
                             className={`segment-card${selectedSegmentId === segment.id ? " selected" : ""}`}
                             key={segment.id}
@@ -1263,67 +1535,64 @@ export function ActivityReviewScreen() {
                               )}
                             </div>
                           </section>
-                        ))}
+                        ) : null,
+                      )}
+                    </div>
+                    <details className="segment-table-alternative">
+                      <summary>Segment table alternative</summary>
+                      <div className="table-scroll" tabIndex={0}>
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>Segment</th>
+                              <th>Start</th>
+                              <th>End</th>
+                              <th>Duration</th>
+                              <th>Classification</th>
+                              <th>Shoe</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {decision.segments.map((segment, index) => {
+                              const segmentShoe = data.shoes.find(
+                                (shoe) => shoe.id === segment.shoeId,
+                              );
+                              return (
+                                <tr key={segment.id}>
+                                  <td>{index + 1}</td>
+                                  <td>
+                                    {formatDuration(segment.startSeconds)}
+                                  </td>
+                                  <td>{formatDuration(segment.endSeconds)}</td>
+                                  <td>
+                                    {formatDuration(
+                                      segment.endSeconds - segment.startSeconds,
+                                    )}
+                                  </td>
+                                  <td>
+                                    {
+                                      segmentRoles.find(
+                                        (role) => role.value === segment.role,
+                                      )?.label
+                                    }
+                                  </td>
+                                  <td>
+                                    {segmentShoe?.name ?? "Activity shoe"}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
                       </div>
-                      <details className="segment-table-alternative">
-                        <summary>Segment table alternative</summary>
-                        <div className="table-scroll" tabIndex={0}>
-                          <table className="data-table">
-                            <thead>
-                              <tr>
-                                <th>Segment</th>
-                                <th>Start</th>
-                                <th>End</th>
-                                <th>Duration</th>
-                                <th>Classification</th>
-                                <th>Shoe</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {decision.segments.map((segment, index) => {
-                                const segmentShoe = data.shoes.find(
-                                  (shoe) => shoe.id === segment.shoeId,
-                                );
-                                return (
-                                  <tr key={segment.id}>
-                                    <td>{index + 1}</td>
-                                    <td>
-                                      {formatDuration(segment.startSeconds)}
-                                    </td>
-                                    <td>
-                                      {formatDuration(segment.endSeconds)}
-                                    </td>
-                                    <td>
-                                      {formatDuration(
-                                        segment.endSeconds -
-                                          segment.startSeconds,
-                                      )}
-                                    </td>
-                                    <td>
-                                      {
-                                        segmentRoles.find(
-                                          (role) => role.value === segment.role,
-                                        )?.label
-                                      }
-                                    </td>
-                                    <td>
-                                      {segmentShoe?.name ?? "Activity shoe"}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </details>
-                    </>
-                  )}
-                  <p className="sr-only" aria-live="polite">
-                    {segmentAnnouncement}
-                  </p>
-                </section>
-              </div>
-            )}
+                    </details>
+                  </>
+                )}
+                <p className="sr-only" aria-live="polite">
+                  {segmentAnnouncement}
+                </p>
+              </section>
+            </div>
           </section>
         )}
       </div>
@@ -1333,8 +1602,8 @@ export function ActivityReviewScreen() {
       >
         <div className="section-heading">
           <div>
-            <p className="eyebrow">Confirmation preview</p>
-            <h2 id="final-bundle-title">What this review will record</h2>
+            <p className="eyebrow">Review outcome</p>
+            <h2 id="final-bundle-title">Activities ready to save</h2>
           </div>
           <span>
             {issues.length
@@ -1398,6 +1667,43 @@ export function ActivityReviewScreen() {
           remains secondary, unrelated activities stay out of running metrics,
           and original prescriptions are never rewritten.
         </p>
+        <div className="review-confirmation-actions">
+          <span>
+            {persistenceState === "saving"
+              ? "Saving locally…"
+              : persistenceState === "error"
+                ? "Local save needs attention"
+                : draft
+                  ? `${decisions.length} ${decisions.length === 1 ? "activity" : "activities"} in this review`
+                  : "Review saved locally"}
+          </span>
+          {draft ? (
+            <div className="button-row">
+              {nextDecision && (
+                <button
+                  className="button secondary"
+                  onClick={() => selectActivity(nextDecision.sourceActivityId)}
+                >
+                  Next activity
+                </button>
+              )}
+              <button
+                className="button primary"
+                disabled={issues.length > 0}
+                onClick={() => confirmActivityReviewDraft(draft)}
+              >
+                <Check size={17} /> Confirm all {decisions.length}
+              </button>
+            </div>
+          ) : latestConfirmation ? (
+            <button
+              className="button secondary"
+              onClick={() => reviseActivityReview(batchId)}
+            >
+              Revise review
+            </button>
+          ) : null}
+        </div>
       </section>
     </div>
   );

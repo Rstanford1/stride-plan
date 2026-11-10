@@ -12,18 +12,16 @@ import { useEffect, useState } from "react";
 import { TodayDashboard } from "./screens/TodayDashboard";
 import { PlanScreen } from "./screens/PlanScreen";
 import { ActivityReviewScreen } from "./screens/ActivityReviewScreen";
-import { WeeklyReviewScreen } from "./screens/WeeklyReviewScreen";
 import { TrendsScreen } from "./screens/TrendsScreen";
 import { DataScreen } from "./screens/DataScreen";
 import { useAppData } from "./data/app-context";
 
-type Screen = "today" | "plan" | "activities" | "review" | "trends" | "data";
+type Screen = "today" | "week" | "activities" | "trends" | "data";
 
 const nav = [
   { id: "today", label: "Today", icon: Sun },
-  { id: "plan", label: "Plan", icon: CalendarRange },
+  { id: "week", label: "Week", icon: CalendarRange },
   { id: "activities", label: "Activities", icon: Activity },
-  { id: "review", label: "Weekly review", icon: Footprints },
   { id: "trends", label: "Trends", icon: ChartNoAxesCombined },
   { id: "data", label: "Data & settings", icon: Database },
 ] as const;
@@ -31,10 +29,11 @@ const nav = [
 export default function App() {
   const { ready } = useAppData();
   const [screen, setScreen] = useState<Screen>("today");
+  const [activityReviewBatchId, setActivityReviewBatchId] = useState("");
   const [collapsed, setCollapsed] = useState(false);
   useEffect(() => {
     const listener = (event: KeyboardEvent) => {
-      if (event.altKey && /^[1-6]$/.test(event.key))
+      if (event.altKey && /^[1-5]$/.test(event.key))
         setScreen(nav[Number(event.key) - 1].id);
     };
     window.addEventListener("keydown", listener);
@@ -47,6 +46,10 @@ export default function App() {
         <span>Opening your plan…</span>
       </div>
     );
+  const openActivityReview = (batchId?: string) => {
+    if (batchId) setActivityReviewBatchId(batchId);
+    setScreen("activities");
+  };
   return (
     <div className={collapsed ? "app-shell sidebar-collapsed" : "app-shell"}>
       <aside className="sidebar">
@@ -99,15 +102,16 @@ export default function App() {
       <main id="main-content" tabIndex={-1}>
         {screen === "today" && (
           <TodayDashboard
-            openActivityReview={() => setScreen("activities")}
-            openPlan={() => setScreen("plan")}
+            openActivityReview={openActivityReview}
+            openPlan={() => setScreen("week")}
           />
         )}
-        {screen === "plan" && <PlanScreen />}
-        {screen === "activities" && <ActivityReviewScreen />}
-        {screen === "review" && <WeeklyReviewScreen />}
+        {screen === "week" && <PlanScreen onFitImported={openActivityReview} />}
+        {screen === "activities" && (
+          <ActivityReviewScreen requestedBatchId={activityReviewBatchId} />
+        )}
         {screen === "trends" && <TrendsScreen />}
-        {screen === "data" && <DataScreen />}
+        {screen === "data" && <DataScreen onFitImported={openActivityReview} />}
       </main>
     </div>
   );

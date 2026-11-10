@@ -13,12 +13,21 @@ import { validatePlanRows, type ImportValidation } from "../domain/imports";
 import { reviseSession } from "../domain/rules";
 import type { AppData } from "../domain/types";
 import { parseBackup, serializeBackup } from "../domain/backup";
-import { FitFileParserDecoder } from "../domain/fit-decoder";
-import { runFitImportBatch } from "../data/fit-import-controller";
-import { createFitSourceStore } from "../data/fit-source-store";
 
-export function DataScreen() {
-  const { data, replaceData, resetDemo, updateSettings } = useAppData();
+export function DataScreen({
+  onFitImported,
+}: {
+  onFitImported?: (batchId: string) => void;
+}) {
+  const {
+    data,
+    replaceData,
+    resetDemo,
+    updateSettings,
+    importFitFiles,
+    fitImportProgress,
+    cancelFitImport,
+  } = useAppData();
   const [preview, setPreview] = useState<ImportValidation | null>(null);
   const [importSource, setImportSource] = useState<{
     name: string;
@@ -26,11 +35,6 @@ export function DataScreen() {
   } | null>(null);
   const [message, setMessage] = useState("");
   const restoreInput = useRef<HTMLInputElement>(null);
-  const fitImportController = useRef<AbortController | null>(null);
-  const [fitImportProgress, setFitImportProgress] = useState<{
-    completed: number;
-    total: number;
-  } | null>(null);
 
   function downloadJson(contents: unknown, name: string) {
     const serialized =
@@ -213,65 +217,18 @@ export function DataScreen() {
     }
   }
 
-  async function importFitFiles(files: FileList) {
-    if (files.length === 0) return;
-    const controller = new AbortController();
-    fitImportController.current = controller;
-    setFitImportProgress({ completed: 0, total: files.length });
+  async function handleFitFiles(files: FileList) {
+    if (!files.length) return;
     setMessage(`Reading ${files.length} FIT file(s)…`);
-    const result = await runFitImportBatch({
-      files: Array.from(files, (file) => ({
-        name: file.name,
-        loadBytes: async () => new Uint8Array(await file.arrayBuffer()),
-      })),
-      existingSources: data.fitSources,
-      decoder: new FitFileParserDecoder(),
-      sourceStore: createFitSourceStore(),
-      createdAt: new Date().toISOString(),
-      signal: controller.signal,
-      onProgress: (completed, total) =>
-        setFitImportProgress({ completed, total }),
-    });
-    replaceData({
-      ...data,
-      fitSources: [
-        ...data.fitSources.filter(
-          (source) =>
-            !result.sources.some((replacement) => replacement.id === source.id),
-        ),
-        ...result.sources,
-      ],
-      fitSourceActivities: [
-        ...data.fitSourceActivities.filter(
-          (activity) =>
-            !result.activities.some(
-              (replacement) => replacement.id === activity.id,
-            ),
-        ),
-        ...result.activities,
-      ],
-      fitImportBatches: [...data.fitImportBatches, result.batch],
-    });
-    const counts = result.batch.sourceResults.reduce<Record<string, number>>(
-      (current, item) => ({
-        ...current,
-        [item.status]: (current[item.status] ?? 0) + 1,
-      }),
-      {},
-    );
-    setMessage(
-      [
-        counts.decoded && `${counts.decoded} ready to review`,
-        counts["exact-duplicate"] &&
-          `${counts["exact-duplicate"]} exact duplicate(s) skipped`,
-        counts.failed && `${counts.failed} failed`,
-        counts.cancelled && `${counts.cancelled} cancelled`,
-      ]
-        .filter(Boolean)
-        .join(" · "),
-    );
-    fitImportController.current = null;
-    setFitImportProgress(null);
+    try {
+      const result = await importFitFiles(Array.from(files));
+      setMessage(result.summary);
+      if (result.reviewableActivities) onFitImported?.(result.batchId);
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "The FIT import failed.",
+      );
+    }
   }
   return (
     <div className="screen">
@@ -332,9 +289,9 @@ export function DataScreen() {
                 type="file"
                 accept=".fit"
                 multiple
-                disabled={fitImportProgress !== null}
+                disabled={Boolean(fitImportProgress)}
                 onChange={(event) =>
-                  event.target.files && void importFitFiles(event.target.files)
+                  event.target.files && void handleFitFiles(event.target.files)
                 }
               />
             </label>
@@ -344,10 +301,7 @@ export function DataScreen() {
                   Processed {fitImportProgress.completed} of{" "}
                   {fitImportProgress.total} files.
                 </p>
-                <button
-                  className="text-button"
-                  onClick={() => fitImportController.current?.abort()}
-                >
+                <button className="text-button" onClick={cancelFitImport}>
                   Stop after current file
                 </button>
               </div>

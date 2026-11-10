@@ -67,6 +67,7 @@ export class FitImportService {
         sourceId,
         sourceIndex: activity.sourceIndex,
         occurredAt: activity.occurredAt,
+        localDate: activity.localDate,
         sport: activity.sport,
         subSport: activity.subSport,
         distanceMeters: activity.distanceMeters,
