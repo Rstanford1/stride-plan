@@ -4,6 +4,22 @@
 
 This file records the observed design baseline and approved component specifications. The Today date navigation and manual run-entry workflow below were approved through iterative review and are now implemented for testing.
 
+## Approved T01 training-plan contract — November 13, 2026
+
+The owner approved the [JSON 1.1 contract](schemas/training-plan/README.md), its
+Draft 2020-12 schema, Ajv validation, exact original text/provenance, and reproducible
+schema-generated TypeScript. The final refinements restrict structured progression
+to repetitions/sets within one workout, allow independent-only same-day sessions
+without inferring a main, and represent attached and explicitly ordered recovery
+without implicit intervals. Broader progression and unsupported structures remain
+verbatim text with review warnings. The schema and semantic validator together
+define validation; no active plan or stored data is changed.
+
+Implementation status: **Testing**, pending owner acceptance. T01 includes only the
+contract, validation, types, synthetic fixtures/tests, and necessary build/document
+support. Existing application UI, SQLite, saved profiles and Garmin are untouched.
+Verification and compatibility limits are recorded in the contract documentation.
+
 ## Product principles
 
 - Local-first and private: no account, cloud backend, telemetry, or social layer.

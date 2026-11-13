@@ -139,6 +139,11 @@ Source: `src/screens/DataScreen.tsx`, import/backup domain modules.
 
 ## 10. Approved slice verification status
 
+T01 training-plan JSON 1.1 domain contract: **Testing**. The approved contract and
+verification record are in [schemas/training-plan/README.md](schemas/training-plan/README.md).
+This is a domain-only addition with no UI integration or changed screen behavior;
+owner acceptance remains pending. Four-tier workbook parity is not run.
+
 | Component             | Implemented behavior                                                                                    | Status  |
 | --------------------- | ------------------------------------------------------------------------------------------------------- | ------- |
 | Today date navigation | Literal local date, previous/next, horizontal week selector, recorded and missing-data states           | Testing |
