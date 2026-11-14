@@ -301,11 +301,11 @@ mod windows {
     }
 
     impl FitSourceStorage {
-        fn read_inner(&self, source_hash: &str) -> Result<Vec<u8>> {
+        pub(super) fn read_inner(&self, source_hash: &str) -> Result<Vec<u8>> {
             Directory::open(&self.app_local_data, source_hash, false)?.read(source_hash)
         }
 
-        fn store_inner(&self, source_hash: &str, bytes: &[u8]) -> Result<SourceMetadata> {
+        pub(super) fn store_inner(&self, source_hash: &str, bytes: &[u8]) -> Result<SourceMetadata> {
             self.store_with_writer(source_hash, bytes, |file, bytes| file.write_all(bytes))
         }
 
