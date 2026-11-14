@@ -119,7 +119,8 @@ single selection/retrieval, cancellation and safe differentiated errors. Browser
 mode is explicitly unavailable. No automatic network or training mutation.
 Focused rendered tests cover disconnected/connected/restart, busy/disabled,
 empty/error/retry, secret clearing, selection and disconnect confirmation.
-Real Windows keyboard, focus/scaling and owner acceptance evidence remains pending;
+One isolated synthetic browser check exercised keyboard/focus and 680/1360 px
+layouts without horizontal overflow. Packaged Windows keyboard/200% scaling and owner acceptance evidence remain pending;
 this component is not Complete. See DESIGN.md for verification and limitations.
 
 Source: `src/screens/DataScreen.tsx`, import/backup domain modules.

@@ -71,7 +71,9 @@ Strengths:
   Rust-only authentication, explicit five-activity listing and one bounded ZIP/FIT
   retrieval reuse T03. Provider receipts are separate from content identity.
   No snapshot/database migration, confirmed workout, training totals, plan or shoe
-  changes. Native CI and owner real-account/Windows acceptance remain required.
+  changes. Full frontend gate passed (223 tests), final focused checks passed
+  (31 tests), and Windows Rust CI passed (27 native tests). Owner real-account/
+  packaged Windows acceptance remains required.
   Public/commercial distribution is blocked pending Garmin licensing authorization.
   Background sync, history/review and T05/T25/T26 are deferred.
 

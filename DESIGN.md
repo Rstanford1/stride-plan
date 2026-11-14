@@ -31,7 +31,7 @@ Rate limits expose only a parsed Retry-After delay; never automatically retry 42
 Release gate: Personal API is personal-use feasibility only. Public/commercial
 multiuser distribution requires Garmin authorization/licensing review; supplying
 one's own key does not remove this gate. Real-account and Windows native acceptance
-remain owner tasks. Status is In progress, never Complete without acceptance.
+remain owner tasks. Status is Testing, never Complete without acceptance.
 
 T04 implementation and verification record:
 
@@ -91,13 +91,24 @@ T04 implementation and verification record:
   focused frontend checks were rerun after this change (results recorded below).
   Final focused run: 31 tests passed (7 Garmin + 24 T03); TypeScript, formatting
   and Rust formatting passed after the correction.
-  Windows Rust CI results: pending branch push.
-  Rust formatting passed locally. Native compilation/tests are assigned to the
-  existing Windows CI workflow (branch push enabled); local Application Control
-  was already established by T03, so blocked native compilation was not retried.
-- UI evidence: rendered component tests plus inspection of native form controls,
-  existing focus-visible styles and the wrapping input row. Browser/Tauri keyboard,
-  constrained-window and 200% scaling acceptance has not yet been exercised.
+  [Windows Rust CI run 43651263738](https://github.com/Rstanford1/stride-plan/actions/runs/43651263738)
+  completed successfully for implementation commit
+  `5005999e92ea4ca0c5729c095127bfe3210685aa`: frontend build, Rust formatting,
+  `cargo check --locked` and `cargo test --locked` passed. All 27 native tests
+  passed (15 T04 tests, including the real Windows Credential Manager adapter
+  against a random synthetic test identity; 12 preexisting T03/contract tests).
+  Final evidence-only documentation changes do not alter the tested source tree.
+  Rust formatting also passed locally. Local Application Control was already
+  established by T03, so blocked native compilation was not retried.
+- UI evidence: one isolated browser check used only the Garmin component with
+  synthetic mocked commands at a separate origin (no application provider/database).
+  Checked 680×860 and 1360×860 layouts; connected narrow view had equal client and
+  scroll widths (665 px), including wrapped SHA-256 feedback. Keyboard Tab/Space/
+  Enter exercised show/hide, connect and retrieval; focused Connect showed the
+  existing blue 3 px outline. Selection and preserved-source feedback rendered.
+  Screenshot is a local ignored test artifact, not committed. This is browser
+  evidence; packaged Tauri keyboard and actual Windows 200% scaling remain owner
+  acceptance tasks. Empty/error/disabled states are covered by component tests.
 - Owner real-account checklist (use a disposable/empty supported Windows profile,
   never open a newer v5/v6 profile with this main-based build): create key, verify,
   restart and verify saved-key reuse, list recent runs, retrieve one, repeat and
@@ -109,7 +120,8 @@ T04 implementation and verification record:
   confirmation, normalized Garmin catalog, plan/totals/shoe mutations, automatic
   cleanup, portable FIT/receipt backup, multi-account/cloud/hosted credentials,
   public/commercial distribution and T05/T25/T26. No packaging or PR creation.
-  Status: **Testing**, pending native evidence and explicit owner acceptance.
+  Status: **Testing**, with Windows native CI passed; real-account/packaged-runtime
+  verification and explicit owner acceptance remain pending.
 
 Exact T04 changed-file manifest:
 
