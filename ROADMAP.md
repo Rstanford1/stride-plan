@@ -92,4 +92,23 @@ Strengths:
   Only T02 is authorized; native normalization and complete backup remain deferred.
 
 T02 verification and native-build limitation are recorded in DESIGN.md. Owner
-acceptance remains pending; T03 and later tasks have not started.
+acceptance remains pending. The following record supersedes the historical
+statements that T03 has not started.
+
+- T03 secure native FIT source storage: **Testing; native verification blocked**
+  on `codex/t03-native-fit-storage`, isolated from `origin/main` `6fdde51` after
+  T02 PR #6 merged. Rust owns bounded, content-addressed, verified immutable
+  storage and reads; the minimal frontend adapter preserves source references.
+  Broad frontend filesystem access is removed. Original names stay in existing
+  records; unavailable source bytes never gain verified status. No snapshot,
+  plan-contract or historical-record migration and no source deletion.
+- Focused frontend verification: 71 tests in 5 files pass. Final `pnpm verify`
+  passed once (217 tests in 16 files, formatting, types and frontend build).
+  Rust formatting passed. Rust native tests were attempted once and blocked before execution
+  by Windows Application Control (OS error 4551); no policy changes or repeated
+  native builds. See DESIGN.md for contract, tests and evidence limitations.
+- Owner acceptance, native execution/restart and capability acceptance remain
+  outstanding. Complete portable FIT backup, reconciliation/cleanup, generated
+  bindings and historical migration remain deferred. Development work and real
+  data are untouched. No PR, merge, installer build or T04 work is authorized
+  by this delivery.

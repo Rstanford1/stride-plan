@@ -6,7 +6,8 @@
   "permissions": [
     "core:default",
     "dialog:default",
-    "fs:default",
+    "allow-store-fit-source",
+    "allow-read-fit-source",
     "sql:default",
     "sql:allow-execute",
     "sql:allow-select"

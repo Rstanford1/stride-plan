@@ -313,3 +313,112 @@ storage migration, and no schema version is rewritten to pretend it occurred.
   was accessed for testing or modified.
 - Reset Demo behavior is unchanged and remains a separate follow-up. No T03 work,
   dependencies, new PR or merge is included. User acceptance remains pending.
+
+### T03 native FIT source storage — November 14, 2026
+
+Approved scope: the owner's T03 implementation request authorizes the narrow
+native store described by the Phase 0 roadmap and ADR-05/06/07. No UI redesign,
+parser replacement, database migration, Garmin work, or source deletion.
+Base: `origin/main` at `6fdde51`, including T01 and merged T02 PR #6.
+Branch/worktree: `codex/t03-native-fit-storage`, `work/t03-native-fit-storage`.
+
+Contract and ownership:
+
+- Rust owns `store_fit_source` and `read_fit_source`, each accepting a single
+  version-1 request. Store takes `sourceHash` and original byte array; read takes
+  only `sourceHash`. Unknown request fields and unsupported versions fail.
+- Native code validates lowercase 64-character SHA-256 IDs, computes the actual
+  SHA-256, checks the `.FIT` signature and enforces a 32 MiB object bound. Full
+  decoding/CRC validation stays with the existing FitDecoder. Native work runs
+  on blocking workers, not the webview thread.
+- The root comes exclusively from Tauri's AppLocalData resolver. Existing keys
+  remain `fit-source:<hash>` and `fit-sources/<first-two>/<hash>.fit`; relative
+  paths are metadata, never accepted as filesystem instructions. Original names
+  and import timestamps remain in the existing source record, unmodified.
+- Windows opens and checks every ancestor without following reparse points and
+  holds directory handles denying replacement/write access during operations.
+  Final objects must be regular files, without reparse points or extra hard
+  links. No frontend-controlled path, arbitrary read/write/delete API, or
+  final-object cleanup is exposed. Reads never create storage directories.
+- Store creates a unique file on the destination volume with create-new
+  semantics, writes and syncs it, rereads and compares exact bytes/hash, closes
+  it, then publishes with MoveFileExW WRITE_THROUGH, without REPLACE_EXISTING
+  or cross-volume COPY_ALLOWED. It rereads the final object before success.
+  Existing identical bytes return the same metadata; conflicting content is
+  retained and rejected. A competing publisher is reverified, never overwritten.
+- Only this operation's temporary file is removed, with explicit cleanup errors.
+  A terminated operation may leave a harmless staging file or a complete orphan
+  object. Neither establishes a saved snapshot reference; later retries verify
+  finalized objects from disk. Staged leftovers and final orphans are retained;
+  inventory/reconciliation and automatic cleanup are deferred.
+- Versioned metadata reports source ID/hash, byte length and relative key.
+  Typed errors distinguish invalid ID/version/type/size/hash, conflict,
+  missing/corrupt data, unsafe paths, inaccessible storage, write failure and
+  cleanup failure. Raw OS paths/errors never enter command results or UI errors.
+- The app manifest enrolls both commands in Tauri's capability enforcement and
+  grants only them to the local `main` window. Broad `fs:default` and filesystem
+  plugin registration are removed. Existing unrelated dialog/SQL permissions
+  and CSP are retained; no remote origin is granted native access. Tauri's
+  [capability rules](https://v2.tauri.app/security/capabilities/) govern command
+  enrollment. Publication follows Microsoft's
+  [MoveFileExW contract](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-movefileexw).
+
+Compatibility and evidence:
+
+- The FitSourceStore boundary and shared import controller/decoder stay intact.
+  Browser storage remains explicitly unavailable. Native read errors are typed
+  exceptions (including missing); T02 already handles them conservatively.
+  Restore previews now also clear stale verification/path metadata on any
+  failed byte check. No existing recording is scanned, moved or rewritten.
+- Existing supported source records retain the same IDs, filenames and paths.
+  Objects over the new bound or unsafe linked objects fail explicitly and are
+  retained. JSON snapshot versions and training-plan JSON 1.1 are unchanged.
+  Legacy JSON still excludes FIT bytes; complete portable source backups,
+  historical migration and normalized storage remain separate tasks.
+- The small TypeScript wire declarations are handwritten and checked against a
+  shared synthetic JSON fixture also consumed by Rust serde round-trip tests.
+  This avoids adding an unverified binding-generator dependency in T03; full
+  generated bindings remain deferred. No generated output is committed.
+- Focused frontend tests: 71 passed across 5 files (adapter, import service,
+  controller, decoder and T02 source/restore safety). Native tests cover exact
+  bytes/hash, idempotence/reopen, conflict, short/failed/interrupted writes,
+  competing publication, missing/corrupt/inaccessible files, invalid IDs and
+  versions, bounds, junction/hard-link escape, guarded-directory replacement,
+  cleanup failure and serde compatibility using synthetic temporary profiles.
+- Native command attempted once:
+  `cargo test --manifest-path src-tauri/Cargo.toml fit_source --offline`.
+  Windows Application Control blocked the `cookie` dependency build script and
+  procedural-macro DLLs (OS error 4551), before project compilation/tests.
+  Native tests and capability enforcement are **not executed/verified**; code
+  inspection and frontend mocks are not presented as native acceptance. No
+  security policy change, installer build, browser UI test or real-profile launch.
+- Final gate: `pnpm.cmd verify` passed once, including generated-plan type
+  consistency, formatting, TypeScript, all 217 tests in 16 files and production
+  frontend build. The existing Vite large-chunk advisory remains. Rust
+  `cargo fmt --manifest-path src-tauri/Cargo.toml --check` and `git diff --check`
+  passed. These are not a native compilation or execution result.
+- Status: **Testing**, with native verification blocked and owner acceptance
+  pending. Native application/restart and physical power-loss evidence remain
+  outstanding. Existing development commits, dirty files and untracked files
+  are preserved in their original worktree; no real application data was read
+  or modified. T04 is not started.
+
+Exact T03 changed-file manifest:
+
+- `.gitignore`
+- `DESIGN.md`
+- `ROADMAP.md`
+- `UI_INVENTORY.md`
+- `src-tauri/Cargo.toml`
+- `src-tauri/Cargo.lock`
+- `src-tauri/build.rs`
+- `src-tauri/capabilities/default.json`
+- `src-tauri/src/lib.rs`
+- `src-tauri/src/fit_source_commands.rs`
+- `src-tauri/src/fit_source_store.rs`
+- `src-tauri/tests/fit-source-wire.json`
+- `src/data/fit-source-contract.ts`
+- `src/data/fit-source-store.ts`
+- `src/data/fit-source-store.test.ts`
+- `src/data/fit-import-service.test.ts`
+- `src/data/restore.ts`

@@ -1,0 +1,39 @@
+{
+  "store": {
+    "contractVersion": 1,
+    "sourceHash": "a2cf9b5af808788a3b8de5461e845b20ef519cc22fb125b87cd01d8a4d6b3037",
+    "bytes": [
+      49, 50, 51, 52, 53, 54, 55, 56, 46, 70, 73, 84, 115, 121, 110, 116, 104,
+      101, 116, 105, 99
+    ]
+  },
+  "read": {
+    "contractVersion": 1,
+    "sourceHash": "a2cf9b5af808788a3b8de5461e845b20ef519cc22fb125b87cd01d8a4d6b3037"
+  },
+  "metadata": {
+    "contractVersion": 1,
+    "sourceId": "fit-source:a2cf9b5af808788a3b8de5461e845b20ef519cc22fb125b87cd01d8a4d6b3037",
+    "sourceHash": "a2cf9b5af808788a3b8de5461e845b20ef519cc22fb125b87cd01d8a4d6b3037",
+    "byteLength": 21,
+    "storedRelativePath": "fit-sources/a2/a2cf9b5af808788a3b8de5461e845b20ef519cc22fb125b87cd01d8a4d6b3037.fit"
+  },
+  "response": {
+    "source": {
+      "contractVersion": 1,
+      "sourceId": "fit-source:a2cf9b5af808788a3b8de5461e845b20ef519cc22fb125b87cd01d8a4d6b3037",
+      "sourceHash": "a2cf9b5af808788a3b8de5461e845b20ef519cc22fb125b87cd01d8a4d6b3037",
+      "byteLength": 21,
+      "storedRelativePath": "fit-sources/a2/a2cf9b5af808788a3b8de5461e845b20ef519cc22fb125b87cd01d8a4d6b3037.fit"
+    },
+    "bytes": [
+      49, 50, 51, 52, 53, 54, 55, 56, 46, 70, 73, 84, 115, 121, 110, 116, 104,
+      101, 116, 105, 99
+    ]
+  },
+  "error": {
+    "contractVersion": 1,
+    "code": "missing",
+    "message": "Saved FIT source is missing."
+  }
+}
