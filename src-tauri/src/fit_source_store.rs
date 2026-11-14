@@ -305,7 +305,11 @@ mod windows {
             Directory::open(&self.app_local_data, source_hash, false)?.read(source_hash)
         }
 
-        pub(super) fn store_inner(&self, source_hash: &str, bytes: &[u8]) -> Result<SourceMetadata> {
+        pub(super) fn store_inner(
+            &self,
+            source_hash: &str,
+            bytes: &[u8],
+        ) -> Result<SourceMetadata> { 
             self.store_with_writer(source_hash, bytes, |file, bytes| file.write_all(bytes))
         }
 
