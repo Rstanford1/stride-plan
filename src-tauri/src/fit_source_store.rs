@@ -309,7 +309,7 @@ mod windows {
             &self,
             source_hash: &str,
             bytes: &[u8],
-        ) -> Result<SourceMetadata> { 
+        ) -> Result<SourceMetadata> {
             self.store_with_writer(source_hash, bytes, |file, bytes| file.write_all(bytes))
         }
 
