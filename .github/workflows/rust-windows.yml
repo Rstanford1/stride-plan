@@ -1,0 +1,63 @@
+name: Rust Windows checks
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src-tauri/**"
+      - ".github/workflows/rust-windows.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src-tauri/**"
+      - ".github/workflows/rust-windows.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    name: Rust compile and tests
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build frontend assets
+        run: pnpm build
+
+      - name: Check Rust formatting
+        working-directory: src-tauri
+        run: cargo fmt --all -- --check
+
+      - name: Compile Rust
+        working-directory: src-tauri
+        run: cargo check --locked
+
+      - name: Run Rust tests
+        working-directory: src-tauri
+        run: cargo test --locked
