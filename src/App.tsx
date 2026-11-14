@@ -29,7 +29,7 @@ const nav = [
 ] as const;
 
 export default function App() {
-  const { ready } = useAppData();
+  const { ready, recoveryError, retryLoading } = useAppData();
   const [screen, setScreen] = useState<Screen>("today");
   const [collapsed, setCollapsed] = useState(false);
   useEffect(() => {
@@ -40,6 +40,37 @@ export default function App() {
     window.addEventListener("keydown", listener);
     return () => window.removeEventListener("keydown", listener);
   }, []);
+  if (recoveryError)
+    return (
+      <main className="screen" id="main-content">
+        <section
+          className="panel"
+          role="alert"
+          aria-labelledby="recovery-title"
+        >
+          <h1 id="recovery-title">Your saved data needs attention</h1>
+          <p>
+            <strong>
+              {recoveryError.kind === "unsupported"
+                ? "Unsupported data version"
+                : recoveryError.kind === "corrupted"
+                  ? "Invalid saved data"
+                  : "Storage unavailable"}
+            </strong>
+          </p>
+          <p>{recoveryError.message}</p>
+          <p>
+            Application writes are disabled. Your stored data and any safety
+            copies are retained. Do not reset or delete your profile. Use the
+            application version that created it, or correct the storage problem
+            before retrying.
+          </p>
+          <button className="button primary" onClick={retryLoading}>
+            Retry loading
+          </button>
+        </section>
+      </main>
+    );
   if (!ready)
     return (
       <div className="loading">

@@ -33,8 +33,6 @@ describe("portable backup", () => {
   });
 
   it("rejects incomplete data", () => {
-    expect(() => parseBackup('{"schemaVersion":1}')).toThrow(
-      "Invalid Stride Plan backup",
-    );
+    expect(() => parseBackup('{"schemaVersion":1}')).toThrow("unsupported");
   });
 });

@@ -12,19 +12,26 @@ import { useAppData } from "../data/app-context";
 import { validatePlanRows, type ImportValidation } from "../domain/imports";
 import { reviseSession } from "../domain/rules";
 import type { AppData } from "../domain/types";
-import { parseBackup, serializeBackup } from "../domain/backup";
+import { serializeBackup } from "../domain/backup";
 import { FitFileParserDecoder } from "../domain/fit-decoder";
 import { runFitImportBatch } from "../data/fit-import-controller";
 import { createFitSourceStore } from "../data/fit-source-store";
+import { inspectLegacyRestore, type RestorePreview } from "../data/restore";
 
 export function DataScreen() {
-  const { data, replaceData, resetDemo, updateSettings } = useAppData();
+  const { data, replaceData, resetDemo, updateSettings, restoreBackup } =
+    useAppData();
   const [preview, setPreview] = useState<ImportValidation | null>(null);
   const [importSource, setImportSource] = useState<{
     name: string;
     fingerprint: string;
   } | null>(null);
   const [message, setMessage] = useState("");
+  const [restorePreview, setRestorePreview] = useState<RestorePreview | null>(
+    null,
+  );
+  const [restoring, setRestoring] = useState(false);
+  const restoreDialog = useRef<HTMLDialogElement>(null);
   const restoreInput = useRef<HTMLInputElement>(null);
   const fitImportController = useRef<AbortController | null>(null);
   const [fitImportProgress, setFitImportProgress] = useState<{
@@ -204,12 +211,49 @@ export function DataScreen() {
     setPreview(null);
   }
   async function restore(file: File) {
+    setMessage("");
+    setRestoring(true);
     try {
-      const parsed = parseBackup(await file.text());
-      replaceData(parsed);
-      setMessage("Backup restored. All data remains local.");
-    } catch {
-      setMessage("That file is not a valid Stride Plan backup.");
+      const inspected = await inspectLegacyRestore(
+        await file.text(),
+        createFitSourceStore(),
+      );
+      setRestorePreview(inspected);
+      restoreDialog.current?.showModal();
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "The backup could not be read. Current data is unchanged.",
+      );
+    } finally {
+      setRestoring(false);
+      if (restoreInput.current) restoreInput.current.value = "";
+    }
+  }
+  function cancelRestore() {
+    if (restoring) return;
+    restoreDialog.current?.close();
+    setRestorePreview(null);
+  }
+  async function confirmRestore() {
+    if (!restorePreview || restoring) return;
+    setRestoring(true);
+    try {
+      await restoreBackup(restorePreview.raw);
+      restoreDialog.current?.close();
+      setRestorePreview(null);
+      setMessage(
+        "Legacy snapshot restored and saved. The previous snapshot is retained in a verified local safety copy. Original FIT bytes were not included in the JSON backup.",
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Restore failed. The previous snapshot is retained.",
+      );
+    } finally {
+      setRestoring(false);
     }
   }
 
@@ -345,10 +389,11 @@ export function DataScreen() {
             <Download />
           </div>
           <div>
-            <h2>Portable backup</h2>
+            <h2>Legacy JSON backup</h2>
             <p>
-              Export the complete plan, activity, journal, revision, and
-              settings database.
+              Export plan, activity, journal, revision and settings records.
+              This is an incomplete backup: it does not contain original FIT
+              bytes or newer native records.
             </p>
             <button
               className="button secondary"
@@ -370,11 +415,12 @@ export function DataScreen() {
           <div>
             <h2>Restore</h2>
             <p>
-              Restore from a portable backup. The file is validated before
-              replacing local data.
+              Validate and preview a legacy JSON snapshot before confirming
+              replacement. Original FIT files must already be preserved locally.
             </p>
             <button
               className="button secondary"
+              disabled={restoring || fitImportProgress !== null}
               onClick={() => restoreInput.current?.click()}
             >
               <ArchiveRestore size={17} /> Restore backup
@@ -382,6 +428,7 @@ export function DataScreen() {
             <input
               ref={restoreInput}
               hidden
+              aria-label="Legacy JSON backup file"
               type="file"
               accept=".json"
               onChange={(event) =>
@@ -391,6 +438,81 @@ export function DataScreen() {
           </div>
         </section>
       </div>
+      <dialog
+        ref={restoreDialog}
+        className="modal"
+        aria-labelledby="restore-title"
+        onCancel={(event) => {
+          event.preventDefault();
+          cancelRestore();
+        }}
+      >
+        <div className="modal-header">
+          <h2 id="restore-title">Replace local data?</h2>
+        </div>
+        {restorePreview && (
+          <div className="form-grid">
+            <div className="full">
+              <p>
+                Legacy snapshot version {restorePreview.version}:{" "}
+                {restorePreview.data.sessions.length} sessions,{" "}
+                {restorePreview.data.activities.length} activities,{" "}
+                {restorePreview.data.journals.length} journals,{" "}
+                {restorePreview.data.shoes.length} shoes,{" "}
+                {restorePreview.data.fitSources.length} FIT sources.
+              </p>
+              <p>
+                Original prescriptions and revisions are included. This
+                incomplete JSON backup cannot restore original FIT bytes or
+                newer native records.
+              </p>
+              <p>
+                Replacement removes the current records from the active plan. A
+                verified local safety copy of the current snapshot will be
+                retained before replacement.
+              </p>
+              {restorePreview.missingSources.length > 0 && (
+                <div role="alert">
+                  <p>
+                    Restore blocked. These original FIT files are missing or
+                    cannot be verified. Recover the preserved files using a
+                    compatible application, then choose this backup again.
+                  </p>
+                  <ul>
+                    {restorePreview.missingSources.map((name, index) => (
+                      <li key={index}>{name}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <p role="status">
+                {restoring
+                  ? "Verifying the safety copy and saving…"
+                  : "Current data has not been replaced."}
+              </p>
+              <div className="button-row">
+                <button
+                  className="button secondary"
+                  autoFocus
+                  disabled={restoring}
+                  onClick={cancelRestore}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="button primary"
+                  disabled={
+                    restoring || restorePreview.missingSources.length > 0
+                  }
+                  onClick={() => void confirmRestore()}
+                >
+                  Replace local data
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </dialog>
       {preview && (
         <section className="panel import-preview">
           <div className="section-heading">
