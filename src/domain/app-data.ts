@@ -1,7 +1,9 @@
-import { createInitialData } from "./seed";
+import { DataIntegrityError, validateSnapshot } from "./snapshot-validation";
 import type { AppData } from "./types";
 
-export function upgradeAppData(value: AppData): AppData {
+export function upgradeAppData(input: unknown): AppData {
+  validateSnapshot(input);
+  const value = input as AppData;
   if (
     value.schemaVersion === 4 &&
     Array.isArray(value.shoes) &&
@@ -50,5 +52,8 @@ export function upgradeAppData(value: AppData): AppData {
       fitImportBatches: [],
     };
   }
-  return createInitialData();
+  throw new DataIntegrityError(
+    "unsupported",
+    "No supported migration exists for this snapshot.",
+  );
 }

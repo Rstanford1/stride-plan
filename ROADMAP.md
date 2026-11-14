@@ -75,7 +75,7 @@ Strengths:
   files and untracked Phase 0 documents/archive remain preserved separately, with
   a verified local recovery copy. They were not incorporated into T01. Before T02,
   explicitly reconcile the version-6 development baseline; do not run the older
-  main application against a newer profile. T02 has not started.
+  main application against a newer profile. T02 now proceeds separately from main with explicit v5/v6 rejection (see the T02 record below).
 
 - Phase 1 architecture/application audit: **Complete on `docs/ui-ux-audit`**.
 - Phase 2 UI inventory: **Complete on `docs/ui-ux-audit`**.
@@ -85,3 +85,11 @@ Strengths:
 - Approved interface: issue-first planned-session summary, imported-source rail, compact reversible suggestions, easy-run and structured-workout disclosure levels, optional pace/segment editing, contextual decisions, roles/bundles, activity/segment shoes, autosaved drafts, atomic confirmation, and read-only reopening with revisions.
 - Supporting engineering retained from the later investigation: import batches, exact/possible duplicate explanations, verified source preservation, typed decode/persistence failures, cancellation/retry, deterministic matching, and idempotent confirmation.
 - Implementation has not started. The approved specification, relevant tests, verification evidence, and explicit user acceptance remain required before the component can advance beyond Testing or become Complete.
+
+- T02 fail-closed loading and staged legacy restore: **Testing** on
+  `codex/t02-safe-loading`, isolated from current `origin/main` bdf7519 after T01.
+  v2/v3/v4 supported; v5/v6 rejected without writes. Development work is preserved.
+  Only T02 is authorized; native normalization and complete backup remain deferred.
+
+T02 verification and native-build limitation are recorded in DESIGN.md. Owner
+acceptance remains pending; T03 and later tasks have not started.
