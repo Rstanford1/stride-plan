@@ -1,0 +1,88 @@
+{
+  "schemaVersion": "1.1",
+  "requiredFeatures": [],
+  "manifest": {
+    "planId": "synthetic-plan",
+    "versionId": "synthetic-version-1",
+    "title": "Synthetic contract fixture; not a coach plan",
+    "units": {
+      "distance": "mi",
+      "duration": "min",
+      "pace": "s/mi"
+    },
+    "generator": {
+      "name": "synthetic-contract-fixture",
+      "version": "1"
+    },
+    "coachText": []
+  },
+  "sources": [
+    {
+      "id": "synthetic-source",
+      "kind": "authored"
+    }
+  ],
+  "provenance": [
+    {
+      "path": "",
+      "sourceId": "synthetic-source",
+      "location": {
+        "kind": "authored"
+      }
+    }
+  ],
+  "calendar": {
+    "startDate": "2026-11-16",
+    "endDate": "2026-11-17",
+    "weekStartsOn": 1
+  },
+  "phases": [],
+  "weeks": [
+    {
+      "id": "week-1",
+      "number": 1,
+      "startDate": "2026-11-16",
+      "endDate": "2026-11-17",
+      "coachText": [],
+      "days": [
+        {
+          "id": "day-1",
+          "date": "2026-11-16",
+          "kind": "training",
+          "coachText": [],
+          "sessions": [
+            {
+              "id": "session-1",
+              "title": "Synthetic independent run",
+              "runType": "easy",
+              "role": "independent",
+              "participation": "required",
+              "completionClass": "core",
+              "duration": {
+                "value": 30,
+                "unit": "min"
+              },
+              "coachText": [
+                "  Synthetic easy effort.\r\nKeep this exact text.\n"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "day-2",
+          "date": "2026-11-17",
+          "kind": "rest",
+          "restDistance": {
+            "value": 0,
+            "unit": "mi"
+          },
+          "sessions": [],
+          "coachText": ["Rest"]
+        }
+      ]
+    }
+  ],
+  "paceReferences": [],
+  "progressions": [],
+  "reviewNotes": []
+}

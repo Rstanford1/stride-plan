@@ -1,0 +1,1281 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:stride-plan:training-plan:1.1",
+  "title": "TrainingPlan",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.1"
+    },
+    "requiredFeatures": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "manifest": {
+      "$ref": "#/$defs/Manifest"
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Source"
+      },
+      "minItems": 1
+    },
+    "provenance": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Provenance"
+      },
+      "minItems": 1
+    },
+    "calendar": {
+      "$ref": "#/$defs/Calendar"
+    },
+    "phases": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Phase"
+      },
+      "minItems": 0
+    },
+    "weeks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Week"
+      },
+      "minItems": 1
+    },
+    "paceReferences": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/PaceReference"
+      },
+      "minItems": 0
+    },
+    "progressions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Progression"
+      },
+      "minItems": 0
+    },
+    "reviewNotes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ReviewNote"
+      },
+      "minItems": 0
+    },
+    "extensions": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+      },
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "requiredFeatures",
+    "manifest",
+    "sources",
+    "provenance",
+    "calendar",
+    "phases",
+    "weeks",
+    "paceReferences",
+    "progressions",
+    "reviewNotes"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "Id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "Date": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "Quantity": {
+      "title": "Quantity",
+      "oneOf": [
+        {
+          "title": "ExactQuantity",
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1000000000
+            },
+            "unit": {
+              "type": "string",
+              "enum": ["m", "km", "mi", "s", "min"]
+            },
+            "extensions": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+              },
+              "additionalProperties": true
+            }
+          },
+          "required": ["value", "unit"],
+          "additionalProperties": true
+        },
+        {
+          "title": "RangeQuantity",
+          "type": "object",
+          "properties": {
+            "min": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1000000000
+            },
+            "max": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1000000000
+            },
+            "unit": {
+              "type": "string",
+              "enum": ["m", "km", "mi", "s", "min"]
+            },
+            "extensions": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+              },
+              "additionalProperties": true
+            }
+          },
+          "required": ["min", "max", "unit"],
+          "additionalProperties": true
+        }
+      ]
+    },
+    "PaceTarget": {
+      "title": "PaceTarget",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "pace",
+          "type": "string"
+        },
+        "min": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000000000
+        },
+        "max": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000000000
+        },
+        "unit": {
+          "type": "string",
+          "enum": ["s/mi", "s/km"]
+        },
+        "extensions": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": ["kind", "min", "max", "unit"],
+      "additionalProperties": true
+    },
+    "Target": {
+      "title": "Target",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/PaceTarget"
+        },
+        {
+          "title": "ReferenceTarget",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "pace-reference",
+              "type": "string"
+            },
+            "referenceId": {
+              "$ref": "#/$defs/Id"
+            },
+            "extensions": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+              },
+              "additionalProperties": true
+            }
+          },
+          "required": ["kind", "referenceId"],
+          "additionalProperties": true
+        },
+        {
+          "title": "EffortTarget",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "effort",
+              "type": "string"
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1
+            },
+            "extensions": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+              },
+              "additionalProperties": true
+            }
+          },
+          "required": ["kind", "text"],
+          "additionalProperties": true
+        }
+      ]
+    },
+    "RecoveryInterval": {
+      "title": "RecoveryInterval",
+      "type": "object",
+      "properties": {
+        "quantity": {
+          "$ref": "#/$defs/Quantity"
+        },
+        "movement": {
+          "type": "string",
+          "enum": ["jog", "walk", "standing", "float", "unspecified"]
+        },
+        "coachText": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 0
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Target"
+          },
+          "minItems": 0
+        },
+        "extensions": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": ["quantity", "movement", "coachText"],
+      "additionalProperties": true
+    },
+    "Recovery": {
+      "title": "Recovery",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/RecoveryInterval"
+        },
+        {
+          "title": "RecoverySequence",
+          "type": "object",
+          "properties": {
+            "components": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/RecoveryInterval"
+              },
+              "minItems": 1
+            },
+            "coachText": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 0
+            },
+            "extensions": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+              },
+              "additionalProperties": true
+            }
+          },
+          "required": ["components", "coachText"],
+          "additionalProperties": true
+        }
+      ]
+    },
+    "Manifest": {
+      "title": "Manifest",
+      "type": "object",
+      "properties": {
+        "planId": {
+          "$ref": "#/$defs/Id"
+        },
+        "versionId": {
+          "$ref": "#/$defs/Id"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "units": {
+          "title": "Units",
+          "type": "object",
+          "properties": {
+            "distance": {
+              "type": "string",
+              "enum": ["mi", "km", "m"]
+            },
+            "duration": {
+              "type": "string",
+              "enum": ["s", "min"]
+            },
+            "pace": {
+              "type": "string",
+              "enum": ["s/mi", "s/km"]
+            },
+            "extensions": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+              },
+              "additionalProperties": true
+            }
+          },
+          "required": ["distance", "duration", "pace"],
+          "additionalProperties": true
+        },
+        "generator": {
+          "title": "Generator",
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "generatedAt": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$"
+            },
+            "extensions": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+              },
+              "additionalProperties": true
+            }
+          },
+          "required": ["name", "version"],
+          "additionalProperties": true
+        },
+        "coachText": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 0
+        },
+        "parentVersionId": {
+          "$ref": "#/$defs/Id"
+        },
+        "mileageTier": {
+          "type": "string",
+          "minLength": 1
+        },
+        "author": {
+          "type": "string",
+          "minLength": 1
+        },
+        "extensions": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "planId",
+        "versionId",
+        "title",
+        "units",
+        "generator",
+        "coachText"
+      ],
+      "additionalProperties": true
+    },
+    "Source": {
+      "title": "Source",
+      "oneOf": [
+        {
+          "title": "FileSource",
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/Id"
+            },
+            "kind": {
+              "type": "string",
+              "enum": ["workbook", "json"]
+            },
+            "fileName": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "dateSystem": {
+              "type": "string",
+              "enum": ["1900", "1904"]
+            },
+            "extensions": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+              },
+              "additionalProperties": true
+            }
+          },
+          "required": ["id", "kind", "fileName", "sha256"],
+          "additionalProperties": true
+        },
+        {
+          "title": "AuthoredSource",
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/Id"
+            },
+            "kind": {
+              "type": "string",
+              "const": "authored"
+            },
+            "extensions": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+              },
+              "additionalProperties": true
+            }
+          },
+          "required": ["id", "kind"],
+          "additionalProperties": true
+        }
+      ]
+    },
+    "Location": {
+      "title": "Location",
+      "oneOf": [
+        {
+          "title": "CellLocation",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "cell"
+            },
+            "sheet": {
+              "type": "string",
+              "minLength": 1
+            },
+            "cell": {
+              "type": "string",
+              "pattern": "^[A-Z]{1,3}[1-9][0-9]{0,6}$"
+            },
+            "extensions": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+              },
+              "additionalProperties": true
+            }
+          },
+          "required": ["kind", "sheet", "cell"],
+          "additionalProperties": true
+        },
+        {
+          "title": "JsonLocation",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "json"
+            },
+            "pointer": {
+              "type": "string"
+            },
+            "extensions": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+              },
+              "additionalProperties": true
+            }
+          },
+          "required": ["kind", "pointer"],
+          "additionalProperties": true
+        },
+        {
+          "title": "AuthoredLocation",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "authored"
+            },
+            "extensions": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+              },
+              "additionalProperties": true
+            }
+          },
+          "required": ["kind"],
+          "additionalProperties": true
+        }
+      ]
+    },
+    "Provenance": {
+      "title": "Provenance",
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "sourceId": {
+          "$ref": "#/$defs/Id"
+        },
+        "location": {
+          "$ref": "#/$defs/Location"
+        },
+        "rawValue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "formattedText": {
+          "type": "string"
+        },
+        "formula": {
+          "type": "string"
+        },
+        "extensions": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": ["path", "sourceId", "location"],
+      "additionalProperties": true
+    },
+    "Calendar": {
+      "title": "Calendar",
+      "type": "object",
+      "properties": {
+        "startDate": {
+          "$ref": "#/$defs/Date"
+        },
+        "endDate": {
+          "$ref": "#/$defs/Date"
+        },
+        "weekStartsOn": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 7
+        },
+        "extensions": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": ["startDate", "endDate", "weekStartsOn"],
+      "additionalProperties": true
+    },
+    "Phase": {
+      "title": "Phase",
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "coachText": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 0
+        },
+        "span": {
+          "oneOf": [
+            {
+              "title": "DateSpan",
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "dates"
+                },
+                "startDate": {
+                  "$ref": "#/$defs/Date"
+                },
+                "endDate": {
+                  "$ref": "#/$defs/Date"
+                },
+                "extensions": {
+                  "type": "object",
+                  "propertyNames": {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+                  },
+                  "additionalProperties": true
+                }
+              },
+              "required": ["kind", "startDate", "endDate"],
+              "additionalProperties": true
+            },
+            {
+              "title": "WeekSpan",
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "weeks"
+                },
+                "weekIds": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/Id"
+                  },
+                  "minItems": 1
+                },
+                "extensions": {
+                  "type": "object",
+                  "propertyNames": {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+                  },
+                  "additionalProperties": true
+                }
+              },
+              "required": ["kind", "weekIds"],
+              "additionalProperties": true
+            }
+          ]
+        },
+        "extensions": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": ["id", "label", "coachText"],
+      "additionalProperties": true
+    },
+    "Week": {
+      "title": "Week",
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "number": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "startDate": {
+          "$ref": "#/$defs/Date"
+        },
+        "endDate": {
+          "$ref": "#/$defs/Date"
+        },
+        "days": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Day"
+          },
+          "minItems": 1
+        },
+        "coachText": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 0
+        },
+        "coreTarget": {
+          "$ref": "#/$defs/Quantity"
+        },
+        "flexibleTarget": {
+          "$ref": "#/$defs/Quantity"
+        },
+        "extensions": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": ["id", "number", "startDate", "endDate", "days", "coachText"],
+      "additionalProperties": true
+    },
+    "Day": {
+      "title": "Day",
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "date": {
+          "$ref": "#/$defs/Date"
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["training", "rest", "unspecified"]
+        },
+        "sessions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Session"
+          },
+          "minItems": 0
+        },
+        "coachText": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 0
+        },
+        "phaseIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Id"
+          },
+          "minItems": 0
+        },
+        "restDistance": {
+          "$ref": "#/$defs/Quantity"
+        },
+        "extensions": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": ["id", "date", "kind", "sessions", "coachText"],
+      "additionalProperties": true
+    },
+    "Session": {
+      "title": "Session",
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runType": {
+          "type": "string",
+          "enum": [
+            "easy",
+            "recovery",
+            "workout",
+            "long",
+            "race",
+            "other",
+            "unspecified"
+          ]
+        },
+        "role": {
+          "type": "string",
+          "enum": ["main", "double", "independent", "unspecified"]
+        },
+        "participation": {
+          "type": "string",
+          "enum": ["required", "optional"]
+        },
+        "completionClass": {
+          "type": "string",
+          "enum": ["core", "flexible"]
+        },
+        "coachText": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 0
+        },
+        "primarySessionId": {
+          "$ref": "#/$defs/Id"
+        },
+        "distance": {
+          "$ref": "#/$defs/Quantity"
+        },
+        "duration": {
+          "$ref": "#/$defs/Quantity"
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Target"
+          },
+          "minItems": 0
+        },
+        "workout": {
+          "$ref": "#/$defs/Workout"
+        },
+        "extensions": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "runType",
+        "role",
+        "participation",
+        "completionClass",
+        "coachText"
+      ],
+      "additionalProperties": true
+    },
+    "Workout": {
+      "title": "Workout",
+      "type": "object",
+      "properties": {
+        "structureStatus": {
+          "type": "string",
+          "enum": ["complete", "partial", "unstructured"]
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Block"
+          },
+          "minItems": 0
+        },
+        "extensions": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": ["structureStatus", "blocks"],
+      "additionalProperties": true
+    },
+    "Block": {
+      "title": "Block",
+      "oneOf": [
+        {
+          "title": "ExerciseBlock",
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/Id"
+            },
+            "role": {
+              "type": "string",
+              "enum": ["warmup", "work", "cooldown", "strides", "other"]
+            },
+            "sets": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/WorkoutSet"
+              },
+              "minItems": 1
+            },
+            "coachText": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 0
+            },
+            "recoveryAfter": {
+              "$ref": "#/$defs/Recovery"
+            },
+            "extensions": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+              },
+              "additionalProperties": true
+            }
+          },
+          "required": ["id", "role", "sets", "coachText"],
+          "additionalProperties": true
+        },
+        {
+          "title": "RecoveryBlock",
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/Id"
+            },
+            "role": {
+              "type": "string",
+              "const": "recovery"
+            },
+            "afterId": {
+              "$ref": "#/$defs/Id"
+            },
+            "recovery": {
+              "$ref": "#/$defs/Recovery"
+            },
+            "coachText": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 0
+            },
+            "extensions": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+              },
+              "additionalProperties": true
+            }
+          },
+          "required": ["id", "role", "afterId", "recovery", "coachText"],
+          "additionalProperties": true
+        }
+      ]
+    },
+    "WorkoutSet": {
+      "title": "WorkoutSet",
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "index": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "repetitions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Repetition"
+          },
+          "minItems": 1
+        },
+        "coachText": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 0
+        },
+        "quantity": {
+          "$ref": "#/$defs/Quantity"
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Target"
+          },
+          "minItems": 0
+        },
+        "hammerRepetitionIndices": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "uniqueItems": true
+        },
+        "recoveryAfter": {
+          "$ref": "#/$defs/Recovery"
+        },
+        "extensions": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": ["id", "index", "repetitions", "coachText"],
+      "additionalProperties": true
+    },
+    "Repetition": {
+      "title": "Repetition",
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "index": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "coachText": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 0
+        },
+        "quantity": {
+          "$ref": "#/$defs/Quantity"
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Target"
+          },
+          "minItems": 0
+        },
+        "recoveryAfter": {
+          "$ref": "#/$defs/Recovery"
+        },
+        "extensions": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": ["id", "index", "coachText"],
+      "additionalProperties": true
+    },
+    "PaceReference": {
+      "title": "PaceReference",
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["zone", "race", "coach"]
+        },
+        "coachText": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 0
+        },
+        "zone": {
+          "type": "string",
+          "enum": ["easy", "steady", "threshold", "interval", "repetition"]
+        },
+        "raceDistance": {
+          "$ref": "#/$defs/Quantity"
+        },
+        "pace": {
+          "$ref": "#/$defs/PaceTarget"
+        },
+        "extensions": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": ["id", "label", "kind", "coachText"],
+      "additionalProperties": true
+    },
+    "Progression": {
+      "title": "Progression",
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["set", "repetition"]
+        },
+        "workoutSessionId": {
+          "$ref": "#/$defs/Id"
+        },
+        "sequence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Id"
+          },
+          "minItems": 2,
+          "uniqueItems": true
+        },
+        "coachText": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 0
+        },
+        "parameters": {
+          "title": "ProgressionParameters",
+          "type": "object",
+          "properties": {
+            "quantityIncrement": {
+              "title": "QuantityIncrement",
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "number",
+                  "minimum": -1000000000,
+                  "maximum": 1000000000
+                },
+                "unit": {
+                  "type": "string",
+                  "enum": ["m", "km", "mi", "s", "min"]
+                },
+                "extensions": {
+                  "type": "object",
+                  "propertyNames": {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+                  },
+                  "additionalProperties": true
+                }
+              },
+              "required": ["value", "unit"],
+              "additionalProperties": true
+            },
+            "paceIncrement": {
+              "title": "PaceIncrement",
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "number",
+                  "minimum": -1000000000,
+                  "maximum": 1000000000
+                },
+                "unit": {
+                  "type": "string",
+                  "enum": ["s/mi", "s/km"]
+                },
+                "extensions": {
+                  "type": "object",
+                  "propertyNames": {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+                  },
+                  "additionalProperties": true
+                }
+              },
+              "required": ["value", "unit"],
+              "additionalProperties": true
+            },
+            "extensions": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+              },
+              "additionalProperties": true
+            }
+          },
+          "required": [],
+          "additionalProperties": true
+        },
+        "extensions": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": ["id", "scope", "workoutSessionId", "sequence", "coachText"],
+      "additionalProperties": true
+    },
+    "ReviewNote": {
+      "title": "ReviewNote",
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string",
+          "enum": [
+            "ambiguous",
+            "unsupported",
+            "conflict",
+            "missing-source-text"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "extensions": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]*:[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": ["path", "code", "message"],
+      "additionalProperties": true
+    }
+  }
+}

@@ -1,0 +1,319 @@
+{
+  "schemaVersion": "1.1",
+  "requiredFeatures": [],
+  "manifest": {
+    "planId": "synthetic-plan",
+    "versionId": "synthetic-version-1",
+    "title": "Synthetic contract fixture; not a coach plan",
+    "units": {
+      "distance": "mi",
+      "duration": "min",
+      "pace": "s/mi"
+    },
+    "generator": {
+      "name": "synthetic-contract-fixture",
+      "version": "1"
+    },
+    "coachText": [
+      "Synthetic: complete 2 sets of 2 repetitions. No invented total mileage."
+    ],
+    "mileageTier": "75+"
+  },
+  "sources": [
+    {
+      "id": "synthetic-source",
+      "kind": "authored"
+    }
+  ],
+  "provenance": [
+    {
+      "path": "",
+      "sourceId": "synthetic-source",
+      "location": {
+        "kind": "authored"
+      }
+    }
+  ],
+  "calendar": {
+    "startDate": "2026-11-16",
+    "endDate": "2026-11-17",
+    "weekStartsOn": 1
+  },
+  "phases": [
+    {
+      "id": "phase-1",
+      "label": "Synthetic phase",
+      "span": {
+        "kind": "weeks",
+        "weekIds": ["week-1"]
+      },
+      "coachText": []
+    }
+  ],
+  "weeks": [
+    {
+      "id": "week-1",
+      "number": 1,
+      "startDate": "2026-11-16",
+      "endDate": "2026-11-17",
+      "coachText": [],
+      "days": [
+        {
+          "id": "day-1",
+          "date": "2026-11-16",
+          "kind": "training",
+          "coachText": [],
+          "sessions": [
+            {
+              "id": "session-1",
+              "title": "Synthetic workout",
+              "runType": "workout",
+              "role": "main",
+              "participation": "required",
+              "completionClass": "core",
+              "coachText": [
+                "2 x (2 x 400 m at Interval).\nHammer the second rep in set 1; no faster pace supplied."
+              ],
+              "workout": {
+                "structureStatus": "complete",
+                "blocks": [
+                  {
+                    "id": "block-warmup",
+                    "role": "warmup",
+                    "sets": [
+                      {
+                        "id": "warmup-set",
+                        "index": 1,
+                        "repetitions": [
+                          {
+                            "id": "warmup-rep",
+                            "index": 1,
+                            "quantity": {
+                              "value": 10,
+                              "unit": "min"
+                            },
+                            "coachText": []
+                          }
+                        ],
+                        "coachText": []
+                      }
+                    ],
+                    "coachText": []
+                  },
+                  {
+                    "id": "block-work",
+                    "role": "work",
+                    "coachText": [],
+                    "sets": [
+                      {
+                        "id": "set-1",
+                        "index": 1,
+                        "quantity": {
+                          "value": 400,
+                          "unit": "m"
+                        },
+                        "targets": [
+                          {
+                            "kind": "pace-reference",
+                            "referenceId": "pace-interval"
+                          }
+                        ],
+                        "hammerRepetitionIndices": [2],
+                        "coachText": [],
+                        "repetitions": [
+                          {
+                            "id": "rep-1",
+                            "index": 1,
+                            "coachText": [],
+                            "recoveryAfter": {
+                              "quantity": {
+                                "value": 90,
+                                "unit": "s"
+                              },
+                              "movement": "jog",
+                              "coachText": ["90 s jog"]
+                            }
+                          },
+                          {
+                            "id": "rep-2",
+                            "index": 2,
+                            "coachText": ["Hammer; target otherwise unchanged."]
+                          }
+                        ],
+                        "recoveryAfter": {
+                          "components": [
+                            {
+                              "quantity": {
+                                "value": 30,
+                                "unit": "s"
+                              },
+                              "movement": "walk",
+                              "coachText": ["30 s walk"]
+                            },
+                            {
+                              "quantity": {
+                                "value": 200,
+                                "unit": "m"
+                              },
+                              "movement": "jog",
+                              "coachText": ["then 200 m jog"]
+                            }
+                          ],
+                          "coachText": [
+                            "Between sets: 30 s walk, then 200 m jog."
+                          ]
+                        }
+                      },
+                      {
+                        "id": "set-2",
+                        "index": 2,
+                        "quantity": {
+                          "value": 400,
+                          "unit": "m"
+                        },
+                        "targets": [
+                          {
+                            "kind": "pace-reference",
+                            "referenceId": "pace-interval"
+                          }
+                        ],
+                        "coachText": [],
+                        "repetitions": [
+                          {
+                            "id": "rep-3",
+                            "index": 1,
+                            "coachText": [],
+                            "recoveryAfter": {
+                              "quantity": {
+                                "value": 200,
+                                "unit": "m"
+                              },
+                              "movement": "jog",
+                              "coachText": ["200 m jog"]
+                            }
+                          },
+                          {
+                            "id": "rep-4",
+                            "index": 2,
+                            "targets": [
+                              {
+                                "kind": "effort",
+                                "text": "Synthetic controlled effort"
+                              }
+                            ],
+                            "coachText": []
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "id": "block-recovery",
+                    "role": "recovery",
+                    "afterId": "block-work",
+                    "recovery": {
+                      "quantity": {
+                        "value": 2,
+                        "unit": "min"
+                      },
+                      "movement": "walk",
+                      "coachText": ["2 minutes walking after the work block."]
+                    },
+                    "coachText": []
+                  },
+                  {
+                    "id": "block-cooldown",
+                    "role": "cooldown",
+                    "coachText": [],
+                    "sets": [
+                      {
+                        "id": "cooldown-set",
+                        "index": 1,
+                        "coachText": [],
+                        "repetitions": [
+                          {
+                            "id": "cooldown-rep",
+                            "index": 1,
+                            "quantity": {
+                              "min": 5,
+                              "max": 10,
+                              "unit": "min"
+                            },
+                            "coachText": []
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "id": "session-double",
+              "title": "Synthetic optional second run",
+              "runType": "recovery",
+              "role": "double",
+              "primarySessionId": "session-1",
+              "participation": "optional",
+              "completionClass": "flexible",
+              "distance": {
+                "value": 2,
+                "unit": "mi"
+              },
+              "coachText": ["Optional 2 mile second run."]
+            }
+          ],
+          "phaseIds": ["phase-1"]
+        },
+        {
+          "id": "day-2",
+          "date": "2026-11-17",
+          "kind": "rest",
+          "restDistance": {
+            "value": 0,
+            "unit": "mi"
+          },
+          "sessions": [],
+          "coachText": ["Rest"],
+          "phaseIds": ["phase-1"]
+        }
+      ]
+    }
+  ],
+  "paceReferences": [
+    {
+      "id": "pace-interval",
+      "label": "Interval",
+      "kind": "zone",
+      "zone": "interval",
+      "coachText": []
+    }
+  ],
+  "progressions": [
+    {
+      "id": "progression-sets",
+      "scope": "set",
+      "workoutSessionId": "session-1",
+      "sequence": ["set-1", "set-2"],
+      "coachText": [
+        "Synthetic instruction: use a slightly stronger effort in the second set."
+      ]
+    },
+    {
+      "id": "progression-reps",
+      "scope": "repetition",
+      "workoutSessionId": "session-1",
+      "sequence": ["rep-1", "rep-2"],
+      "parameters": {
+        "paceIncrement": {
+          "value": -5,
+          "unit": "s/mi"
+        }
+      },
+      "coachText": [
+        "Synthetic illustration only: second repetition 5 seconds per mile faster, starting pace not supplied."
+      ]
+    }
+  ],
+  "reviewNotes": []
+}

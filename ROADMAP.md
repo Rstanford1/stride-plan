@@ -65,6 +65,18 @@ Strengths:
 
 ## Current work
 
+- T01 training-plan JSON 1.1 contract: **Testing** on
+  `codex/t01-training-plan-contract`, isolated from `origin/main` at `dac964e`.
+  [Contract and verification record](schemas/training-plan/README.md). Scope is
+  schema, pure validation, generated types, synthetic fixtures/tests and minimal
+  supporting documentation/dependencies. Owner acceptance is pending; workbook
+  parity and authentic 1.0 compatibility remain deferred.
+- The preexisting development branch, three unmerged commits, seven modified source
+  files and untracked Phase 0 documents/archive remain preserved separately, with
+  a verified local recovery copy. They were not incorporated into T01. Before T02,
+  explicitly reconcile the version-6 development baseline; do not run the older
+  main application against a newer profile. T02 has not started.
+
 - Phase 1 architecture/application audit: **Complete on `docs/ui-ux-audit`**.
 - Phase 2 UI inventory: **Complete on `docs/ui-ux-audit`**.
 - Approved Today/manual-entry vertical slice: **Testing on `codex/manual-run-entry`**.

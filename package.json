@@ -5,16 +5,19 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "typecheck": "tsc -b --pretty false",
+    "build": "node scripts/generate-training-plan-types.mjs && tsc -b && vite build",
+    "test": "node scripts/generate-training-plan-types.mjs && vitest run",
+    "test:watch": "node scripts/generate-training-plan-types.mjs && vitest",
+    "typecheck": "node scripts/generate-training-plan-types.mjs && tsc -b --pretty false",
+    "types:generate": "node scripts/generate-training-plan-types.mjs",
+    "types:check": "node scripts/generate-training-plan-types.mjs --check",
     "format:check": "prettier --check .",
     "format": "prettier --write .",
-    "verify": "pnpm format:check && pnpm typecheck && pnpm test && pnpm build",
+    "verify": "pnpm types:check && pnpm format:check && pnpm typecheck && pnpm test && pnpm build",
     "tauri": "tauri"
   },
   "dependencies": {
+    "ajv": "8.20.0",
     "@tauri-apps/api": "^2.8.0",
     "@tauri-apps/plugin-dialog": "^2.4.0",
     "@tauri-apps/plugin-fs": "^2.4.0",
@@ -28,6 +31,7 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "json-schema-to-typescript": "16.0.0",
     "@tauri-apps/cli": "^2.8.0",
     "@testing-library/jest-dom": "^6.6.0",
     "@testing-library/react": "^16.1.0",
