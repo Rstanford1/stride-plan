@@ -1,13 +1,25 @@
 mod fit_source_commands;
 mod fit_source_store;
+mod garmin;
+mod garmin_commands;
+mod garmin_credentials;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(garmin_commands::GarminState::default())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             fit_source_commands::store_fit_source,
             fit_source_commands::read_fit_source,
+            garmin_commands::garmin_status,
+            garmin_commands::garmin_connect,
+            garmin_commands::garmin_verify,
+            garmin_commands::garmin_disconnect,
+            garmin_commands::garmin_list_activities,
+            garmin_commands::garmin_retrieve_activity,
+            garmin_commands::garmin_cancel,
+            garmin_commands::garmin_open_key_page,
         ])
         // Registered SQL migrations run inside Database.load, before the snapshot
         // can be validated or copied. Keep legacy tables untouched; the repository

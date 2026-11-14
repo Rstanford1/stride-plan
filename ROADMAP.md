@@ -65,6 +65,16 @@ Strengths:
 
 ## Current work
 
+- T04 secure Garmin Personal API slice: **Testing** on
+  `codex/t04-garmin-personal-api`, isolated from merged T03 at `4ad6fca`.
+  Approved scope and evidence are in DESIGN.md. Windows Credential Manager,
+  Rust-only authentication, explicit five-activity listing and one bounded ZIP/FIT
+  retrieval reuse T03. Provider receipts are separate from content identity.
+  No snapshot/database migration, confirmed workout, training totals, plan or shoe
+  changes. Native CI and owner real-account/Windows acceptance remain required.
+  Public/commercial distribution is blocked pending Garmin licensing authorization.
+  Background sync, history/review and T05/T25/T26 are deferred.
+
 - T01 training-plan JSON 1.1 contract: **Testing** on
   `codex/t01-training-plan-contract`, isolated from `origin/main` at `dac964e`.
   [Contract and verification record](schemas/training-plan/README.md). Scope is

@@ -111,6 +111,17 @@ Source: `src/screens/TrendsScreen.tsx`, Recharts.
 
 ## 8. Data & Settings
 
+T04 addition: **Integrations → Garmin Connect — Testing**. Approved by the owner's
+T04 request, implemented as one focused panel using existing settings/form/button
+styles. Masked/show-hide key, official key link, connect/verify/replace, saved
+credential and verification status, confirmed disconnect, explicit recent list,
+single selection/retrieval, cancellation and safe differentiated errors. Browser
+mode is explicitly unavailable. No automatic network or training mutation.
+Focused rendered tests cover disconnected/connected/restart, busy/disabled,
+empty/error/retry, secret clearing, selection and disconnect confirmation.
+Real Windows keyboard, focus/scaling and owner acceptance evidence remains pending;
+this component is not Complete. See DESIGN.md for verification and limitations.
+
 Source: `src/screens/DataScreen.tsx`, import/backup domain modules.
 
 | Component/group           | Purpose and current behavior                                                              | Appearance / interaction                                                                                             | Dependencies                            | Potential issues                                                                                                                                                                    | Status       |

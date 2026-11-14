@@ -66,6 +66,31 @@ GitHub access is optional for local development. Personal run records, FIT files
 
 ## Data and backups
 
+### Optional Garmin Personal API (T04)
+
+In the Windows desktop app, open **Data & settings → Integrations → Garmin
+Connect**. Create a key using the official link, paste it into the masked input,
+and choose **Connect and Verify**. The key is stored only in Windows Credential
+Manager for the current Windows user (`com.strideplan.desktop/garmin-personal-api/v1`).
+Tokens remain in memory; restart reuses the saved key to acquire a fresh token
+only when you explicitly verify or request activities. Browser mode cannot connect.
+
+Choose **List recent activities**, select one of up to five recent runs, then
+**Retrieve selected activity**. Rust accepts one bounded ZIP/FIT, validates
+framing/CRC, computes SHA-256 and preserves exact bytes using T03. A separate
+immutable `.garmin-<activityId>.json` receipt beside the FIT stores provider ID
+and hash. These are source/provenance objects, not workouts. They do not affect
+training totals, the plan, shoes or the Activity Review queue. Repeating a retrieval
+reuses the same content object. Disconnect deletes the saved credential and
+in-memory token; source files and receipts remain. Legacy JSON backups exclude
+credentials, tokens, original FIT bytes and these native receipts.
+
+**Release gate:** this integration is personal-use feasibility work. Garmin's
+Personal API is not intended for commercial applications serving multiple users;
+public/commercial integration distribution requires authorization/licensing review.
+See [Garmin's Personal API FAQ](https://developer.garmin.com/gc-developer-program/personal/personal-faq/)
+and the T04 record in DESIGN.md. User-supplied keys do not waive this gate.
+
 - Packaged app database: the Tauri application-data folder for `com.strideplan.desktop`, normally `%APPDATA%\com.strideplan.desktop\stride-plan.db` on Windows.
 - Browser development data: local storage for the development origin.
 - Legacy JSON snapshots (exclude original FIT bytes): saved wherever the user chooses through **Data & settings → Export backup**.

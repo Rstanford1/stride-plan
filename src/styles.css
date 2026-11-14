@@ -1606,3 +1606,36 @@ label textarea {
     forced-color-adjust: none;
   }
 }
+/* Garmin's focused integration shares the existing settings primitives. */
+.garmin-integration {
+  margin-block: 20px;
+}
+.garmin-integration > div,
+.garmin-integration form {
+  margin-block: 16px;
+}
+.garmin-integration label {
+  display: block;
+  margin-block: 12px 6px;
+}
+.garmin-key-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.garmin-key-row input {
+  flex: 1;
+  min-width: 0;
+}
+.garmin-integration select {
+  max-width: 100%;
+  margin-bottom: 12px;
+}
+.garmin-result {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 800px) {
+  .garmin-key-row {
+    flex-wrap: wrap;
+  }
+}

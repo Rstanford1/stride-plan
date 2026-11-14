@@ -1,5 +1,139 @@
 # Stride Plan design
 
+### T04 approved Garmin Personal API slice — November 14, 2026
+
+Owner approval is the attached T04 implementation request. Implement the existing
+Data & settings screen's Integrations → Garmin Connect section without redesign.
+Disconnected: masked key, show/hide, official key-creation link, Connect and Verify,
+understandable errors and Windows-only credential explanation. Connected: saved
+credential status, last successful verification, verify/replace key and confirmed
+disconnect. Clear the key immediately on submission, including failures.
+
+Only explicit operations: verify, list five recent running activities, select and
+retrieve one. Display empty/busy/error/cancelled/success states with native keyboard
+controls and existing focus styling. No automatic network request at startup;
+status reads only Credential Manager. Never return a stored key or token.
+
+Rust owns fixed-host HTTPS, key/token lifecycle and bounded downloads (30 seconds,
+16 MiB ZIP, one regular FIT entry, 32 MiB expanded). Reject unsafe ZIP names,
+links/encryption/unsupported compression, invalid FIT framing and CRC. T03 stores
+and rereads exact bytes before reporting success. A separate immutable receipt
+stores provider identity and content hash; no snapshot or training records change.
+Cancellation before publication leaves no source; cancellation racing publication
+may retain a verified orphan source/receipt, never a confirmed workout.
+
+Use a fixed application-specific Windows Credential Manager identity. Persist only
+the key and verification timestamp there; cache tokens in zeroized process memory,
+reacquiring after restart, within the official client's one-hour refresh window,
+or once after HTTP 401. Reject redirects. Sanitize all errors at the Rust boundary.
+Rate limits expose only a parsed Retry-After delay; never automatically retry 429.
+
+Release gate: Personal API is personal-use feasibility only. Public/commercial
+multiuser distribution requires Garmin authorization/licensing review; supplying
+one's own key does not remove this gate. Real-account and Windows native acceptance
+remain owner tasks. Status is In progress, never Complete without acceptance.
+
+T04 implementation and verification record:
+
+- Isolated baseline `origin/main` `4ad6fca` includes merged T03 #7, the icon and
+  Windows Rust workflow. The original development branch/worktree was not edited.
+  Real application databases, credentials and recordings were never opened.
+- Commands: `garmin_status`, `garmin_connect`, `garmin_verify`,
+  `garmin_disconnect`, `garmin_list_activities`, `garmin_retrieve_activity`,
+  `garmin_cancel`, `garmin_open_key_page`. All enrolled in the app manifest and granted only to local main.
+  The browser opener accepts no arguments and opens only Garmin's official key page.
+  Status reads local credential presence/timestamp; it does not contact Garmin.
+- Native credentials use a minimal windows-sys CredReadW/CredWriteW/CredDeleteW
+  wrapper, per-user local-machine persistence, a fixed target, and best-effort
+  zeroization of owned key/token/blob buffers. No credential getter exists.
+  OS/HTTP diagnostics and raw bodies are discarded at the boundary. Authorization
+  is sensitive-header marked; redirects and proxy discovery are disabled.
+  Runtime/allocator/IPC/HTTP internal copies cannot be guaranteed erased by Rust;
+  same-user malware and administrators remain outside this storage boundary.
+- Official contract references:
+  [Garmin authentication client](https://github.com/garmin/connect-personal-api-python/blob/main/src/garmin_personal_api/auth.py),
+  [activity client](https://github.com/garmin/connect-personal-api-python/blob/main/src/garmin_personal_api/client.py),
+  [Personal API documentation](https://developer.garmin.com/gc-developer-program/personal/personal-api/).
+  API-key POST uses Accept _/_; raw JWT response and exp drive in-memory caching;
+  fixed-host GET uses Bearer and JSON/ZIP Accept. No cookies/unofficial auth/shared
+  secret. Failed key replacement retains the previous credential. Verification
+  failure never silently deletes an expired key; replacement/disconnect is explicit.
+- HTTP: 10-second connect/30-second whole-request bound, 16 KiB token/512 KiB list/
+  16 MiB ZIP streaming bounds, no automatic 429 retry. Numeric/date Retry-After is
+  parsed and sanitized. 401/403 invalidates the cache and allows one reacquisition.
+  Network, timeout, authentication, provider, credential-store and source-storage
+  failures have separate typed codes and frontend copy. Running request/body reads
+  are dropped on cancellation. Partial downloads stay in memory and never publish.
+- ZIP extraction is to memory only, one flat ASCII regular .fit entry, no paths,
+  links/directories, encrypted/unsupported compression or extra files. Expanded
+  bound is checked both before and during reads; ZIP CRC, FIT signature, declared
+  length/header CRC/final CRC are checked. Existing full FIT decoding stays intact;
+  this source-only proof does not decode normalized records or assess workout data.
+- Source publication and receipt use T03's guarded directories/no-clobber atomic
+  publish. Each operation rereads its final object; conflicts and linked receipts
+  fail safely. Receipt contents are version/provider/activityId/sourceHash only.
+  New activity IDs with identical FIT bytes can have separate receipts but share
+  one source. Changed bytes from the same provider ID remain separate immutable
+  content objects. Receipt failure may retain an unreferenced verified source;
+  retry is safe. Publication cannot be undone by late cancellation. No cleanup or
+  source deletion command was added. Receipts are not part of the legacy snapshot.
+- Focused frontend tests: 30 passed in 2 files (six Garmin component tests and
+  24 T03 adapter regressions); TypeScript passed. Tests use fake credentials and
+  mocked commands, no application provider/profile. Native tests cover successful
+  connection, key/token rejection/cache/expiry/restart/replacement/deletion,
+  listing/projection/selection, HTTP errors/Retry-After/cancellation, archive/CRC/
+  size/path/link/partial failures, T03 exact bytes/hash/duplicates and safe receipt
+  conflicts. A Windows native Credential Manager round trip uses a random test-only
+  target, never the application identity, and deletes its synthetic credential.
+- Full `pnpm verify` passed: formatting, TypeScript, all 223 tests in 17 files,
+  and production frontend build. The existing Vite large-chunk advisory remains.
+  Final-review correction: use a fixed-URL Windows browser opener for the key link;
+  focused frontend checks were rerun after this change (results recorded below).
+  Final focused run: 31 tests passed (7 Garmin + 24 T03); TypeScript, formatting
+  and Rust formatting passed after the correction.
+  Windows Rust CI results: pending branch push.
+  Rust formatting passed locally. Native compilation/tests are assigned to the
+  existing Windows CI workflow (branch push enabled); local Application Control
+  was already established by T03, so blocked native compilation was not retried.
+- UI evidence: rendered component tests plus inspection of native form controls,
+  existing focus-visible styles and the wrapping input row. Browser/Tauri keyboard,
+  constrained-window and 200% scaling acceptance has not yet been exercised.
+- Owner real-account checklist (use a disposable/empty supported Windows profile,
+  never open a newer v5/v6 profile with this main-based build): create key, verify,
+  restart and verify saved-key reuse, list recent runs, retrieve one, repeat and
+  compare hash, replace/revoke key and distinguish auth/network errors, disconnect
+  and confirm credential deletion with FIT/receipt retained. Inspect focus and
+  keyboard controls and the panel at narrow/wide widths and 200% scaling.
+  Do not provide the key to Codex or GitHub; never deliberately hit rate limits.
+- Deferred: background/scheduled sync, pagination/history, workout decoding/review/
+  confirmation, normalized Garmin catalog, plan/totals/shoe mutations, automatic
+  cleanup, portable FIT/receipt backup, multi-account/cloud/hosted credentials,
+  public/commercial distribution and T05/T25/T26. No packaging or PR creation.
+  Status: **Testing**, pending native evidence and explicit owner acceptance.
+
+Exact T04 changed-file manifest:
+
+- `.github/workflows/rust-windows.yml`
+- `README.md`
+- `DESIGN.md`
+- `UI_INVENTORY.md`
+- `ROADMAP.md`
+- `src-tauri/Cargo.toml`
+- `src-tauri/Cargo.lock`
+- `src-tauri/build.rs`
+- `src-tauri/capabilities/default.json`
+- `src-tauri/src/lib.rs`
+- `src-tauri/src/fit_source_store.rs`
+- `src-tauri/src/garmin.rs`
+- `src-tauri/src/garmin_commands.rs`
+- `src-tauri/src/garmin_credentials.rs`
+- `src-tauri/src/garmin_tests.rs`
+- `src/data/garmin.ts`
+- `src/components/GarminIntegration.tsx`
+- `src/components/GarminIntegration.test.tsx`
+- `src/screens/DataScreen.tsx`
+- `src/styles.css`
+
 ## Status
 
 This file records the observed design baseline and approved component specifications. The Today date navigation and manual run-entry workflow below were approved through iterative review and are now implemented for testing.

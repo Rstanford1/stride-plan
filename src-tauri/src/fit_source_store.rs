@@ -137,10 +137,23 @@ impl FitSourceStorage {
         validate_request(CONTRACT_VERSION, source_hash)?;
         self.read_inner(source_hash)
     }
+
+    // Internal T04-only provenance receipt. Caller cannot choose a filesystem
+    // path or arbitrary contents. Provider identity remains separate from hash.
+    pub fn store_garmin_receipt(&self, activity_id: &str, source_hash: &str) -> Result<()> {
+        validate_request(CONTRACT_VERSION, source_hash)?;
+        if !crate::garmin::valid_id(activity_id) {
+            return Err(SourceError::new(ErrorCode::InvalidSourceId));
+        }
+        self.receipt_inner(activity_id, source_hash)
+    }
 }
 
 #[cfg(not(windows))]
 impl FitSourceStorage {
+    fn receipt_inner(&self, _: &str, _: &str) -> Result<()> {
+        Err(SourceError::new(ErrorCode::StorageUnavailable))
+    }
     fn store_inner(&self, _: &str, _: &[u8]) -> Result<SourceMetadata> {
         Err(SourceError::new(ErrorCode::StorageUnavailable))
     }
@@ -301,6 +314,73 @@ mod windows {
     }
 
     impl FitSourceStorage {
+        pub(super) fn receipt_inner(&self, activity_id: &str, source_hash: &str) -> Result<()> {
+            let directory = Directory::open(&self.app_local_data, source_hash, false)?;
+            // Verify source before creating provenance; never manufacture a
+            // receipt for an absent or corrupt source object.
+            directory.read(source_hash)?;
+            let name = format!("{source_hash}.garmin-{activity_id}.json");
+            let destination = directory.path.join(name);
+            let expected = format!("{{\"version\":1,\"provider\":\"garmin\",\"activityId\":\"{activity_id}\",\"sourceHash\":\"{source_hash}\"}}\n").into_bytes();
+            let verify = || -> Result<()> {
+                let mut file = OpenOptions::new()
+                    .read(true)
+                    .share_mode(FILE_SHARE_READ)
+                    .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+                    .open(&destination)
+                    .map_err(|e| io_error(e, false))?;
+                let metadata = file.metadata().map_err(|e| io_error(e, false))?;
+                let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
+                // SAFETY: live handle, valid writable output structure.
+                if unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) } == 0 {
+                    return Err(SourceError::new(ErrorCode::StorageUnavailable));
+                }
+                if !metadata.is_file()
+                    || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+                    || info.nNumberOfLinks != 1
+                {
+                    return Err(SourceError::new(ErrorCode::UnsafePath));
+                }
+                let mut bytes = Vec::new();
+                Read::by_ref(&mut file)
+                    .take(1024)
+                    .read_to_end(&mut bytes)
+                    .map_err(|e| io_error(e, false))?;
+                if bytes != expected {
+                    return Err(SourceError::new(ErrorCode::Conflict));
+                }
+                Ok(())
+            };
+            match verify() {
+                Ok(()) => return Ok(()),
+                Err(e) if e.code == ErrorCode::Missing => (),
+                Err(e) => return Err(e),
+            }
+            let staged = StagedFile(directory.path.join(format!("{}.tmp", uuid::Uuid::new_v4())));
+            let mut file = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .share_mode(FILE_SHARE_READ)
+                .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+                .open(&staged.0)
+                .map_err(|e| io_error(e, true))?;
+            let result = file
+                .write_all(&expected)
+                .and_then(|()| file.sync_all())
+                .map_err(|e| io_error(e, true));
+            drop(file);
+            let result = result.and_then(|()| {
+                if let Err(e) = publish(&staged.0, &destination) {
+                    if e.kind() != io::ErrorKind::AlreadyExists {
+                        return Err(io_error(e, true));
+                    }
+                }
+                verify()
+            });
+            staged.cleanup()?;
+            result
+        }
+
         pub(super) fn read_inner(&self, source_hash: &str) -> Result<Vec<u8>> {
             Directory::open(&self.app_local_data, source_hash, false)?.read(source_hash)
         }
