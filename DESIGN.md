@@ -261,7 +261,7 @@ This PR targets main and does not incorporate or depend on that unaccepted work.
   block restore. Browser mode cannot restore snapshots that require original FIT
   sources. Existing source files are never changed by restore.
 - Automated evidence: pnpm verify passed (pinned pnpm 11.25.0 via Node), including
-  formatting, TypeScript, 187 tests in 16 files and production frontend build.
+  formatting, TypeScript, 193 tests in 16 files and production frontend build.
   Test fixtures use memory and newly created stride-t02-synthetic-* temporary
   SQLite databases only. Real SQLite tests cover read-only writes, SQL aborts,
   CAS conflicts, staging interruption, preserved recovery copies and reopening.
@@ -290,3 +290,26 @@ files remain in source for later migration planning. An existing database missin
 app_state fails closed. Future normalized migration must handle both historical
 SQL layouts and this snapshot-only layout explicitly. This is not the normalized
 storage migration, and no schema version is rewritten to pretend it occurred.
+
+### T02 final corrections — November 14, 2026
+
+- Reject v2 snapshots containing newer sleep-mode values before migration so
+  conversion cannot overwrite those fields; retain the regression assertion.
+- An existing app_state table without its active row now always requires
+  recovery, even when no safety copies exist. Only a database with no user tables
+  follows the fresh initialization path. Tests verify a deleted active row with
+  absent/empty recovery storage causes no writes and leaves database bytes and
+  migration history unchanged.
+- Candidate validation and unavailable FIT sources raise a distinct RestoreInputError.
+  The provider rethrows it for the existing restore message without disabling valid
+  active state. The failed confirmation dialog closes so the message is visible.
+  Storage/save/commit errors still enter recovery and disable writes. Regression
+  tests exercise malformed/future input, FIT access lost after preview, continued
+  editing after rejection, and write locking after an actual storage failure.
+- Focused regression run: 70 tests passed in 3 files. Final full pnpm verify:
+  193 tests in 16 files, formatting, types and frontend build passed.
+  Browser layout and native packaging were not repeated; the existing native
+  Application Control blocker remains. No real profile or protected source work
+  was accessed for testing or modified.
+- Reset Demo behavior is unchanged and remains a separate follow-up. No T03 work,
+  dependencies, new PR or merge is included. User acceptance remains pending.

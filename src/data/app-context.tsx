@@ -8,7 +8,11 @@ import {
   useRef,
 } from "react";
 import type { PropsWithChildren } from "react";
-import { createRepository, type AppRepository } from "./repository";
+import {
+  createRepository,
+  RestoreInputError,
+  type AppRepository,
+} from "./repository";
 import { createInitialData } from "../domain/seed";
 import {
   DataIntegrityError,
@@ -151,7 +155,7 @@ export function AppProvider({
         persisted.current = restored;
         publishData(restored);
       } catch (error) {
-        fail(error);
+        if (!(error instanceof RestoreInputError)) fail(error);
         throw error;
       } finally {
         restoring.current = false;

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createRequire } from "node:module";
 const { DatabaseSync } = createRequire(import.meta.url)("node:sqlite");
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SqliteRepository } from "./repository";
@@ -63,6 +63,7 @@ const incoming = () => {
 describe("real SQLite in isolated synthetic files", () => {
   it("initializes an empty database then reloads without reseeding", async () => {
     const f = fixture();
+    f.db.exec("DROP TABLE app_state");
     const loaded = await f.repository.load();
     expect(await new SqliteRepository(async () => f.adapter).load()).toEqual(
       loaded,
@@ -273,3 +274,32 @@ it("does not initialize a missing snapshot table in an existing native database"
       .map((row) => row.name),
   ).toEqual(["shoes"]);
 });
+
+it.each([false, true])(
+  "never reseeds a deleted active snapshot without recovery copies (empty recovery table: %s)",
+  async (hasRecoveryTable) => {
+    const f = fixture(raw());
+    await f.repository.load();
+    f.db.exec(
+      "DELETE FROM app_state; CREATE TABLE _sqlx_migrations (version INTEGER); INSERT INTO _sqlx_migrations VALUES (2)",
+    );
+    if (hasRecoveryTable)
+      f.db.exec(
+        "CREATE TABLE snapshot_recovery (id TEXT PRIMARY KEY, purpose TEXT NOT NULL, payload TEXT NOT NULL)",
+      );
+    const before = readFileSync(f.path);
+    const restarted = new SqliteRepository(async () => f.adapter);
+    await expect(restarted.load()).rejects.toMatchObject({ kind: "corrupted" });
+    await expect(restarted.save(createInitialData())).rejects.toThrow(
+      "disabled",
+    );
+    await expect(f.repository.save(createInitialData())).rejects.toMatchObject({
+      kind: "corrupted",
+    });
+    expect(f.stored()).toBeUndefined();
+    expect(f.db.prepare("SELECT version FROM _sqlx_migrations").all()).toEqual([
+      { version: 2 },
+    ]);
+    expect(readFileSync(f.path)).toEqual(before);
+  },
+);

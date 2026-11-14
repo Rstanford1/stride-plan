@@ -135,6 +135,14 @@ describe("fail-closed loading", () => {
       ];
       const raw = JSON.stringify(legacy, null, 2),
         f = fixture(raw);
+      if (version === 2) {
+        expect(() =>
+          upgradeAppData({
+            ...legacy,
+            journals: [{ ...legacy.journals[0], sleepEntryMode: "garmin" }],
+          }),
+        ).toThrow();
+      }
       const loaded = await f.repository.load();
       expect(loaded.sessions).toEqual(legacy.sessions);
       expect(loaded.journals[0].sleep).toBe("limited");

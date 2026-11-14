@@ -13,6 +13,14 @@ import { createFitSourceStore, type FitSourceStore } from "./fit-source-store";
 import Database from "@tauri-apps/plugin-sql";
 
 export const STORAGE_KEY = "stride-plan:data:v1";
+/** Candidate-only rejection: the active repository has not been invalidated. */
+export class RestoreInputError extends DataIntegrityError {
+  constructor(error: unknown) {
+    const failure = storageError(error);
+    super(failure.kind, failure.message);
+    this.name = "RestoreInputError";
+  }
+}
 export interface AppRepository {
   load(): Promise<AppData>;
   save(data: AppData): Promise<void>;
@@ -120,12 +128,17 @@ abstract class SnapshotRepository implements AppRepository {
   async restore(raw: string): Promise<AppData> {
     this.assertWritable();
     // Invalid candidates do not invalidate the existing valid store.
-    const preview = await inspectLegacyRestore(raw, this.sources);
-    if (preview.missingSources.length)
-      throw new DataIntegrityError(
-        "corrupted",
-        "Restore blocked: original FIT files are missing or cannot be verified. Current data is unchanged.",
-      );
+    let preview;
+    try {
+      preview = await inspectLegacyRestore(raw, this.sources);
+      if (preview.missingSources.length)
+        throw new DataIntegrityError(
+          "corrupted",
+          "Restore blocked: original FIT files are missing or cannot be verified. Current data is unchanged.",
+        );
+    } catch (error) {
+      throw new RestoreInputError(error);
+    }
     try {
       await this.assertCurrent();
       if (this.expected === null)
@@ -267,23 +280,11 @@ export class SqliteRepository extends SnapshotRepository {
     ).select<{ payload: string }[]>(
       "SELECT payload FROM app_state WHERE id = 1",
     );
-    if (!rows.length) {
-      const db = await this.db();
-      const tables = await db.select<{ name: string }[]>(
-        "SELECT name FROM sqlite_master WHERE name = 'snapshot_recovery'",
+    if (!rows.length)
+      throw new DataIntegrityError(
+        "corrupted",
+        "The active snapshot is missing from an existing database. Recover the saved data before continuing; no demo data was created.",
       );
-      if (tables.length) {
-        const copies = await db.select<{ count: number }[]>(
-          "SELECT COUNT(*) AS count FROM snapshot_recovery",
-        );
-        if (copies[0].count > 0)
-          throw new DataIntegrityError(
-            "corrupted",
-            "The active snapshot is missing but recovery copies exist. Recover a saved copy before continuing; no demo data was created.",
-          );
-      }
-      return null;
-    }
     if (typeof rows[0].payload !== "string")
       throw new DataIntegrityError(
         "corrupted",

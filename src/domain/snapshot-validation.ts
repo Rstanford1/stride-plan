@@ -250,6 +250,8 @@ const versions = {
       schemaVersion: z.literal(2),
       journals: z.array(
         journal.extend({
+          // v2 had no mode field; reject it rather than overwrite newer data.
+          sleepEntryMode: z.undefined(),
           sleep: z.enum(["a-lot", "normal", "a-little", "barely"]).optional(),
         }),
       ),

@@ -16,6 +16,8 @@ import {
   type AppRepository,
 } from "./repository";
 import App from "../App";
+import * as sourceStores from "./fit-source-store";
+import { sha256Hex } from "../domain/fit-hash";
 import { DataScreen } from "../screens/DataScreen";
 import { createInitialData } from "../domain/seed";
 
@@ -28,7 +30,10 @@ beforeEach(() => {
     this.removeAttribute("open");
   };
 });
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 const old = () => JSON.stringify(createInitialData());
 const candidate = () => {
   const data = createInitialData();
@@ -236,4 +241,132 @@ it("confirmation preserves exact already-durable bytes without a redundant pre-r
   );
   const safetyKey = keys.find((key) => key?.includes(":before-restore:"));
   expect(localStorage.getItem(safetyKey!)).toBe(original);
+});
+
+it.each(["{bad", JSON.stringify({ ...createInitialData(), schemaVersion: 6 })])(
+  "restore input rejection leaves the valid app writable: %s",
+  async (raw) => {
+    localStorage.setItem(STORAGE_KEY, old());
+    let actions!: ReturnType<typeof useAppData>;
+    function Capture() {
+      actions = useAppData();
+      return <DataHarness />;
+    }
+    render(
+      <AppProvider
+        repository={new SerializedRepository(new BrowserRepository())}
+      >
+        <Capture />
+      </AppProvider>,
+    );
+    await screen.findByRole("heading", { name: "Data & settings" });
+    await act(async () => {
+      await expect(actions.restoreBackup(raw)).rejects.toThrow();
+    });
+    expect(actions.ready).toBe(true);
+    expect(actions.recoveryError).toBeNull();
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(old());
+    act(() => actions.updateSettings({ easyHrHigh: 170 }));
+    await waitFor(() =>
+      expect(
+        JSON.parse(localStorage.getItem(STORAGE_KEY)!).settings.easyHrHigh,
+      ).toBe(170),
+    );
+  },
+);
+
+it("reports FIT files lost after preview without disabling the active app", async () => {
+  localStorage.setItem(STORAGE_KEY, old());
+  const sources = new sourceStores.MemoryFitSourceStore();
+  const bytes = new Uint8Array([1, 2, 3]),
+    sourceHash = await sha256Hex(bytes);
+  await sources.preserve(sourceHash, bytes);
+  vi.spyOn(sourceStores, "createFitSourceStore").mockReturnValue(sources);
+  const data = createInitialData();
+  data.fitSources = [
+    {
+      id: "source",
+      sourceHash,
+      byteLength: 3,
+      originalFileName: "synthetic.fit",
+      importedAt: "2026-11-03T12:00:00Z",
+      decoderId: "test",
+      decoderVersion: "1",
+      preservationStatus: "verified",
+    },
+  ];
+  render(
+    <AppProvider
+      repository={
+        new SerializedRepository(new BrowserRepository(localStorage, sources))
+      }
+    >
+      <DataHarness />
+    </AppProvider>,
+  );
+  await screen.findByRole("heading", { name: "Data & settings" });
+  const dialog = await preview(JSON.stringify(data));
+  vi.spyOn(sources, "read").mockRejectedValue(
+    new Error("Source file access denied"),
+  );
+  fireEvent.click(
+    within(dialog).getByRole("button", { name: "Replace local data" }),
+  );
+  expect(
+    await screen.findByText(/Restore blocked: original FIT files/),
+  ).toBeVisible();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("heading", { name: "Data & settings" }),
+  ).toBeVisible();
+  expect(localStorage.getItem(STORAGE_KEY)).toBe(old());
+  fireEvent.change(screen.getByLabelText("Easy HR high"), {
+    target: { value: "170" },
+  });
+  await waitFor(() =>
+    expect(
+      JSON.parse(localStorage.getItem(STORAGE_KEY)!).settings.easyHrHigh,
+    ).toBe(170),
+  );
+});
+
+it("restore storage failure still enters recovery and locks writes", async () => {
+  localStorage.setItem(STORAGE_KEY, old());
+  const storage = {
+    getItem: (key: string) => localStorage.getItem(key),
+    setItem: vi.fn((key: string, value: string) =>
+      localStorage.setItem(key, value),
+    ),
+    removeItem: (key: string) => localStorage.removeItem(key),
+  };
+  let actions!: ReturnType<typeof useAppData>;
+  function Capture() {
+    actions = useAppData();
+    return <App />;
+  }
+  render(
+    <AppProvider
+      repository={new SerializedRepository(new BrowserRepository(storage))}
+    >
+      <Capture />
+    </AppProvider>,
+  );
+  await waitFor(() => expect(actions.ready).toBe(true));
+  storage.setItem.mockImplementation(() => {
+    throw new Error("Disk full");
+  });
+  await act(async () => {
+    await expect(actions.restoreBackup(candidate())).rejects.toThrow();
+  });
+  expect(
+    await screen.findByRole("heading", {
+      name: "Your saved data needs attention",
+    }),
+  ).toBeVisible();
+  expect(actions.ready).toBe(false);
+  expect(actions.recoveryError?.kind).toBe("inaccessible");
+  storage.setItem.mockClear();
+  act(() => actions.updateSettings({ easyHrHigh: 170 }));
+  expect(storage.setItem).not.toHaveBeenCalled();
+  expect(localStorage.getItem(STORAGE_KEY)).toBe(old());
 });

@@ -247,6 +247,8 @@ export function DataScreen() {
         "Legacy snapshot restored and saved. The previous snapshot is retained in a verified local safety copy. Original FIT bytes were not included in the JSON backup.",
       );
     } catch (error) {
+      restoreDialog.current?.close();
+      setRestorePreview(null);
       setMessage(
         error instanceof Error
           ? error.message
