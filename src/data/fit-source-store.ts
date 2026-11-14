@@ -1,13 +1,12 @@
-import {
-  BaseDirectory,
-  exists,
-  mkdir,
-  readFile,
-  remove,
-  rename,
-  writeFile,
-} from "@tauri-apps/plugin-fs";
+import { invoke } from "@tauri-apps/api/core";
 import { sha256Hex } from "../domain/fit-hash";
+import {
+  FitSourceStorageError,
+  MAX_FIT_SOURCE_BYTES,
+  type NativeReadResponse,
+  type NativeSourceMetadata,
+  normalizeStorageError,
+} from "./fit-source-contract";
 
 export interface FitSourcePreservation {
   status: "verified" | "unavailable";
@@ -80,58 +79,63 @@ export class TauriFitSourceStore implements FitSourceStore {
     bytes: Uint8Array,
   ): Promise<FitSourcePreservation> {
     assertSourceHash(sourceHash);
-    await assertMatchingBytes(sourceHash, bytes);
-    const relativePath = sourceRelativePath(sourceHash);
-    const directory = `fit-sources/${sourceHash.slice(0, 2)}`;
-    const temporaryPath = `${directory}/${sourceHash}.${crypto.randomUUID()}.tmp`;
-    await mkdir(directory, {
-      baseDir: BaseDirectory.AppLocalData,
-      recursive: true,
-    });
-    if (await exists(relativePath, { baseDir: BaseDirectory.AppLocalData })) {
-      await assertMatchingBytes(
-        sourceHash,
-        await readFile(relativePath, { baseDir: BaseDirectory.AppLocalData }),
-      );
-      return { status: "verified", storedRelativePath: relativePath };
+    if (bytes.byteLength > MAX_FIT_SOURCE_BYTES) {
+      throw new FitSourceStorageError("too_large");
     }
     try {
-      await writeFile(temporaryPath, Uint8Array.from(bytes), {
-        baseDir: BaseDirectory.AppLocalData,
-        createNew: true,
+      const source = await invoke<NativeSourceMetadata>("store_fit_source", {
+        request: { contractVersion: 1, sourceHash, bytes: Array.from(bytes) },
       });
-      await assertMatchingBytes(
-        sourceHash,
-        await readFile(temporaryPath, { baseDir: BaseDirectory.AppLocalData }),
-      );
-      await rename(temporaryPath, relativePath, {
-        oldPathBaseDir: BaseDirectory.AppLocalData,
-        newPathBaseDir: BaseDirectory.AppLocalData,
-      });
-      return { status: "verified", storedRelativePath: relativePath };
+      assertMetadata(source, sourceHash, bytes.byteLength);
+      return {
+        status: "verified",
+        storedRelativePath: source.storedRelativePath,
+      };
     } catch (error) {
-      if (
-        await exists(temporaryPath, { baseDir: BaseDirectory.AppLocalData })
-      ) {
-        await remove(temporaryPath, { baseDir: BaseDirectory.AppLocalData });
-      }
-      throw error;
+      throw normalizeStorageError(error);
     }
   }
 
   async read(sourceHash: string): Promise<Uint8Array | undefined> {
     assertSourceHash(sourceHash);
-    const relativePath = sourceRelativePath(sourceHash);
-    if (
-      !(await exists(relativePath, { baseDir: BaseDirectory.AppLocalData }))
-    ) {
-      return undefined;
+    try {
+      const result = await invoke<NativeReadResponse>("read_fit_source", {
+        request: { contractVersion: 1, sourceHash },
+      });
+      if (
+        !Array.isArray(result.bytes) ||
+        result.bytes.length > MAX_FIT_SOURCE_BYTES ||
+        !result.bytes.every(
+          (value) => Number.isInteger(value) && value >= 0 && value <= 255,
+        )
+      ) {
+        throw new FitSourceStorageError("corrupt");
+      }
+      assertMetadata(result.source, sourceHash, result.bytes.length);
+      const bytes = Uint8Array.from(result.bytes);
+      if ((await sha256Hex(bytes)) !== sourceHash) {
+        throw new FitSourceStorageError("corrupt");
+      }
+      return bytes;
+    } catch (error) {
+      throw normalizeStorageError(error);
     }
-    const bytes = await readFile(relativePath, {
-      baseDir: BaseDirectory.AppLocalData,
-    });
-    await assertMatchingBytes(sourceHash, bytes);
-    return bytes;
+  }
+}
+
+function assertMetadata(
+  source: NativeSourceMetadata,
+  sourceHash: string,
+  byteLength: number,
+): void {
+  if (
+    source.contractVersion !== 1 ||
+    source.sourceId !== `fit-source:${sourceHash}` ||
+    source.sourceHash !== sourceHash ||
+    source.byteLength !== byteLength ||
+    source.storedRelativePath !== sourceRelativePath(sourceHash)
+  ) {
+    throw new FitSourceStorageError("corrupt");
   }
 }
 

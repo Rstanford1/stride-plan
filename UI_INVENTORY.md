@@ -153,3 +153,11 @@ owner acceptance remains pending. Four-tier workbook parity is not run.
 
 T02 loading/recovery and legacy JSON restore: **Testing**. Approved scope and
 compatibility policy and browser/SQLite/native evidence are recorded in DESIGN.md. User acceptance is pending.
+
+T03 native FIT source preservation: **Testing; native verification blocked**.
+The existing FIT import UI now uses scoped Rust store/read commands through
+FitSourceStore, with typed failures and byte/hash verification. No UI redesign.
+Restore previews clear stale verification metadata when original bytes cannot
+be verified. Focused frontend tests pass; native tests were blocked before
+execution by Windows Application Control. Contract, compatibility, verification
+limits and deferred work are recorded in DESIGN.md. User acceptance is pending.

@@ -34,6 +34,10 @@ export async function inspectLegacyRestore(
       source.storedRelativePath = `fit-sources/${source.sourceHash.slice(0, 2)}/${source.sourceHash}.fit`;
       delete source.preservationError;
     } catch {
+      source.preservationStatus = "unavailable";
+      delete source.storedRelativePath;
+      source.preservationError =
+        "Original FIT bytes could not be verified in local storage.";
       missingSources.push(source.originalFileName);
     }
   }
