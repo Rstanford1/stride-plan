@@ -5,10 +5,15 @@ import {
   useEffect,
   useMemo,
   useState,
+  useRef,
 } from "react";
 import type { PropsWithChildren } from "react";
-import { createRepository } from "./repository";
+import { createRepository, type AppRepository } from "./repository";
 import { createInitialData } from "../domain/seed";
+import {
+  DataIntegrityError,
+  storageError,
+} from "../domain/snapshot-validation";
 import { reviseSession, type SessionUpdate } from "../domain/rules";
 import type {
   Activity,
@@ -23,6 +28,9 @@ import type {
 interface AppContextValue {
   data: AppData;
   ready: boolean;
+  recoveryError: DataIntegrityError | null;
+  retryLoading: () => void;
+  restoreBackup: (raw: string) => Promise<void>;
   saveSession: (
     sessionId: string,
     update: SessionUpdate,
@@ -45,21 +53,112 @@ interface AppContextValue {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
-export function AppProvider({ children }: PropsWithChildren) {
-  const repository = useMemo(() => createRepository(), []);
-  const [data, setData] = useState<AppData>(createInitialData);
+export function AppProvider({
+  children,
+  repository: suppliedRepository,
+}: PropsWithChildren<{ repository?: AppRepository }>) {
+  const repository = useMemo(
+    () => suppliedRepository ?? createRepository(),
+    [suppliedRepository],
+  );
+  const [data, publishData] = useState<AppData>({
+    schemaVersion: 4,
+    sessions: [],
+    activities: [],
+    journals: [],
+    shoes: [],
+    fitSources: [],
+    fitSourceActivities: [],
+    fitImportBatches: [],
+    settings: { distanceUnit: "mi" },
+    importFingerprints: [],
+  });
   const [ready, setReady] = useState(false);
-
+  const [recoveryError, setRecoveryError] = useState<DataIntegrityError | null>(
+    null,
+  );
+  const [attempt, setAttempt] = useState(0);
+  const writable = useRef(false);
+  const restoring = useRef(false);
+  const persisted = useRef<AppData | null>(null);
+  const currentData = useRef(data);
+  currentData.current = data;
+  const setData = useCallback((update: React.SetStateAction<AppData>) => {
+    if (!writable.current || restoring.current) return;
+    publishData(update);
+  }, []);
+  const fail = useCallback((error: unknown) => {
+    writable.current = false;
+    setRecoveryError(storageError(error));
+    setReady(false);
+  }, []);
+  const retryLoading = useCallback(() => {
+    writable.current = false;
+    setRecoveryError(null);
+    setReady(false);
+    setAttempt((value) => value + 1);
+  }, []);
   useEffect(() => {
-    repository.load().then((loaded) => {
-      setData(loaded);
-      setReady(true);
-    });
-  }, [repository]);
-
+    let active = true;
+    writable.current = false;
+    repository
+      .load()
+      .then((loaded) => {
+        if (!active) return;
+        persisted.current = loaded;
+        publishData(loaded);
+        writable.current = true;
+        setRecoveryError(null);
+        setReady(true);
+      })
+      .catch((error) => {
+        if (active) fail(error);
+      });
+    return () => {
+      active = false;
+      writable.current = false;
+    };
+  }, [repository, attempt, fail]);
   useEffect(() => {
-    if (ready) void repository.save(data);
-  }, [data, ready, repository]);
+    if (
+      !ready ||
+      !writable.current ||
+      restoring.current ||
+      persisted.current === data
+    )
+      return;
+    void repository
+      .save(data)
+      .then(() => {
+        persisted.current = data;
+      })
+      .catch(fail);
+  }, [data, ready, repository, fail]);
+  const restoreBackup = useCallback(
+    async (raw: string) => {
+      if (!writable.current || restoring.current || !repository.restore)
+        throw new DataIntegrityError(
+          "inaccessible",
+          "Safe restore is unavailable while data is unresolved.",
+        );
+      restoring.current = true;
+      try {
+        // Flush edits before capturing the durable pre-restore snapshot.
+        if (persisted.current !== currentData.current) {
+          await repository.save(currentData.current);
+        }
+        const restored = await repository.restore(raw);
+        persisted.current = restored;
+        publishData(restored);
+      } catch (error) {
+        fail(error);
+        throw error;
+      } finally {
+        restoring.current = false;
+      }
+    },
+    [repository, fail],
+  );
 
   const saveSession = useCallback(
     (sessionId: string, update: SessionUpdate, reason: string) => {
@@ -168,6 +267,9 @@ export function AppProvider({ children }: PropsWithChildren) {
     () => ({
       data,
       ready,
+      recoveryError,
+      retryLoading,
+      restoreBackup,
       saveSession,
       addSession,
       saveJournal,
@@ -182,6 +284,9 @@ export function AppProvider({ children }: PropsWithChildren) {
     [
       data,
       ready,
+      recoveryError,
+      retryLoading,
+      restoreBackup,
       saveSession,
       addSession,
       saveJournal,

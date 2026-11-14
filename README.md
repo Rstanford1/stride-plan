@@ -9,7 +9,7 @@ Stride Plan is a Windows-first, local running-plan and journal application. It k
 - Activity review for plan matching, bundles, primary/supporting roles, and lap classification.
 - Weekly review with core and flexible planned mileage, actual mileage, completion, outcomes, long run, run days, and explainable observations.
 - Two restrained trends with accessible table alternatives.
-- CSV/XLSX plan validation and repeat-import protection, portable JSON backup/restore, editable reference values, and FIT import handoff.
+- CSV/XLSX plan validation and repeat-import protection, legacy JSON snapshot export/restore, editable reference values, and FIT import handoff.
 - A Tauri 2 shell, SQLite migration, browser development fallback, and testable domain modules.
 
 ## Run for development
@@ -68,7 +68,7 @@ GitHub access is optional for local development. Personal run records, FIT files
 
 - Packaged app database: the Tauri application-data folder for `com.strideplan.desktop`, normally `%APPDATA%\com.strideplan.desktop\stride-plan.db` on Windows.
 - Browser development data: local storage for the development origin.
-- Portable backups: saved wherever the user chooses through **Data & settings → Export backup**.
+- Legacy JSON snapshots (exclude original FIT bytes): saved wherever the user chooses through **Data & settings → Export backup**.
 - Source workbook: read only. It is never modified by the import flow.
 
 ## Plan import format
@@ -92,3 +92,8 @@ Dates use `YYYY-MM-DD`; session type is `rest`, `easy`, `recovery`, `workout`, o
 1. Complete the approved Activity Review decisions, validation, draft persistence, and atomic confirmation on top of the FIT ingest foundation.
 2. Persist each domain aggregate through the normalized SQLite tables and add migration/restore integration tests.
 3. Add optional session drag-and-drop with a fully keyboard-equivalent move command and richer multi-activity bundle suggestions.
+
+T02 saved-state recovery and legacy restore compatibility, safety-copy locations,
+verification and native-runtime limits are recorded in [DESIGN.md](DESIGN.md#t02-verification-and-recovery-record). This build supports snapshot versions 2–4;
+version-5/6 development profiles must use a compatible application and are never
+downgraded. Legacy JSON cannot replace newer native records.

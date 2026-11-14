@@ -204,3 +204,89 @@ Acceptance criteria: generated or redistributable fixtures cover decoding and er
 - Rendered inspection: all six screens plus the historical run-entry dialog at the local browser-development viewport.
 - Verified checks: formatting, TypeScript, 17 automated tests, and production build.
 - Not visually verified: populated Activity Review, import validation preview, triggered observation details, native Tauri/SQLite behavior, Windows installer, 200% Windows scaling, and forced-colors rendering.
+
+## Approved T02 loading and legacy restore — November 13, 2026
+
+Owner-authorized scope: fail closed on invalid/inaccessible/unsupported saved
+state; stage legacy JSON restore (audit R1/R2, ADR-09, task T02). **Testing**, pending owner acceptance.
+Use existing panels, status text and native buttons. Recovery replaces the loading
+indicator with the failure category, writes-disabled explanation, compatible-app/
+file-access guidance and Retry. No reset action is offered in recovery.
+Restore first shows version, record counts and missing FIT evidence; Cancel has
+no effect. Explicit Replace confirmation creates and verifies a safety copy,
+stages and validates the replacement, then acknowledges persistence before success.
+Missing FIT files block replacement; copied verification labels are never proof.
+Legacy exports explicitly exclude original FIT bytes. No unrelated screen redesign.
+
+Integration baseline: origin/main bdf7519 (T01 merged), snapshot reader v4.
+Support validated v2/v3 through explicit lossless adapters and v4 unchanged;
+v5/v6/future versions are unsupported, never downgraded or reseeded. The three
+unmerged development commits and seven modified files remain separate and intact.
+This PR targets main and does not incorporate or depend on that unaccepted work.
+
+### T02 verification and recovery record
+
+- Base: origin/main bdf7519711dae9042ad94230e2d4fb34490123bb, T01 PR #5 merged.
+  Delivery branch: codex/t02-safe-loading, targeting main with no version-6 dependency.
+- Protected development: b80f621, 0f47fb8 and 24b6556 are not cherry-picked,
+  reset or merged. The seven modified application files and five untracked root
+  files remain in the original worktree. All changes here use a separate worktree.
+- Validation: explicit v2/v3/v4 shapes, unique IDs, references, finite numeric
+  values, dates, enums, revisions, source samples/laps and import-batch links.
+  Unknown fields fail closed rather than being stripped. No schema-1.1 changes.
+- Durable boundary: initialize only absent state, never malformed/empty text.
+  Missing active data with surviving safety copies is recovery, not empty storage.
+  Load failures and save failures lock subsequent writes. No save runs merely
+  because a valid snapshot was loaded. Saves/load/restore are serialized.
+- Migration: retain exact original payload before conversion, validate and stage
+  the converted snapshot, atomically publish, then read back. Historical v2 sleep
+  labels map explicitly; original prescriptions, journals and revisions remain.
+- Restore: parse/validate and preview before confirmation; current edits finish
+  saving first. Verify immutable pre-restore, incoming and staged copies before
+  a compare-and-replace of the canonical snapshot. Success follows readback.
+  A failed/lost acknowledgement attempts conditional rollback; if storage also
+  blocks rollback, the original safety copy remains and application writes lock.
+  Interruption before atomic publication leaves the prior active snapshot;
+  interruption after publication leaves a complete replacement plus safety copy.
+- SQLite safety copies are JSON payload rows in snapshot_recovery, not a full
+  database/file backup. Browser copies use stride-plan:data:v1:<purpose>:<UUID>
+  keys plus a recovery-present marker. Neither is automatically pruned. Recover
+  a selected payload using a compatible app; there is no automatic rollback picker
+  or full portable backup UI in T02. Native tables outside this snapshot,
+  populated legacy normalized tables, or SQL migrations newer than 2 block this
+  reader/replacement. No normalized-table cutover is performed.
+- FIT restoration checks real locally preserved bytes by hash and byte length
+  during preview and again before replacement. Paths are derived from the hash;
+  copied verified flags are insufficient. Missing/unreadable/mismatched files
+  block restore. Browser mode cannot restore snapshots that require original FIT
+  sources. Existing source files are never changed by restore.
+- Automated evidence: pnpm verify passed (pinned pnpm 11.25.0 via Node), including
+  formatting, TypeScript, 187 tests in 16 files and production frontend build.
+  Test fixtures use memory and newly created stride-t02-synthetic-* temporary
+  SQLite databases only. Real SQLite tests cover read-only writes, SQL aborts,
+  CAS conflicts, staging interruption, preserved recovery copies and reopening.
+- Rendered evidence: browser recovery and restore checked at 1360×860 and
+  680×680. Visible keyboard focus, initial Cancel focus, Tab to Replace, Escape
+  cancellation/focus return, Enter confirmation, empty-record preview, saved
+  success and missing-FIT disabled replacement were exercised using in-memory
+  synthetic data on a separate development port. JSDOM tests cover unresolved
+  loading, retry, cancellation, disabled/busy states and delayed persistence.
+- Native limit: pnpm tauri build attempted without launching an executable or
+  opening a real profile. Windows Application Control blocked selectors and
+  indexmap build scripts (OS error 4551). No policy was changed. Packaged Tauri
+  filesystem/SQL-plugin execution, physical power-loss durability, Windows 200%
+  scaling and screen-reader acceptance are not verified. SQLite engine tests
+  are not presented as packaged-runtime evidence. The existing Vite large-chunk
+  warning remains. Browser localStorage cannot promise hardware-level fsync.
+- Status: Testing / ready for focused code review, not Complete or approved for
+  deployment over the owner's version-6 profile. Owner acceptance and packaged
+  runtime verification remain outstanding. T03 was not started.
+
+Native startup correction: SQL plugin auto-migrations are no longer registered,
+because they execute inside Database.load before saved-state validation. Existing
+SQL tables and migration history remain untouched. A genuinely new database gets
+only the already-canonical app_state table; the two dormant legacy normalized DDL
+files remain in source for later migration planning. An existing database missing
+app_state fails closed. Future normalized migration must handle both historical
+SQL layouts and this snapshot-only layout explicitly. This is not the normalized
+storage migration, and no schema version is rewritten to pretend it occurred.

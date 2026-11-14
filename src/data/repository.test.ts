@@ -12,6 +12,9 @@ describe("browser persistence", () => {
     const values = new Map<string, string>();
     const storage = {
       getItem: (key: string) => values.get(key) ?? null,
+      removeItem: (key: string) => {
+        values.delete(key);
+      },
       setItem: (key: string, value: string) => values.set(key, value),
     };
     const first = new BrowserRepository(storage);
@@ -26,6 +29,9 @@ describe("browser persistence", () => {
     const values = new Map<string, string>();
     const storage = {
       getItem: (key: string) => values.get(key) ?? null,
+      removeItem: (key: string) => {
+        values.delete(key);
+      },
       setItem: (key: string, value: string) => values.set(key, value),
     };
     const repository = new BrowserRepository(storage);
@@ -55,6 +61,9 @@ describe("browser persistence", () => {
     const values = new Map<string, string>();
     const repository = new BrowserRepository({
       getItem: (key: string) => values.get(key) ?? null,
+      removeItem: (key: string) => {
+        values.delete(key);
+      },
       setItem: (key: string, value: string) => values.set(key, value),
     });
     const versionThree = { ...createInitialData(), schemaVersion: 3 };
