@@ -162,19 +162,58 @@ profiles and a separate browser-development origin are used for verification.
 - Full local `pnpm verify`: passed once (generation consistency, formatting,
   TypeScript, 242 tests in 20 files, production frontend build). The existing
   Vite large-chunk advisory remains. Rust formatting and locked dependency
-  metadata checks pass; hosted native compilation/tests are pending execution.
+  metadata checks pass.
   The initial native CI exposed a SQLx RawSql async/Send incompatibility at the
   Tauri command boundary; replacing it with queries for the shipped DDL preserved
   the transaction boundary. The corrected Windows run passed compilation/tests
-  at `449cca9`; the final read-only/WAL hardening run is pending.
+  at `449cca9`. The final code at `7ab3d86` passed
+  [Windows native compilation and tests](https://github.com/Rstanford1/stride-plan/actions/runs/43665235892):
+  42 passed (15 T05), zero failed, one helper omitted from the parent suite but
+  executed in separate save/read processes by the restart test. This includes
+  the final read-only/WAL safety-copy failure test. The same revision passed
+  [hosted frontend verification](https://github.com/Rstanford1/stride-plan/actions/runs/43665235907).
   Rust tests use fixture-owned temporary directories, including independent
   save/read processes, safety-copy failures, migration rollback, SQL transaction
   rollback, source damage, recovery, constraints and publication/restore races.
 - Remaining acceptance: complete installed-app UI close/restart/reopen and
   draft-only export/recovery through an isolated packaged Windows profile; user
-  acceptance; physical power-loss evidence. Process-level repository tests do not
+  acceptance. Process-level repository tests do not
   claim a complete Tauri/WebView restart. Full portable app/FIT backup, activation,
   multiple drafts, editing and workbook parity remain outside T05.
+- No additional storage-architecture decision needs approval. Review delivery is
+  [PR #9](https://github.com/Rstanford1/stride-plan/pull/9), left open and unmerged.
+  A final documentation-only commit records these results; native code remains
+  the tested `7ab3d86` version. No real or existing development profile was opened.
+
+T05 changed-file manifest (source, synthetic fixtures/tests and documentation only):
+
+- `.github/workflows/rust-windows.yml`
+- `DESIGN.md`
+- `README.md`
+- `ROADMAP.md`
+- `UI_INVENTORY.md`
+- `src-tauri/Cargo.lock`
+- `src-tauri/Cargo.toml`
+- `src-tauri/build.rs`
+- `src-tauri/capabilities/default.json`
+- `src-tauri/migrations/0003_plan_draft.sql`
+- `src-tauri/src/fit_source_store.rs`
+- `src-tauri/src/lib.rs`
+- `src-tauri/src/plan_draft_commands.rs`
+- `src-tauri/src/plan_draft_store.rs`
+- `src-tauri/src/plan_draft_tests.rs`
+- `src-tauri/tests/plan-draft-wire.json`
+- `src/components/PlanDraftPanel.test.tsx`
+- `src/components/PlanDraftPanel.tsx`
+- `src/data/app-context.tsx`
+- `src/data/plan-draft-legacy.test.mjs`
+- `src/data/plan-draft-store.test.ts`
+- `src/data/plan-draft-store.ts`
+- `src/data/repository.ts`
+- `src/raw-imports.d.ts`
+- `src/screens/DataScreen.tsx`
+- `src/styles.css`
+- `src/test/plan-draft-fixture.ts`
 
 ### T04 approved Garmin Personal API slice — November 14, 2026
 
