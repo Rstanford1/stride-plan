@@ -17,6 +17,7 @@ import { FitFileParserDecoder } from "../domain/fit-decoder";
 import { runFitImportBatch } from "../data/fit-import-controller";
 import { createFitSourceStore } from "../data/fit-source-store";
 import { inspectLegacyRestore, type RestorePreview } from "../data/restore";
+import { GarminIntegration } from "../components/GarminIntegration";
 
 export function DataScreen() {
   const { data, replaceData, resetDemo, updateSettings, restoreBackup } =
@@ -311,7 +312,9 @@ export function DataScreen() {
         <div>
           <p className="eyebrow">Local data</p>
           <h1>Data & settings</h1>
-          <p>Imports, backups, and preferences stay on this device.</p>
+          <p>
+            Local imports, backups, preferences, and optional Garmin access.
+          </p>
         </div>
         <span className="privacy-badge">
           <ShieldCheck size={17} /> No account · no telemetry
@@ -557,6 +560,7 @@ export function DataScreen() {
           </div>
         </section>
       )}
+      <GarminIntegration />
       <section className="panel preferences">
         <h2>Personal reference values</h2>
         <div className="preference-grid">

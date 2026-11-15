@@ -7,7 +7,7 @@ on:
       - "src-tauri/**"
       - ".github/workflows/rust-windows.yml"
   push:
-    branches: [main]
+    branches: [main, codex/t04-garmin-personal-api]
     paths:
       - "src-tauri/**"
       - ".github/workflows/rust-windows.yml"
