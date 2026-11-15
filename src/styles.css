@@ -1649,3 +1649,16 @@ label textarea {
 .plan-draft-identity {
   overflow-wrap: anywhere;
 }
+.plan-draft-recovery-actions {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.plan-draft-export {
+  min-width: 0;
+  max-width: 100%;
+}
+.plan-draft-export-result {
+  max-width: 42rem;
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+}

@@ -10,6 +10,36 @@ bounded storage/recovery and Data-screen behavior approved in that decision.
 The owner's preserved Phase 0 architecture decisions and implementation roadmap
 were reviewed without copying those untracked documents into this worktree.
 
+### Export Save As acceptance correction
+
+Status: **Testing; approved by the owner's acceptance-fix request.** The
+packaged export currently uses a browser download and reports only that a download
+was requested. Replace that action with a native Windows Save As dialog, suggesting
+`stride-plan-draft-recovery.json`. A narrowly scoped native command regenerates
+the unchanged recovery envelope and checks its hash against the T01-verified
+frontend export; the frontend supplies neither destination paths nor file bytes.
+Write a unique sibling temporary file, flush and verify its bytes, then publish
+atomically and verify the final file before reporting the selected location.
+Use the native overwrite confirmation; reject changed/conflicting destinations,
+unsafe links, application storage and replacement of the original source.
+Cancellation writes no export and clears prior success. Show progress, saved
+location, neutral cancellation and readable failures beside the export button,
+with announced status and preserved keyboard focus. No broad frontend filesystem permission,
+recovery-format, schema, migration, import or training-data change is authorized.
+
+Correction verification: `pnpm verify` passed (249 tests in 20 files, generation
+consistency, formatting, TypeScript and production build); Rust formatting passed.
+The 25 focused adapter/component/legacy-boundary tests passed. Synthetic rendered
+UI responses exercised saved-path wrapping at 680 px, keyboard focus, cancellation
+after success, and nearby announced errors; these are explicitly not a native
+dialog test. Native tests add actual temporary-file save/overwrite, partial and
+failed writes, sync/publication/verification failures, cancellation, destination
+races, unsafe destinations and export-file recovery with unchanged database and
+source bytes. Windows execution/build results are recorded in the
+[existing T05 PR checks and review record](https://github.com/Rstanford1/stride-plan/pull/9).
+Packaged Save As interaction, overwrite confirmation and owner acceptance remain
+manual acceptance checks. Only synthetic temporary profiles/files are tested.
+
 ### Ownership and three new tables
 
 Use the existing `stride-plan.db`. `app_state` remains the sole owner of active

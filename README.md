@@ -105,7 +105,10 @@ its exact original JSON bytes; it does not activate the plan or change workouts.
 Identical files reuse the draft, while different bytes produce a conflict.
 
 **Export draft recovery** includes only that draft, its validation/provenance
-records and original JSON bytes. **Import draft recovery** can recover it into
+records and original JSON bytes. In Windows it opens Save As with the suggested
+name `stride-plan-draft-recovery.json`. Confirmation beside the button shows the
+chosen location only after the saved file has been verified; cancellation saves
+nothing. **Import draft recovery** can recover it into
 an empty draft slot. Legacy JSON backups exclude native drafts and original plan
 and FIT files; legacy restore/reset is blocked while a draft exists. Browser
 development supports preview only. See DESIGN.md for the supported migration

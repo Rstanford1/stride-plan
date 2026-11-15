@@ -30,6 +30,11 @@ pub fn error(code: &'static str) -> DraftError {
         "source" => "The original plan source is missing, corrupt or inaccessible.",
         "backup" => "The pre-migration safety copy could not be verified. Migration stopped.",
         "legacy_blocked" => "Legacy restore and reset are blocked while a native draft exists. Export draft recovery first; this build cannot replace the draft.",
+        "export_write" => "Recovery could not be saved and verified. Check folder permissions and free disk space, then retry.",
+        "export_verify" => "The recovery file could not be verified. A file may exist at the selected location; no successful save was confirmed.",
+        "export_conflict" => "The draft or destination changed during export. Nothing was overwritten; choose the destination again.",
+        "export_unsafe" => "Choose a regular file outside application storage. Original plan sources and linked files cannot be replaced.",
+        "export_cleanup" => "The temporary recovery export could not be removed. No successful save was confirmed.",
         _ => "Draft storage could not complete the operation. Retry is safe.",
     };
     DraftError {

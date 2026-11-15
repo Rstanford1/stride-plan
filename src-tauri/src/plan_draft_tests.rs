@@ -283,6 +283,38 @@ async fn recovery_preserves_every_record_and_exact_bytes_and_rolls_back_failure(
 }
 
 #[tokio::test]
+async fn save_as_file_retains_exact_envelope_and_recovers_without_database_mutation() {
+    let original = Profile::new(false).await;
+    let saved = original.store().save(request()).await.unwrap();
+    let before_db = fs::read(original.store().database).unwrap();
+    let before_source = fs::read(original.source(&saved.record.source_hash)).unwrap();
+    let serialized = serde_json::to_vec(&original.store().export().await.unwrap()).unwrap();
+    let restored = Profile::new(false).await;
+    let export_path = restored.0.join("chosen-recovery-name.json");
+    let result = crate::plan_draft_export::save_selected(
+        Some(export_path.clone()),
+        &serialized,
+        &saved.record.source_hash,
+        &[original.0.clone()],
+    )
+    .unwrap();
+    assert!(matches!(
+        result,
+        crate::plan_draft_export::ExportOutcome::Saved { .. }
+    ));
+    assert_eq!(fs::read(&export_path).unwrap(), serialized);
+    assert_eq!(fs::read(original.store().database).unwrap(), before_db);
+    assert_eq!(
+        fs::read(original.source(&saved.record.source_hash)).unwrap(),
+        before_source
+    );
+    let envelope: Envelope = serde_json::from_slice(&fs::read(export_path).unwrap()).unwrap();
+    let recovered = restored.store().recover(envelope, SNAPSHOT).await.unwrap();
+    assert_eq!(recovered.record, saved.record);
+    assert_eq!(recovered.bytes, saved.bytes);
+}
+
+#[tokio::test]
 async fn future_partial_database_and_invalid_transport_fail_closed() {
     for sql in [
         "PRAGMA user_version=4",

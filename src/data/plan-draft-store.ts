@@ -72,8 +72,12 @@ export interface DraftStore {
   save(preview: PlanPreview, expected: DraftRecord | null): Promise<SavedDraft>;
   read(): Promise<SavedDraft | null>;
   exportRecovery(): Promise<string>;
+  saveRecovery(): Promise<RecoverySaveResult>;
   recover(text: string): Promise<SavedDraft>;
 }
+export type RecoverySaveResult =
+  | { contractVersion: 1; status: "cancelled" }
+  | { contractVersion: 1; status: "saved"; path: string };
 const messages = {
   unsupported:
     "Unsupported draft, validator or database version. No data was replaced.",
@@ -87,6 +91,16 @@ const messages = {
   legacy_blocked:
     "Legacy restore and reset are blocked while a native draft exists.",
   storage: "Draft storage could not complete the operation. Retry is safe.",
+  export_write:
+    "Recovery could not be saved and verified. Check folder permissions and free disk space, then retry.",
+  export_verify:
+    "The recovery file could not be verified. A file may exist at the selected location; no successful save was confirmed.",
+  export_conflict:
+    "The draft or destination changed during export. Nothing was overwritten; choose the destination again.",
+  export_unsafe:
+    "Choose a regular file outside application storage. Original plan sources and linked files cannot be replaced.",
+  export_cleanup:
+    "The temporary recovery export could not be removed. No successful save was confirmed.",
 };
 export class PlanDraftError extends Error {
   constructor(readonly code: keyof typeof messages) {
@@ -276,6 +290,32 @@ export class NativeDraftStore implements DraftStore {
     if (typeof text !== "string") throw new PlanDraftError("corrupt");
     await inspectEnvelope(text);
     return text;
+  }
+  async saveRecovery(): Promise<RecoverySaveResult> {
+    const text = await this.exportRecovery();
+    const response = await this.command("save_plan_draft_recovery", {
+      contractVersion: 1,
+      expectedRecoveryHash: await sha256Hex(new TextEncoder().encode(text)),
+    });
+    const result = z
+      .discriminatedUnion("status", [
+        z
+          .object({
+            contractVersion: z.literal(1),
+            status: z.literal("cancelled"),
+          })
+          .strict(),
+        z
+          .object({
+            contractVersion: z.literal(1),
+            status: z.literal("saved"),
+            path: z.string().min(1).max(32767),
+          })
+          .strict(),
+      ])
+      .safeParse(response);
+    if (!result.success) throw new PlanDraftError("export_verify");
+    return result.data;
   }
   async recover(text: string) {
     await inspectEnvelope(text);

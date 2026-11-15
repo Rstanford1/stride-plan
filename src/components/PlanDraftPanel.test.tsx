@@ -22,6 +22,9 @@ async function fixture() {
     save: vi.fn().mockResolvedValue(saved),
     read: vi.fn().mockResolvedValue(saved),
     exportRecovery: vi.fn(),
+    saveRecovery: vi
+      .fn()
+      .mockResolvedValue({ contractVersion: 1, status: "cancelled" }),
     recover: vi.fn().mockResolvedValue(saved),
   };
   return { saved, store };
@@ -142,4 +145,99 @@ describe("T05 focused Data workflow", () => {
     ])
       expect(screen.getByRole("button", { name })).toBeDisabled();
   });
+  it("shows a nearby saved location only after native acknowledgement and restores focus", async () => {
+    const { saved, store } = await fixture();
+    vi.mocked(store.inspect).mockResolvedValue({
+      contractVersion: 1,
+      snapshot: "synthetic",
+      draft: saved.record,
+    });
+    let finish: (
+      value: Awaited<ReturnType<DraftStore["saveRecovery"]>>,
+    ) => void = () => {};
+    vi.mocked(store.saveRecovery).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    render(<PlanDraftPanel store={store} />);
+    const button = await screen.findByRole("button", {
+      name: "Export draft recovery",
+    });
+    await waitFor(() => expect(button).toBeEnabled());
+    button.focus();
+    fireEvent.click(button);
+    expect(button).toBeDisabled();
+    expect(screen.queryByText(/Recovery saved to/)).toBeNull();
+    expect(
+      screen.getByText("Choose where to save the recovery file…"),
+    ).toBeVisible();
+    await act(async () => {
+      finish({
+        contractVersion: 1,
+        status: "saved",
+        path: "D:\\Synthetic exports\\chosen-name.json",
+      });
+    });
+    const confirmation = screen.getByText(
+      "Recovery saved to D:\\Synthetic exports\\chosen-name.json",
+    );
+    expect(confirmation.parentElement).toContainElement(button);
+    expect(button).toHaveAttribute("aria-describedby", confirmation.id);
+    await waitFor(() => expect(button).toHaveFocus());
+    expect(store.exportRecovery).not.toHaveBeenCalled();
+  });
+  it("clears earlier success when another export is cancelled", async () => {
+    const { saved, store } = await fixture();
+    vi.mocked(store.inspect).mockResolvedValue({
+      contractVersion: 1,
+      snapshot: "synthetic",
+      draft: saved.record,
+    });
+    vi.mocked(store.saveRecovery)
+      .mockResolvedValueOnce({
+        contractVersion: 1,
+        status: "saved",
+        path: "D:\\synthetic.json",
+      })
+      .mockResolvedValueOnce({ contractVersion: 1, status: "cancelled" });
+    render(<PlanDraftPanel store={store} />);
+    const button = screen.getByRole("button", {
+      name: "Export draft recovery",
+    });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+    await screen.findByText(/Recovery saved to/);
+    fireEvent.click(button);
+    await screen.findByText("Export cancelled. No recovery file was saved.");
+    expect(screen.queryByText(/Recovery saved to/)).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+  it.each([
+    "Recovery could not be saved and verified. Check folder permissions and free disk space, then retry.",
+    "The recovery file could not be verified. A file may exist at the selected location; no successful save was confirmed.",
+  ])(
+    "shows export failure beside its control without false success: %s",
+    async (message) => {
+      const { saved, store } = await fixture();
+      vi.mocked(store.inspect).mockResolvedValue({
+        contractVersion: 1,
+        snapshot: "synthetic",
+        draft: saved.record,
+      });
+      vi.mocked(store.saveRecovery).mockRejectedValue(new Error(message));
+      render(<PlanDraftPanel store={store} />);
+      const button = screen.getByRole("button", {
+        name: "Export draft recovery",
+      });
+      await waitFor(() => expect(button).toBeEnabled());
+      fireEvent.click(button);
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent(message);
+      expect(alert.parentElement).toContainElement(button);
+      expect(screen.queryByText(/Recovery saved to/)).toBeNull();
+      expect(button).toBeEnabled();
+    },
+  );
 });

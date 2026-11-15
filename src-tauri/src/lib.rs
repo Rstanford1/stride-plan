@@ -4,6 +4,7 @@ mod garmin;
 mod garmin_commands;
 mod garmin_credentials;
 mod plan_draft_commands;
+mod plan_draft_export;
 mod plan_draft_store;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -18,6 +19,7 @@ pub fn run() {
             plan_draft_commands::save_plan_draft,
             plan_draft_commands::read_plan_draft,
             plan_draft_commands::export_plan_draft,
+            plan_draft_commands::save_plan_draft_recovery,
             plan_draft_commands::recover_plan_draft,
             plan_draft_commands::replace_legacy_snapshot,
             garmin_commands::garmin_status,

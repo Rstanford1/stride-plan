@@ -13,9 +13,79 @@ import {
 import { createInitialData } from "../domain/seed";
 import sharedWire from "../../src-tauri/tests/plan-draft-wire.json";
 import type { NativeSaveRequest } from "./plan-draft-store";
+import { sha256Hex } from "../domain/fit-hash";
 const snapshot = JSON.stringify(createInitialData());
 
 describe("T05 plan preview and native boundary", () => {
+  it("binds Save As to the verified unchanged recovery envelope without passing paths or contents", async () => {
+    const saved = await syntheticDraft();
+    const text = await recoveryDraft(saved);
+    const call = vi.fn(async (command: string) =>
+      command === "export_plan_draft"
+        ? text
+        : {
+            contractVersion: 1,
+            status: "saved",
+            path: "D:\\Synthetic exports\\chosen-name.json",
+          },
+    ) as typeof invoke;
+    const result = await new NativeDraftStore(call).saveRecovery();
+    expect(result).toEqual({
+      contractVersion: 1,
+      status: "saved",
+      path: "D:\\Synthetic exports\\chosen-name.json",
+    });
+    expect(call).toHaveBeenLastCalledWith("save_plan_draft_recovery", {
+      request: {
+        contractVersion: 1,
+        expectedRecoveryHash: await sha256Hex(new TextEncoder().encode(text)),
+      },
+    });
+    expect(JSON.parse(text).sourceBase64).toEqual(
+      JSON.parse(await recoveryDraft(saved)).sourceBase64,
+    );
+  });
+  it("handles Save As cancellation and refuses unverified export acknowledgements", async () => {
+    const text = await recoveryDraft(await syntheticDraft());
+    for (const reply of [
+      { contractVersion: 1, status: "saved" },
+      { contractVersion: 2, status: "saved", path: "D:\\synthetic.json" },
+      { contractVersion: 1, status: "download_requested" },
+    ]) {
+      const call = vi.fn(async (command: string) =>
+        command === "export_plan_draft" ? text : reply,
+      ) as typeof invoke;
+      await expect(
+        new NativeDraftStore(call).saveRecovery(),
+      ).rejects.toMatchObject({ code: "export_verify" });
+    }
+    const call = vi.fn(async (command: string) =>
+      command === "export_plan_draft"
+        ? text
+        : { contractVersion: 1, status: "cancelled" },
+    ) as typeof invoke;
+    await expect(new NativeDraftStore(call).saveRecovery()).resolves.toEqual({
+      contractVersion: 1,
+      status: "cancelled",
+    });
+  });
+  it("does not open Save As for corrupt recovery and sanitizes native export failures", async () => {
+    const call = vi.fn().mockResolvedValue("{}");
+    await expect(new NativeDraftStore(call).saveRecovery()).rejects.toThrow();
+    expect(call).toHaveBeenCalledTimes(1);
+    const text = await recoveryDraft(await syntheticDraft());
+    const failure = vi.fn(async (command: string) => {
+      if (command === "export_plan_draft") return text;
+      throw {
+        contractVersion: 1,
+        code: "export_write",
+        message: "private raw OS failure",
+      };
+    }) as typeof invoke;
+    await expect(new NativeDraftStore(failure).saveRecovery()).rejects.toThrow(
+      "Check folder permissions and free disk space",
+    );
+  });
   it("matches the shared Rust version-1 request and error fixture", async () => {
     const wire: NativeSaveRequest = { ...sharedWire.save, contractVersion: 1 };
     expect(wire).toEqual(sharedWire.save);

@@ -159,6 +159,14 @@ Implemented the focused panel, validation/preview, durable native save/reopen,
 and draft recovery. Synthetic verification is recorded in DESIGN.md; packaged
 Windows UI restart/recovery and owner acceptance remain pending.
 
+T05 export acceptance correction: **Testing**. The owner's request approves a
+native Save As dialog with the suggested recovery filename, verified file writes,
+and confirmation/cancellation/errors immediately beside Export draft recovery.
+Frontend filesystem permissions and the recovery format are unchanged. Focused
+rendered tests cover acknowledgement timing, location, cancellation, failures and
+focus; native verification and packaged-dialog acceptance are recorded in DESIGN.md
+and the existing T05 PR.
+
 T01 training-plan JSON 1.1 domain contract: **Testing**. The approved contract and
 verification record are in [schemas/training-plan/README.md](schemas/training-plan/README.md).
 This is a domain-only addition with no UI integration or changed screen behavior;

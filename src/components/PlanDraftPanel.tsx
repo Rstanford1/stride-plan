@@ -32,6 +32,8 @@ export function PlanDraftPanel({
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  const [exportMessage, setExportMessage] = useState("");
+  const [exportFailed, setExportFailed] = useState(false);
   const file = useRef<HTMLInputElement>(null);
   const selectButton = useRef<HTMLButtonElement>(null);
   const recoveryFile = useRef<HTMLInputElement>(null);
@@ -133,6 +135,30 @@ export function PlanDraftPanel({
       },
       selectButton.current,
     );
+  }
+  async function exportRecovery() {
+    if (!store || busy) return;
+    setExportFailed(false);
+    setExportMessage("Choose where to save the recovery file…");
+    await run("Opening Save As…", async () => {
+      try {
+        const result = await store.saveRecovery();
+        setExportMessage(
+          result.status === "saved"
+            ? `Recovery saved to ${result.path}`
+            : "Export cancelled. No recovery file was saved.",
+        );
+      } catch (value) {
+        setExportFailed(true);
+        setExportMessage(
+          value instanceof Error
+            ? value.message
+            : "Recovery could not be saved and verified. Please try again.",
+        );
+      } finally {
+        setStatus("");
+      }
+    });
   }
   const valid = preview?.validation.ok ? preview.validation.plan : null;
   return (
@@ -277,29 +303,28 @@ export function PlanDraftPanel({
           </details>
         </div>
       )}
-      <div className="button-row">
-        <button
-          className="button secondary"
-          disabled={busy || !store || !record}
-          onClick={() =>
-            void run("Verifying draft recovery export…", async () => {
-              const text = await store!.exportRecovery();
-              const url = URL.createObjectURL(
-                new Blob([text], { type: "application/json" }),
-              );
-              const anchor = document.createElement("a");
-              anchor.href = url;
-              anchor.download = "stride-plan-draft-recovery.json";
-              anchor.click();
-              URL.revokeObjectURL(url);
-              setStatus(
-                "Draft-only recovery exported. Active plans, activities and FIT bytes are not included.",
-              );
-            })
-          }
-        >
-          Export draft recovery
-        </button>
+      <div className="button-row plan-draft-recovery-actions">
+        <div className="plan-draft-export">
+          <button
+            className="button secondary"
+            disabled={busy || !store || !record}
+            aria-describedby={
+              exportMessage ? "plan-draft-export-result" : undefined
+            }
+            onClick={() => void exportRecovery()}
+          >
+            Export draft recovery
+          </button>
+          {exportMessage && (
+            <p
+              id="plan-draft-export-result"
+              className="plan-draft-export-result"
+              role={exportFailed ? "alert" : "status"}
+            >
+              {exportMessage}
+            </p>
+          )}
+        </div>
         <button
           className="button secondary"
           disabled={busy || !store}
