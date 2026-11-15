@@ -151,6 +151,14 @@ Source: `src/screens/DataScreen.tsx`, import/backup domain modules.
 
 ## 10. Approved slice verification status
 
+T05 JSON plan draft and draft-only recovery: **Testing** on
+`codex/t05-persist-plan-draft`. The proposed three-table schema, ownership,
+migration/safety-copy policy, recovery limits and focused Data-screen workflow
+are recorded in DESIGN.md and were approved by the owner on November 14, 2026.
+Implemented the focused panel, validation/preview, durable native save/reopen,
+and draft recovery. Synthetic verification is recorded in DESIGN.md; packaged
+Windows UI restart/recovery and owner acceptance remain pending.
+
 T01 training-plan JSON 1.1 domain contract: **Testing**. The approved contract and
 verification record are in [schemas/training-plan/README.md](schemas/training-plan/README.md).
 This is a domain-only addition with no UI integration or changed screen behavior;

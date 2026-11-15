@@ -1,0 +1,19 @@
+{
+  "request": { "contractVersion": 1 },
+  "save": {
+    "contractVersion": 1,
+    "bytes": [123, 125],
+    "originalFileName": "synthetic.json",
+    "sourceHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "diagnosticsJson": "[]",
+    "validatorFingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+    "expectedDraftId": null,
+    "expectedRevision": null,
+    "expectedSnapshot": "synthetic-only; serde shape fixture, not a saveable plan"
+  },
+  "error": {
+    "contractVersion": 1,
+    "code": "conflict",
+    "message": "A different draft or revision is already saved. Nothing was overwritten."
+  }
+}

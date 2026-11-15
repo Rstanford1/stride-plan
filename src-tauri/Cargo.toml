@@ -27,6 +27,7 @@ zip = { version = "=2.4.2", default-features = false, features = ["deflate"] }
 base64 = "=0.22.1"
 zeroize = "=1.9.1"
 httpdate = "=1.0.3"
+sqlx = { version = "=0.8.6", default-features = false, features = ["sqlite", "runtime-tokio"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "=0.61.2", features = ["Win32_Storage_FileSystem", "Win32_Security_Credentials", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }

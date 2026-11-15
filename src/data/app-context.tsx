@@ -52,7 +52,7 @@ interface AppContextValue {
   updateLapRole: (activityId: string, lapId: string, role: LapRole) => void;
   updateSettings: (update: Partial<AppSettings>) => void;
   replaceData: (data: AppData) => void;
-  resetDemo: () => void;
+  resetDemo: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -283,7 +283,10 @@ export function AppProvider({
       updateLapRole,
       updateSettings,
       replaceData: setData,
-      resetDemo: () => setData(createInitialData()),
+      resetDemo: async () => {
+        if (!writable.current || restoring.current) return;
+        await restoreBackup(JSON.stringify(createInitialData()));
+      },
     }),
     [
       data,

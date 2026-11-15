@@ -3,6 +3,8 @@ mod fit_source_store;
 mod garmin;
 mod garmin_commands;
 mod garmin_credentials;
+mod plan_draft_commands;
+mod plan_draft_store;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -12,6 +14,12 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             fit_source_commands::store_fit_source,
             fit_source_commands::read_fit_source,
+            plan_draft_commands::inspect_plan_draft,
+            plan_draft_commands::save_plan_draft,
+            plan_draft_commands::read_plan_draft,
+            plan_draft_commands::export_plan_draft,
+            plan_draft_commands::recover_plan_draft,
+            plan_draft_commands::replace_legacy_snapshot,
             garmin_commands::garmin_status,
             garmin_commands::garmin_connect,
             garmin_commands::garmin_verify,

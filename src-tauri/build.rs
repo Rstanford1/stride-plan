@@ -3,6 +3,12 @@ fn main() {
         tauri_build::AppManifest::new().commands(&[
             "store_fit_source",
             "read_fit_source",
+            "inspect_plan_draft",
+            "save_plan_draft",
+            "read_plan_draft",
+            "export_plan_draft",
+            "recover_plan_draft",
+            "replace_legacy_snapshot",
             "garmin_status",
             "garmin_connect",
             "garmin_verify",

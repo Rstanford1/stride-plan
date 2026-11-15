@@ -1639,3 +1639,13 @@ label textarea {
     flex-wrap: wrap;
   }
 }
+.plan-draft-source {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 24rem;
+  overflow: auto;
+  font-size: 0.875rem;
+}
+.plan-draft-identity {
+  overflow-wrap: anywhere;
+}

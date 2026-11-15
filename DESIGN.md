@@ -1,5 +1,175 @@
 # Stride Plan design
 
+## T05 — one durable JSON plan draft
+
+Status: **Testing. Architecture, migration, recovery and focused UI approved
+by the owner on November 14, 2026 before implementation.**
+Prepared November 14, 2026 on `codex/t05-persist-plan-draft`, from fetched
+`origin/main` `3335223` (T04 merged as PR #8). This section proposes the exact
+bounded storage/recovery and Data-screen behavior approved in that decision.
+The owner's preserved Phase 0 architecture decisions and implementation roadmap
+were reviewed without copying those untracked documents into this worktree.
+
+### Ownership and three new tables
+
+Use the existing `stride-plan.db`. `app_state` remains the sole owner of active
+plans, sessions, results, totals and settings. Existing unused normalized tables
+remain unused. Rust exclusively writes the following new draft records; they
+are never added to AppData or written through the legacy SQL repository.
+
+| Table                   | Proposed columns and constraints                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `plan_draft_sources`    | `source_id TEXT PRIMARY KEY` equals `plan-source:` plus `source_hash`; `source_hash TEXT NOT NULL UNIQUE`, exactly 64 lowercase hexadecimal characters; `byte_length INTEGER NOT NULL CHECK(byte_length BETWEEN 1 AND 8388608)`; `original_file_name TEXT NOT NULL`, a bounded display name, never a path; `imported_at TEXT NOT NULL`, native-generated UTC RFC 3339.                                                                                                                                                                             |
+| `plan_drafts`           | `slot INTEGER PRIMARY KEY CHECK(slot = 1)` enforces one saved draft; `draft_id TEXT NOT NULL UNIQUE` equals `plan-draft:` plus the source hash; `source_id TEXT NOT NULL UNIQUE REFERENCES plan_draft_sources(source_id) ON DELETE RESTRICT`; `plan_id TEXT NOT NULL`, `version_id TEXT NOT NULL`, optional `parent_version_id TEXT`, preserving T01 IDs; `UNIQUE(plan_id, version_id)`; `revision INTEGER NOT NULL CHECK(revision = 1)`; `state TEXT NOT NULL CHECK(state = 'draft')`; `created_at TEXT NOT NULL`, native-generated UTC RFC 3339. |
+| `plan_draft_validation` | `draft_id TEXT PRIMARY KEY REFERENCES plan_drafts(draft_id) ON DELETE RESTRICT`; `schema_version TEXT NOT NULL CHECK(schema_version = '1.1')`; `validator_version TEXT NOT NULL`; `validator_fingerprint TEXT NOT NULL`, SHA-256 of the shipped schema/validator inputs; `diagnostics_json TEXT NOT NULL CHECK(json_valid(diagnostics_json))`, preserving the complete T01 warning report; `diagnostics_hash TEXT NOT NULL`, lowercase SHA-256 of those exact UTF-8 report bytes.                                                                  |
+
+All columns are non-null except `parent_version_id`. Hash shape constraints also
+apply to validation hashes. Entity IDs retain T01's length/character rules.
+Only PK/UNIQUE indexes are needed. Foreign keys are enabled on every connection.
+The saved aggregate has exactly one joined source/draft/validation record; reads
+reject partial or inconsistent aggregates. No measurement conversion, derived
+mileage, schedule or workout projection is introduced.
+
+### Original bytes, validation and commands
+
+- Extend T03's guarded immutable store with a closed JSON-plan source kind:
+  `plan-sources/<first-two-hash-characters>/<hash>.json`, maximum 8 MiB. Rust
+  selects paths, verifies UTF-8/JSON transport and schema-version boundaries,
+  computes SHA-256, syncs and rereads exact bytes before linking a source. Preserve
+  original BOM/whitespace/newlines in the stored bytes even when parsing requires
+  handling a UTF-8 BOM. Reuse T03's Windows path/link protections and publication
+  procedure, without weakening FIT checks or introducing arbitrary file access.
+- The existing T01 schema and semantic validator remain the sole plan-rule
+  authority in TypeScript: run on selection, immediately before save, on reopen,
+  and on recovery intake. Rust checks bounded DTOs, identities, hashes, report
+  provenance and persistence invariants; it does not introduce a second semantic
+  interpretation. The validation record is explicitly the bundled T01 validator's
+  report, not a claim of independent native semantic validation.
+- Raw instructions, optional/unknown metadata and document provenance are
+  canonical in the exact source bytes, never reconstructed from normalized rows.
+  Store warnings as supplied by T01 without filtering or changing their messages.
+- Add narrowly enrolled version-1 commands for draft inspection/preparation,
+  save, read, recovery export and recovery import. Handwritten TS/Rust DTOs use
+  shared wire fixtures as in T03; no generator or general database API is added.
+  Promote the already-locked SQLx 0.8.6 to a direct dependency for native
+  transactions; avoid a second SQLite implementation or dependency upgrades.
+- Save accepts the expected empty slot or observed draft ID/revision. Under a
+  native write transaction, identical verified source bytes return the existing
+  IDs/report; different bytes or a stale nonmatching identity return a typed
+  conflict. There is no overwrite/delete/edit operation. The first filename and
+  import timestamp remain unchanged on duplicate import.
+- Finalize the source before the SQL transaction. Insert all three rows atomically,
+  commit with synchronous FULL, then reopen/read the joined records and source
+  bytes to verify durable persistence before success. A lost acknowledgement is
+  safely retried by source hash. Rollback/interruption may leave a harmless
+  unreferenced immutable object; no automatic source deletion is introduced.
+
+### Supported migration and verified safety copy
+
+- The selected production baseline is a T04-compatible profile with a deeply
+  validated current AppData v4 snapshot and SQLite `user_version = 0`. Optional
+  known normalized tables must be empty. The SQLx ledger may be absent/empty or
+  contain only successful shipped migration 1/2 entries with matching checksums
+  and corresponding table shapes. A genuinely new profile first initializes
+  through existing T02 empty-store protections. Historical snapshot v2/v3 must
+  first pass T02's existing safety-copy/upgrade to v4; T05 does not add adapters.
+- Before any T05 DDL on an existing profile, produce a native-chosen, unique,
+  retained pre-migration SQLite safety copy with `VACUUM INTO`. This produces a
+  consistent logical database copy, including committed WAL content, rather than
+  copying only the live main file. Sync the output, reopen read-only, verify
+  integrity/FKs, schema/ledger and all legacy records against the captured
+  baseline; retain exact `app_state.payload` text. See SQLite's
+  [VACUUM INTO contract](https://www.sqlite.org/lang_vacuum.html).
+- Then acquire the write transaction and recheck the complete baseline against
+  the verified safety copy. If anything changed, abort and require a new verified
+  copy. Add the three tables and set application-owned `PRAGMA user_version = 3`
+  in that same transaction, leaving historical SQLx ledger entries untouched.
+  Do not register an automatic SQL-plugin migration that precedes safety checks.
+  Reopen and verify the exact expected schema, joins, FKs and untouched legacy
+  records after commit. The retained copy is recovery evidence for an interrupted
+  or failed attempt, never automatically restored over concurrent user data.
+- Version 3 is accepted only with the exact T05 schema. Unknown/future versions,
+  tables, failed/mismatched ledger entries, partial schemas, populated unused
+  normalized tables and malformed snapshots fail closed, without seeding,
+  downgrading or opportunistically repairing them. Update T02 compatibility
+  narrowly for these three tables; ordinary active-snapshot saves remain allowed.
+- Any inability to create, sync or verify the safety copy aborts before DDL. All
+  migration/recovery tests and application launches use synthetic temporary
+  profiles only, never the owner's actual or separate development profile.
+
+### Bounded recovery and legacy backup limits
+
+- Provide a version-1 draft-only recovery JSON envelope containing the stable
+  draft/source IDs, original filename/timestamps, schema/validator identity,
+  exact validation-report bytes, their hashes, and base64 original source bytes
+  with SHA-256 and byte length. Bound the envelope to 16 MiB. Export rereads and
+  verifies persisted bytes; an invalid/missing source blocks export. This is a
+  logical export of one immutable aggregate, not a database or full-app backup.
+- Recovery into a new isolated profile verifies envelope versions, limits,
+  hashes, identities and T01 validation before publishing the immutable source
+  and transactionally inserting records. Preserve IDs and original metadata.
+  An identical existing aggregate is idempotent; a different occupied slot or
+  inconsistent metadata fails without replacement. Interrupted recovery follows
+  the same orphan/rollback/retry policy as save.
+- Label legacy JSON exports incomplete: they omit native plan drafts, original
+  plan JSON and FIT bytes. Block legacy restore and reset/demo replacement while
+  a native draft exists, both at the UI and repository boundary. Recheck draft
+  presence atomically with native legacy-snapshot replacement so a concurrent
+  first draft save cannot bypass the guard. Ordinary snapshot saves may continue
+  and cannot mutate native drafts. Complete portable app backup, FIT recovery,
+  scheduling, retention and automatic safety-copy rollback remain outside T05.
+
+### Data-screen specification and acceptance
+
+Add one panel using existing form/button/panel styles: Select JSON plan file,
+read-only validated preview (identity/calendar, raw instructions and diagnostics),
+Save as draft, Reopen saved draft, Export draft recovery, and Import draft recovery.
+Keep the spreadsheet workflow separate and unchanged. Show loading, validating,
+saving, saved, conflict, unavailable and error states in readable inline text;
+disable conflicting actions while busy and save while invalid. Native labels,
+visible focus and announced status/error messages support keyboard operation.
+Browser mode permits validation/preview but labels native save/recovery unavailable.
+No additional layout or subjective visual redesign is proposed.
+
+Focused synthetic tests cover the owner's acceptance areas. Run `pnpm verify`
+once at the end and use the existing GitHub Windows Rust workflow for native
+compilation/tests. Record separately code tests, browser rendering, complete
+native restart/recovery, window-size/keyboard checks and unfinished acceptance.
+Status remains Testing until owner acceptance. Only generated temporary native
+profiles and a separate browser-development origin are used for verification.
+
+### T05 implementation and verification record
+
+- Implemented the additive three-table migration and native version-1 commands.
+  SQLx remains pinned to 0.8.6; the lockfile adds only the direct project edge.
+  No automatic SQL-plugin migration is registered. The native database resolver
+  exactly matches the plugin's existing `app_config_dir`; immutable source bytes
+  use T03's `app_local_data_dir` and Windows guarded-file publication.
+- Recovery includes SHA-256 of the complete ordered record representation in
+  addition to source/report hashes. The base64 source is never reconstructed from
+  parsed JSON. Export/recovery revalidate with the unchanged T01 validator.
+- Legacy reset now uses staged restore instead of bypassing it. Native draft
+  presence and snapshot replacement share one write transaction, while ordinary
+  active-snapshot saves remain on the existing repository path.
+- Focused frontend/recovery checks: 31 tests passed in four files. Browser
+  rendering exercised a synthetic partial plan with warnings, optional metadata,
+  original instructions and raw JSON. Keyboard Enter opens both disclosures with
+  visible focus. At 680 × 680 there is no horizontal page overflow; desktop
+  rendering was also checked at 1360 × 860. Browser save/recovery correctly remain
+  disabled and explicitly unavailable; no mock is described as native evidence.
+- Full local `pnpm verify`: passed once (generation consistency, formatting,
+  TypeScript, 242 tests in 20 files, production frontend build). The existing
+  Vite large-chunk advisory remains. Rust formatting and locked dependency
+  metadata checks pass; hosted native compilation/tests are pending execution.
+  Rust tests use fixture-owned temporary directories, including independent
+  save/read processes, safety-copy failures, migration rollback, SQL transaction
+  rollback, source damage, recovery, constraints and publication/restore races.
+- Remaining acceptance: complete installed-app UI close/restart/reopen and
+  draft-only export/recovery through an isolated packaged Windows profile; user
+  acceptance; physical power-loss evidence. Process-level repository tests do not
+  claim a complete Tauri/WebView restart. Full portable app/FIT backup, activation,
+  multiple drafts, editing and workbook parity remain outside T05.
+
 ### T04 approved Garmin Personal API slice — November 14, 2026
 
 Owner approval is the attached T04 implementation request. Implement the existing
