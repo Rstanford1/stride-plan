@@ -65,6 +65,18 @@ Strengths:
 
 ## Current work
 
+- T05 persist/reopen one JSON 1.1 plan draft: **Testing** on isolated
+  `codex/t05-persist-plan-draft`, based on fetched `origin/main` `3335223` after
+  T04 PR #8 merged. Exact native tables, compatibility, safety copy, source
+  preservation and draft-only recovery were approved by the owner on November
+  14, 2026 and are recorded in DESIGN.md. The focused implementation and temporary
+  synthetic profile tests are present. Verification and remaining packaged-app
+  acceptance requirements are recorded there. Real/development profiles remain
+  untouched. No activation or workbook adapters are included.
+  Acceptance correction: replace browser-download export with native Save As,
+  verified scoped file publication and visible adjacent feedback. The existing
+  T05 branch/PR carries this narrow correction; no database or import changes.
+
 - T04 secure Garmin Personal API slice: **Testing** on
   `codex/t04-garmin-personal-api`, isolated from merged T03 at `4ad6fca`.
   Approved scope and evidence are in DESIGN.md. Windows Credential Manager,

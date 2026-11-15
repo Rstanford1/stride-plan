@@ -7,6 +7,80 @@ use std::path::PathBuf;
 pub const CONTRACT_VERSION: u32 = 1;
 pub const MAX_SOURCE_BYTES: usize = 32 * 1024 * 1024;
 
+// Decode only transport identity. Unknown metadata and coach strings remain
+// opaque bytes; a full serde Value would impose a second interpretation of
+// optional JSON strings that T01 already accepts (including escaped surrogates).
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PlanSourceHeader {
+    pub schema_version: String,
+    pub manifest: PlanSourceIdentity,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PlanSourceIdentity {
+    pub plan_id: String,
+    pub version_id: String,
+    pub parent_version_id: Option<String>,
+}
+pub(crate) fn plan_source_header(bytes: &[u8]) -> Result<PlanSourceHeader> {
+    let text = std::str::from_utf8(bytes).map_err(|_| SourceError::new(ErrorCode::Corrupt))?;
+    let header: PlanSourceHeader = serde_json::from_str(text.trim_start_matches('\u{feff}'))
+        .map_err(|_| SourceError::new(ErrorCode::Corrupt))?;
+    if header.schema_version != "1.1" {
+        return Err(SourceError::new(ErrorCode::UnsupportedVersion));
+    }
+    Ok(header)
+}
+
+#[derive(Clone, Copy)]
+enum SourceKind {
+    Fit,
+    Plan,
+}
+impl SourceKind {
+    fn folder(self) -> &'static str {
+        match self {
+            Self::Fit => "fit-sources",
+            Self::Plan => "plan-sources",
+        }
+    }
+    fn extension(self) -> &'static str {
+        match self {
+            Self::Fit => "fit",
+            Self::Plan => "json",
+        }
+    }
+    fn limit(self) -> usize {
+        match self {
+            Self::Fit => MAX_SOURCE_BYTES,
+            Self::Plan => 8 * 1024 * 1024,
+        }
+    }
+    fn validate(self, id: &str, bytes: &[u8]) -> Result<()> {
+        if matches!(self, Self::Fit) {
+            return validate_bytes(id, bytes);
+        }
+        if bytes.is_empty() || bytes.len() > self.limit() {
+            return Err(SourceError::new(ErrorCode::TooLarge));
+        }
+        plan_source_header(bytes)?;
+        if hash(bytes) != id {
+            return Err(SourceError::new(ErrorCode::HashMismatch));
+        }
+        Ok(())
+    }
+    fn metadata(self, id: &str, len: usize) -> SourceMetadata {
+        let mut result = SourceMetadata::new(id, len);
+        if matches!(self, Self::Plan) {
+            result.source_id = format!("plan-source:{id}");
+            result.stored_relative_path =
+                format!("{}/{}/{id}.{}", self.folder(), &id[..2], self.extension());
+        }
+        result
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorCode {
@@ -119,17 +193,28 @@ fn validate_bytes(source_hash: &str, bytes: &[u8]) -> Result<()> {
 
 pub struct FitSourceStorage {
     app_local_data: PathBuf,
+    kind: SourceKind,
 }
 
 impl FitSourceStorage {
     // Internal API only: callers in Rust/tests supply a root, never the webview.
     pub fn new(app_local_data: PathBuf) -> Self {
-        Self { app_local_data }
+        Self {
+            app_local_data,
+            kind: SourceKind::Fit,
+        }
+    }
+
+    pub(crate) fn plan(app_local_data: PathBuf) -> Self {
+        Self {
+            app_local_data,
+            kind: SourceKind::Plan,
+        }
     }
 
     pub fn store(&self, source_hash: &str, bytes: &[u8]) -> Result<SourceMetadata> {
         validate_request(CONTRACT_VERSION, source_hash)?;
-        validate_bytes(source_hash, bytes)?;
+        self.kind.validate(source_hash, bytes)?;
         self.store_inner(source_hash, bytes)
     }
 
@@ -195,14 +280,23 @@ mod windows {
     struct Directory {
         path: PathBuf,
         _guards: Vec<File>,
+        kind: SourceKind,
     }
 
     impl Directory {
         fn open(app_data: &Path, source_hash: &str, create: bool) -> Result<Self> {
+            Self::open_kind(app_data, source_hash, create, SourceKind::Fit)
+        }
+        fn open_kind(
+            app_data: &Path,
+            source_hash: &str,
+            create: bool,
+            kind: SourceKind,
+        ) -> Result<Self> {
             if !app_data.is_absolute() {
                 return Err(SourceError::new(ErrorCode::UnsafePath));
             }
-            let path = app_data.join("fit-sources").join(&source_hash[..2]);
+            let path = app_data.join(kind.folder()).join(&source_hash[..2]);
             let mut current = PathBuf::new();
             let mut guards = Vec::new();
             for component in path.components() {
@@ -246,6 +340,7 @@ mod windows {
             Ok(Self {
                 path,
                 _guards: guards,
+                kind,
             })
         }
 
@@ -254,7 +349,10 @@ mod windows {
                 .read(true)
                 .share_mode(FILE_SHARE_READ)
                 .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS)
-                .open(self.path.join(format!("{source_hash}.fit")))
+                .open(
+                    self.path
+                        .join(format!("{source_hash}.{}", self.kind.extension())),
+                )
                 .map_err(|e| io_error(e, false))?;
             let metadata = file.metadata().map_err(|e| io_error(e, false))?;
             if !metadata.is_file() || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
@@ -269,15 +367,16 @@ mod windows {
             if information.nNumberOfLinks != 1 {
                 return Err(SourceError::new(ErrorCode::UnsafePath));
             }
-            if metadata.len() > MAX_SOURCE_BYTES as u64 {
+            if metadata.len() > self.kind.limit() as u64 {
                 return Err(SourceError::new(ErrorCode::Corrupt));
             }
             let mut bytes = Vec::with_capacity(metadata.len() as usize);
             Read::by_ref(&mut file)
-                .take(MAX_SOURCE_BYTES as u64 + 1)
+                .take(self.kind.limit() as u64 + 1)
                 .read_to_end(&mut bytes)
                 .map_err(|e| io_error(e, false))?;
-            if bytes.len() as u64 != metadata.len() || validate_bytes(source_hash, &bytes).is_err()
+            if bytes.len() as u64 != metadata.len()
+                || self.kind.validate(source_hash, &bytes).is_err()
             {
                 return Err(SourceError::new(ErrorCode::Corrupt));
             }
@@ -382,7 +481,8 @@ mod windows {
         }
 
         pub(super) fn read_inner(&self, source_hash: &str) -> Result<Vec<u8>> {
-            Directory::open(&self.app_local_data, source_hash, false)?.read(source_hash)
+            Directory::open_kind(&self.app_local_data, source_hash, false, self.kind)?
+                .read(source_hash)
         }
 
         pub(super) fn store_inner(
@@ -399,10 +499,11 @@ mod windows {
             bytes: &[u8],
             writer: impl FnOnce(&mut File, &[u8]) -> io::Result<()>,
         ) -> Result<SourceMetadata> {
-            let directory = Directory::open(&self.app_local_data, source_hash, true)?;
+            let directory =
+                Directory::open_kind(&self.app_local_data, source_hash, true, self.kind)?;
             match directory.read(source_hash) {
                 Ok(existing) if existing == bytes => {
-                    return Ok(SourceMetadata::new(source_hash, bytes.len()))
+                    return Ok(self.kind.metadata(source_hash, bytes.len()))
                 }
                 Ok(_) => return Err(SourceError::new(ErrorCode::Conflict)),
                 Err(e) if e.code == ErrorCode::Corrupt => {
@@ -427,17 +528,19 @@ mod windows {
                     .map_err(|e| io_error(e, true))?;
                 let mut saved = Vec::new();
                 Read::by_ref(&mut file)
-                    .take(MAX_SOURCE_BYTES as u64 + 1)
+                    .take(self.kind.limit() as u64 + 1)
                     .read_to_end(&mut saved)
                     .map_err(|e| io_error(e, true))?;
-                if saved != bytes || validate_bytes(source_hash, &saved).is_err() {
+                if saved != bytes || self.kind.validate(source_hash, &saved).is_err() {
                     return Err(SourceError::new(ErrorCode::WriteFailed));
                 }
                 Ok(())
             })();
             drop(file);
             let result = written.and_then(|()| {
-                let final_path = directory.path.join(format!("{source_hash}.fit"));
+                let final_path = directory
+                    .path
+                    .join(format!("{source_hash}.{}", self.kind.extension()));
                 if let Err(error) = publish(&staged.0, &final_path) {
                     // A competing successful writer may have published first.
                     if error.kind() != io::ErrorKind::AlreadyExists {
@@ -445,9 +548,7 @@ mod windows {
                     }
                 }
                 match directory.read(source_hash) {
-                    Ok(saved) if saved == bytes => {
-                        Ok(SourceMetadata::new(source_hash, bytes.len()))
-                    }
+                    Ok(saved) if saved == bytes => Ok(self.kind.metadata(source_hash, bytes.len())),
                     Ok(_) => Err(SourceError::new(ErrorCode::Conflict)),
                     Err(e) if e.code == ErrorCode::Corrupt => {
                         Err(SourceError::new(ErrorCode::Conflict))

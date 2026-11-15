@@ -1639,3 +1639,26 @@ label textarea {
     flex-wrap: wrap;
   }
 }
+.plan-draft-source {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 24rem;
+  overflow: auto;
+  font-size: 0.875rem;
+}
+.plan-draft-identity {
+  overflow-wrap: anywhere;
+}
+.plan-draft-recovery-actions {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.plan-draft-export {
+  min-width: 0;
+  max-width: 100%;
+}
+.plan-draft-export-result {
+  max-width: 42rem;
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+}

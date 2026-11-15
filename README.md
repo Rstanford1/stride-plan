@@ -98,6 +98,22 @@ and the T04 record in DESIGN.md. User-supplied keys do not waive this gate.
 
 ## Plan import format
 
+The Windows app also supports **Data & settings → JSON training-plan draft**.
+Select a JSON 1.1 file, review its validation preview, and choose **Save as draft**.
+Use **Reopen saved draft** after restarting. This keeps one read-only draft and
+its exact original JSON bytes; it does not activate the plan or change workouts.
+Identical files reuse the draft, while different bytes produce a conflict.
+
+**Export draft recovery** includes only that draft, its validation/provenance
+records and original JSON bytes. In Windows it opens Save As with the suggested
+name `stride-plan-draft-recovery.json`. Confirmation beside the button shows the
+chosen location only after the saved file has been verified; cancellation saves
+nothing. **Import draft recovery** can recover it into
+an empty draft slot. Legacy JSON backups exclude native drafts and original plan
+and FIT files; legacy restore/reset is blocked while a draft exists. Browser
+development supports preview only. See DESIGN.md for the supported migration
+baseline, retained pre-migration safety copies and remaining acceptance checks.
+
 The importer accepts the replacement workbook's `Plan` sheet, the earlier `Daily Plan` structure, or a CSV/XLSX first sheet with these headers:
 
 `date,title,planned_miles,session_type,guidance,instructions,flexible,phase`

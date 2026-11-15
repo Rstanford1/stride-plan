@@ -18,6 +18,8 @@ import { runFitImportBatch } from "../data/fit-import-controller";
 import { createFitSourceStore } from "../data/fit-source-store";
 import { inspectLegacyRestore, type RestorePreview } from "../data/restore";
 import { GarminIntegration } from "../components/GarminIntegration";
+import { PlanDraftPanel } from "../components/PlanDraftPanel";
+import { nativeDraftsAvailable } from "../data/plan-draft-store";
 
 export function DataScreen() {
   const { data, replaceData, resetDemo, updateSettings, restoreBackup } =
@@ -28,6 +30,9 @@ export function DataScreen() {
     fingerprint: string;
   } | null>(null);
   const [message, setMessage] = useState("");
+  const [nativeDraftPresent, setNativeDraftPresent] = useState<boolean | null>(
+    nativeDraftsAvailable() ? null : false,
+  );
   const [restorePreview, setRestorePreview] = useState<RestorePreview | null>(
     null,
   );
@@ -325,6 +330,7 @@ export function DataScreen() {
           {message}
         </div>
       )}
+      <PlanDraftPanel onPresence={setNativeDraftPresent} />
       <div className="settings-grid">
         <section className="panel settings-panel">
           <div className="settings-icon">
@@ -397,8 +403,8 @@ export function DataScreen() {
             <h2>Legacy JSON backup</h2>
             <p>
               Export plan, activity, journal, revision and settings records.
-              This is an incomplete backup: it does not contain original FIT
-              bytes or newer native records.
+              This is an incomplete backup: it does not contain native plan
+              drafts, original plan JSON, or original FIT bytes.
             </p>
             <button
               className="button secondary"
@@ -425,11 +431,22 @@ export function DataScreen() {
             </p>
             <button
               className="button secondary"
-              disabled={restoring || fitImportProgress !== null}
+              disabled={
+                restoring ||
+                fitImportProgress !== null ||
+                nativeDraftPresent !== false
+              }
               onClick={() => restoreInput.current?.click()}
             >
               <ArchiveRestore size={17} /> Restore backup
             </button>
+            {nativeDraftPresent !== false && (
+              <p>
+                Legacy restore is unavailable while a native draft exists or
+                draft storage cannot be verified. Export draft recovery
+                separately.
+              </p>
+            )}
             <input
               ref={restoreInput}
               hidden
@@ -631,10 +648,18 @@ export function DataScreen() {
       </section>
       <button
         className="text-button danger-link"
+        disabled={nativeDraftPresent !== false}
         onClick={() => {
           if (window.confirm("Reset local demo data?")) {
-            resetDemo();
-            setMessage("Local demo data reset.");
+            void resetDemo()
+              .then(() => setMessage("Local demo data reset and saved."))
+              .catch((error: unknown) =>
+                setMessage(
+                  error instanceof Error
+                    ? error.message
+                    : "Reset failed. Current data was retained.",
+                ),
+              );
           }
         }}
       >

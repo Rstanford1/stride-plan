@@ -11,6 +11,7 @@ import {
 import { inspectLegacyRestore } from "./restore";
 import { createFitSourceStore, type FitSourceStore } from "./fit-source-store";
 import Database from "@tauri-apps/plugin-sql";
+import { invoke } from "@tauri-apps/api/core";
 
 export const STORAGE_KEY = "stride-plan:data:v1";
 /** Candidate-only rejection: the active repository has not been invalidated. */
@@ -43,8 +44,10 @@ abstract class SnapshotRepository implements AppRepository {
   protected abstract commit(
     before: string | null,
     after: string | null,
+    replacement?: boolean,
   ): Promise<void>;
   protected async compatible(): Promise<void> {}
+  protected async assertReplacementAllowed(): Promise<void> {}
 
   async load(): Promise<AppData> {
     this.state = "unresolved";
@@ -96,10 +99,10 @@ abstract class SnapshotRepository implements AppRepository {
         "Saved data changed in another window. Reload before making changes.",
       );
   }
-  private async publish(after: string) {
+  private async publish(after: string, replacement = false) {
     const before = this.expected;
     try {
-      await this.commit(before, after);
+      await this.commit(before, after, replacement);
       if ((await this.read()) !== after)
         throw new Error("Persistence verification failed");
       this.expected = after;
@@ -107,7 +110,7 @@ abstract class SnapshotRepository implements AppRepository {
       // A lost acknowledgement may follow a successful atomic commit. Only undo
       // our exact staged bytes; never overwrite a concurrent writer's snapshot.
       try {
-        await this.commit(after, before);
+        await this.commit(after, before, replacement);
       } catch {
         /* Safety copy remains; fail closed. */
       }
@@ -130,6 +133,7 @@ abstract class SnapshotRepository implements AppRepository {
     // Invalid candidates do not invalidate the existing valid store.
     let preview;
     try {
+      await this.assertReplacementAllowed();
       preview = await inspectLegacyRestore(raw, this.sources);
       if (preview.missingSources.length)
         throw new DataIntegrityError(
@@ -150,9 +154,10 @@ abstract class SnapshotRepository implements AppRepository {
       await this.copy(staged, "restore-stage");
       validateCurrentSnapshot(parseSnapshotJson(staged) as AppData);
       await this.assertCurrent();
-      await this.publish(staged);
+      await this.publish(staged, true);
       return preview.data;
     } catch (error) {
+      if (error instanceof RestoreInputError) throw error;
       throw this.lock(error);
     }
   }
@@ -216,7 +221,24 @@ export class SqliteRepository extends SnapshotRepository {
       throw error;
     }));
   }
+  protected async assertReplacementAllowed() {
+    if (!("__TAURI_INTERNALS__" in globalThis)) return;
+    const result = await invoke<{ draft: unknown }>("inspect_plan_draft", {
+      request: { contractVersion: 1 },
+    });
+    if (result.draft !== null)
+      throw new DataIntegrityError(
+        "unsupported",
+        "Legacy restore and reset are blocked while a native draft exists. Export draft recovery separately.",
+      );
+  }
   protected async compatible() {
+    const nativeDraftAware = "__TAURI_INTERNALS__" in globalThis;
+    if (nativeDraftAware) {
+      // Native inspection checks the exact T05 schema and legacy ledger before
+      // broad SQL-plugin access can initialize or modify the snapshot.
+      await invoke("inspect_plan_draft", { request: { contractVersion: 1 } });
+    }
     const db = await this.db();
     const tables = await db.select<{ name: string }[]>(
       "SELECT name FROM sqlite_master WHERE type = 'table'",
@@ -232,6 +254,9 @@ export class SqliteRepository extends SnapshotRepository {
       "journal_entries",
       "import_sources",
       "shoes",
+      ...(nativeDraftAware
+        ? ["plan_draft_sources", "plan_drafts", "plan_draft_validation"]
+        : []),
     ]);
     for (const { name } of tables) {
       if (name.startsWith("sqlite_")) continue;
@@ -241,6 +266,13 @@ export class SqliteRepository extends SnapshotRepository {
           "This database contains newer native tables. Open it with a compatible application; legacy JSON cannot replace it.",
         );
       if (["app_state", "_sqlx_migrations", "snapshot_recovery"].includes(name))
+        continue;
+      if (
+        nativeDraftAware &&
+        ["plan_draft_sources", "plan_drafts", "plan_draft_validation"].includes(
+          name,
+        )
+      )
         continue;
       const rows = await db.select<{ count: number }[]>(
         `SELECT COUNT(*) AS count FROM "${name}"`,
@@ -309,7 +341,35 @@ export class SqliteRepository extends SnapshotRepository {
     if (rows[0]?.payload !== raw)
       throw new Error("Safety copy verification failed");
   }
-  protected async commit(before: string | null, after: string | null) {
+  protected async commit(
+    before: string | null,
+    after: string | null,
+    replacement = false,
+  ) {
+    if (replacement && "__TAURI_INTERNALS__" in globalThis) {
+      if (before === null || after === null)
+        throw new Error("Replacement requires durable snapshots");
+      try {
+        await invoke("replace_legacy_snapshot", {
+          request: { contractVersion: 1, before, after },
+        });
+      } catch (error) {
+        if (
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          error.code === "legacy_blocked"
+        )
+          throw new RestoreInputError(
+            new DataIntegrityError(
+              "unsupported",
+              "Legacy restore and reset are blocked while a native draft exists.",
+            ),
+          );
+        throw error;
+      }
+      return;
+    }
     const db = await this.db();
     if (before === null && after !== null) {
       await this.compatible();
