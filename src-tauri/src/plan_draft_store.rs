@@ -225,7 +225,7 @@ impl Store {
         if check_schema(&mut tx).await? != 0 || inventory(&mut tx).await? != before {
             return Err(error("conflict"));
         }
-        sqlx::raw_sql(DDL).execute(&mut *tx).await?;
+        execute_ddl(&mut tx, DDL).await?;
         sqlx::query("PRAGMA user_version=3")
             .execute(&mut *tx)
             .await?;
@@ -284,12 +284,9 @@ impl Store {
             original_file_name: request.original_file_name,
             imported_at: String::new(),
             draft_id: String::new(),
-            plan_id: text(&value["manifest"]["planId"])?,
-            version_id: text(&value["manifest"]["versionId"])?,
-            parent_version_id: value["manifest"]
-                .get("parentVersionId")
-                .map(text)
-                .transpose()?,
+            plan_id: value.manifest.plan_id,
+            version_id: value.manifest.version_id,
+            parent_version_id: value.manifest.parent_version_id,
             revision: 1,
             state: "draft".into(),
             created_at: String::new(),
@@ -462,23 +459,19 @@ impl Store {
     }
 }
 
-fn text(value: &serde_json::Value) -> Result<String> {
-    value
-        .as_str()
-        .map(str::to_owned)
-        .ok_or_else(|| error("invalid"))
-}
-fn source_value(bytes: &[u8]) -> Result<serde_json::Value> {
+fn source_value(bytes: &[u8]) -> Result<crate::fit_source_store::PlanSourceHeader> {
     if bytes.is_empty() || bytes.len() > SOURCE_LIMIT {
         return Err(error("invalid"));
     }
-    let text = std::str::from_utf8(bytes).map_err(|_| error("invalid"))?;
-    let value: serde_json::Value =
-        serde_json::from_str(text.trim_start_matches('\u{feff}')).map_err(|_| error("invalid"))?;
-    if value["schemaVersion"] != "1.1" {
-        return Err(error("unsupported"));
-    }
-    Ok(value)
+    crate::fit_source_store::plan_source_header(bytes).map_err(|e| {
+        error(
+            if e.code == crate::fit_source_store::ErrorCode::UnsupportedVersion {
+                "unsupported"
+            } else {
+                "invalid"
+            },
+        )
+    })
 }
 fn verify_report(report: &str) -> Result<()> {
     if report.len() > REPORT_LIMIT {
@@ -543,13 +536,9 @@ fn verify_record(record: &Record, bytes: &[u8]) -> Result<()> {
         || record.byte_length != bytes.len() as i64
         || record.source_id != format!("plan-source:{}", record.source_hash)
         || record.draft_id != format!("plan-draft:{}", record.source_hash)
-        || record.plan_id != text(&value["manifest"]["planId"])?
-        || record.version_id != text(&value["manifest"]["versionId"])?
-        || record.parent_version_id
-            != value["manifest"]
-                .get("parentVersionId")
-                .map(text)
-                .transpose()?
+        || record.plan_id != value.manifest.plan_id
+        || record.version_id != value.manifest.version_id
+        || record.parent_version_id != value.manifest.parent_version_id
         || !valid_id(&record.plan_id)
         || !valid_id(&record.version_id)
         || record
@@ -586,6 +575,15 @@ async fn integrity(db: &mut SqliteConnection) -> Result<()> {
             .is_empty()
     {
         return Err(error("corrupt"));
+    }
+    Ok(())
+}
+// Only shipped DDL is accepted. Statement-by-statement queries avoid SQLx
+// RawSql's non-Send stream across Tauri's async command boundary, while the
+// caller's single native transaction still owns every migration statement.
+async fn execute_ddl(db: &mut SqliteConnection, script: &'static str) -> Result<()> {
+    for statement in script.split(';').map(str::trim).filter(|s| !s.is_empty()) {
+        sqlx::query(statement).execute(&mut *db).await?;
     }
     Ok(())
 }
@@ -630,16 +628,20 @@ async fn check_schema(db: &mut SqliteConnection) -> Result<i64> {
         return Err(error("corrupt"));
     }
     let mut expected = SqliteConnection::connect("sqlite::memory:").await?;
-    sqlx::raw_sql(include_str!("../migrations/0001_initial.sql"))
-        .execute(&mut expected)
-        .await?;
+    execute_ddl(
+        &mut expected,
+        include_str!("../migrations/0001_initial.sql"),
+    )
+    .await?;
     if tables.iter().any(|x| x == "shoes") {
-        sqlx::raw_sql(include_str!("../migrations/0002_manual_run_entry.sql"))
-            .execute(&mut expected)
-            .await?;
+        execute_ddl(
+            &mut expected,
+            include_str!("../migrations/0002_manual_run_entry.sql"),
+        )
+        .await?;
     }
-    sqlx::raw_sql("CREATE TABLE snapshot_recovery (id TEXT PRIMARY KEY, purpose TEXT NOT NULL, payload TEXT NOT NULL)").execute(&mut expected).await?;
-    sqlx::raw_sql("CREATE TABLE _sqlx_migrations (version BIGINT PRIMARY KEY, description TEXT NOT NULL, installed_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, success BOOLEAN NOT NULL, checksum BLOB NOT NULL, execution_time BIGINT NOT NULL)").execute(&mut expected).await?;
+    sqlx::query("CREATE TABLE snapshot_recovery (id TEXT PRIMARY KEY, purpose TEXT NOT NULL, payload TEXT NOT NULL)").execute(&mut expected).await?;
+    sqlx::query("CREATE TABLE _sqlx_migrations (version BIGINT PRIMARY KEY, description TEXT NOT NULL, installed_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, success BOOLEAN NOT NULL, checksum BLOB NOT NULL, execution_time BIGINT NOT NULL)").execute(&mut expected).await?;
     let expected_objects = schema(&mut expected).await?;
     let canonical = |s: &str| {
         s.chars()

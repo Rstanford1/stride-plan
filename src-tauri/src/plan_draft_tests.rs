@@ -393,6 +393,21 @@ async fn linked_database_and_source_objects_are_rejected() {
     assert!(store.inspect().await.is_err());
 }
 
+#[tokio::test]
+async fn optional_json_string_escapes_remain_opaque_source_bytes() {
+    let profile = Profile::new(false).await;
+    let store = profile.store();
+    let mut input = request();
+    let mut text = String::from_utf8(input.bytes).unwrap();
+    let end = text.rfind('}').unwrap();
+    text.insert_str(end, ",\"futureOptional\":\"\\ud800\"");
+    input.bytes = text.into_bytes();
+    input.source_hash = hash(&input.bytes);
+    let expected = input.bytes.clone();
+    assert_eq!(store.save(input).await.unwrap().bytes, expected);
+    assert_eq!(store.read().await.unwrap().unwrap().bytes, expected);
+}
+
 #[test]
 fn process_restart_round_trip() {
     let runtime = tokio::runtime::Builder::new_current_thread()

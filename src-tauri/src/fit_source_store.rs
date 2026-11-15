@@ -7,6 +7,32 @@ use std::path::PathBuf;
 pub const CONTRACT_VERSION: u32 = 1;
 pub const MAX_SOURCE_BYTES: usize = 32 * 1024 * 1024;
 
+// Decode only transport identity. Unknown metadata and coach strings remain
+// opaque bytes; a full serde Value would impose a second interpretation of
+// optional JSON strings that T01 already accepts (including escaped surrogates).
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PlanSourceHeader {
+    pub schema_version: String,
+    pub manifest: PlanSourceIdentity,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PlanSourceIdentity {
+    pub plan_id: String,
+    pub version_id: String,
+    pub parent_version_id: Option<String>,
+}
+pub(crate) fn plan_source_header(bytes: &[u8]) -> Result<PlanSourceHeader> {
+    let text = std::str::from_utf8(bytes).map_err(|_| SourceError::new(ErrorCode::Corrupt))?;
+    let header: PlanSourceHeader = serde_json::from_str(text.trim_start_matches('\u{feff}'))
+        .map_err(|_| SourceError::new(ErrorCode::Corrupt))?;
+    if header.schema_version != "1.1" {
+        return Err(SourceError::new(ErrorCode::UnsupportedVersion));
+    }
+    Ok(header)
+}
+
 #[derive(Clone, Copy)]
 enum SourceKind {
     Fit,
@@ -38,12 +64,7 @@ impl SourceKind {
         if bytes.is_empty() || bytes.len() > self.limit() {
             return Err(SourceError::new(ErrorCode::TooLarge));
         }
-        let text = std::str::from_utf8(bytes).map_err(|_| SourceError::new(ErrorCode::Corrupt))?;
-        let value: serde_json::Value = serde_json::from_str(text.trim_start_matches('\u{feff}'))
-            .map_err(|_| SourceError::new(ErrorCode::Corrupt))?;
-        if value.get("schemaVersion").and_then(|x| x.as_str()) != Some("1.1") {
-            return Err(SourceError::new(ErrorCode::UnsupportedVersion));
-        }
+        plan_source_header(bytes)?;
         if hash(bytes) != id {
             return Err(SourceError::new(ErrorCode::HashMismatch));
         }
