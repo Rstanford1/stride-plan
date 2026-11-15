@@ -186,6 +186,30 @@ async fn failed_transaction_rolls_back_all_three_rows_and_retry_reuses_orphan() 
 }
 
 #[tokio::test]
+async fn failed_backup_verification_does_not_checkpoint_or_modify_existing_wal() {
+    let profile = Profile::new(false).await;
+    let mut store = profile.store();
+    let mut writer = store.connect(false).await.unwrap();
+    sqlx::query("PRAGMA journal_mode=WAL")
+        .execute(&mut writer)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE app_state SET updated_at='synthetic-wal-write'")
+        .execute(&mut writer)
+        .await
+        .unwrap();
+    let wal = PathBuf::from(format!("{}-wal", store.database.display()));
+    let before_main = fs::read(&store.database).unwrap();
+    let before_wal = fs::read(&wal).unwrap();
+    store.fault = Some("backup_corrupt");
+    assert_eq!(store.save(request()).await.unwrap_err().code, "backup");
+    assert_eq!(fs::read(&store.database).unwrap(), before_main);
+    assert_eq!(fs::read(&wal).unwrap(), before_wal);
+    assert_eq!(version(&store).await, 0);
+    writer.close().await.unwrap();
+}
+
+#[tokio::test]
 async fn missing_corrupt_or_hash_mismatched_sources_fail_without_repair() {
     for damage in ["missing", "corrupt", "different-valid"] {
         let profile = Profile::new(false).await;

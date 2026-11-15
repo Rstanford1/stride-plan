@@ -169,7 +169,9 @@ impl Store {
     }
     async fn prepare(&self, expected: &str) -> Result<()> {
         let _guards = guard(&self.database, false)?;
-        let mut db = self.connect(false).await?;
+        // Opening a writable SQLite connection can recover/checkpoint journals.
+        // Keep the source read-only until its safety copy has been verified.
+        let mut db = self.connect(true).await?;
         let version = check_schema(&mut db).await?;
         let raw: String = sqlx::query_scalar("SELECT payload FROM app_state WHERE id=1")
             .fetch_one(&mut db)
@@ -218,6 +220,8 @@ impl Store {
             return Err(error("backup"));
         }
         backup.close().await.map_err(|_| error("backup"))?;
+        db.close().await?;
+        let mut db = self.connect(false).await?;
         sqlx::query("PRAGMA synchronous=FULL")
             .execute(&mut db)
             .await?;

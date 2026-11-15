@@ -80,6 +80,8 @@ mileage, schedule or workout projection is introduced.
   integrity/FKs, schema/ledger and all legacy records against the captured
   baseline; retain exact `app_state.payload` text. See SQLite's
   [VACUUM INTO contract](https://www.sqlite.org/lang_vacuum.html).
+  Keep the source connection read-only until verification succeeds, so a failed
+  copy cannot trigger a writable connection's journal recovery/checkpoint.
 - Then acquire the write transaction and recheck the complete baseline against
   the verified safety copy. If anything changed, abort and require a new verified
   copy. Add the three tables and set application-owned `PRAGMA user_version = 3`
@@ -161,6 +163,10 @@ profiles and a separate browser-development origin are used for verification.
   TypeScript, 242 tests in 20 files, production frontend build). The existing
   Vite large-chunk advisory remains. Rust formatting and locked dependency
   metadata checks pass; hosted native compilation/tests are pending execution.
+  The initial native CI exposed a SQLx RawSql async/Send incompatibility at the
+  Tauri command boundary; replacing it with queries for the shipped DDL preserved
+  the transaction boundary. The corrected Windows run passed compilation/tests
+  at `449cca9`; the final read-only/WAL hardening run is pending.
   Rust tests use fixture-owned temporary directories, including independent
   save/read processes, safety-copy failures, migration rollback, SQL transaction
   rollback, source damage, recovery, constraints and publication/restore races.
