@@ -1119,3 +1119,20 @@ Exact T03 changed-file manifest:
 - `src/data/fit-source-store.test.ts`
 - `src/data/fit-import-service.test.ts`
 - `src/data/restore.ts`
+
+# F1 approved shared visual foundation and application shell
+
+Status: **Approved for implementation**, November 17, 2026. Visual acceptance is pending. The F1 design specification and Option C theme decision supersede older five-item navigation and single-theme visual examples. Scope is presentation and navigation only.
+
+- Primary destinations, in shortcut order `Alt+1`–`Alt+6`: Today, Training, Activities, Analytics, Shoes, Settings. The active destination has visible text and `aria-current="page"`. Sidebar collapse retains accessible labels and keyboard operation.
+- Training contains the existing Plan and Weekly Review screens as selectable subviews. Their calculations, editing, and review behavior remain unchanged. Today links to the Plan subview; Activities, Analytics, and Settings reuse their existing screens.
+- Shoes is a read-only view of existing shoe names, mileage, default designation, and active/retired status. It supports empty records and makes no claim to shoe management, categories, goals, or an allocation ledger.
+- Appearance follows the operating system's light/dark setting by default and responds while the application is open. Warm-light and dark-charcoal palettes use semantic CSS tokens for canvas, text, muted text, sidebar, surfaces, borders, actions, focus, and status colors. The token model permits a later explicit System/Light/Dark override without adding persistence in F1.
+- Shared shell and controls use Segoe UI Variable/Segoe UI, a restrained spacing scale, quiet bordered surfaces, consistent buttons, visible focus, text alongside status color, and responsive stacking. Core actions stay reachable at representative window widths and 100%, 150%, and 200% Windows scaling.
+- Loading and saved-data recovery remain accessible. Garmin, JSON plan intake and drafts, FIT import, activity workflows, persistence, and all domain contracts remain untouched.
+
+### F1 verification record
+
+Status: **Testing; owner visual acceptance pending**. `pnpm verify` passed on the F1 worktree: generated type contract, formatting, TypeScript, 307 tests in 24 files, and production frontend build. Browser rendering verified the six navigation labels, Training's Plan and Weekly Review views, Settings' existing import/backup/Garmin content, read-only Shoes, `Alt+2`, and sidebar collapse. Browser screenshots of current `main` and F1 Today, Training, and Shoes were captured outside the repository. The system-dark appearance was observed with no override; warm-light rendering was checked with a temporary noncommitted theme attribute and then restored. The CSS media query responds to operating-system appearance changes; a live Windows appearance switch was not exercised. Browser layout was inspected at desktop, 800 px Training, and 520 px Shoes widths. Native 100%/150%/200% Windows scaling and packaged-app acceptance remain unverified.
+
+`pnpm tauri build` reached Rust compilation but failed twice because the local toolchain could not load `thiserror_impl`; no Rust source or configuration was changed. This is not F1 visual acceptance. Completion still requires owner review of the rendered light and dark screenshots and explicit acceptance.

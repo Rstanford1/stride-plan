@@ -1,5 +1,19 @@
 # Stride Plan UI inventory
 
+## F1 shared foundation update — November 17, 2026
+
+This section records the F1 implementation over the historical inventory below. Automated and browser checks passed; owner visual acceptance and packaged Windows checks remain separate.
+
+| Component                   | F1 implementation                                                                                                               | Status  |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Main navigation and sidebar | Today, Training, Activities, Analytics, Shoes, Settings; `Alt+1`–`Alt+6`, active text and accessibility state, collapse control | Testing |
+| Training grouping           | Existing Plan and Weekly Review screens remain selectable under Training; Today opens Plan                                      | Testing |
+| Theme foundation            | Semantic warm-light/dark-charcoal tokens follow system appearance, including live system changes through CSS media queries      | Testing |
+| Shoes landing               | Read-only existing shoe names, recorded mileage, default and retired status; empty state                                        | Testing |
+| Shared layout and controls  | Tokenized surfaces, text, borders and states; focus, responsive shell and small-window stacking                                 | Testing |
+
+F1 does not implement the later full screen redesigns or shoe management. Packaged Windows and visual acceptance evidence must be recorded before marking these components Complete.
+
 Statuses: **Not reviewed**, **Under discussion**, **Design approved**, **Implementation in progress**, **Testing**, **Complete**.
 
 All entries start as **Not reviewed**. “Potential” findings are audit observations, not approved changes.

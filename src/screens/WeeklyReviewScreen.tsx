@@ -35,7 +35,7 @@ export function WeeklyReviewScreen() {
       <header className="page-header">
         <div>
           <p className="eyebrow">Review without prescription</p>
-          <h1>Weekly review</h1>
+          <h2>Weekly review</h2>
           <p>
             Completion and mileage are measured separately. Extra miles never
             erase a missed core session.

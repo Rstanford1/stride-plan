@@ -1,5 +1,9 @@
 # Stride Plan roadmap
 
+## F1 shared visual foundation — November 17, 2026
+
+**Status: Testing** on isolated `design/f1-shared-visual-foundation`, based on `origin/main` `6ef737e`. Scope: six primary destinations; Plan and Weekly Review under Training; system-following warm-light/dark-charcoal semantic tokens; shared shell, focus and responsive treatment; read-only Shoes landing. No backend, persistence, Garmin, FIT, or plan-contract changes. T08.1 PRs #18 and #20 remain separate open drafts. `pnpm verify` and browser checks passed; local Windows packaging stopped on a Rust toolchain `thiserror_impl` load error. Native scaling, packaged acceptance, and owner visual acceptance remain pending. Do not merge or mark Complete before owner visual approval.
+
 ## Status key
 
 **Backlog**, **Under discussion**, **Approved**, **In progress**, **Testing**, **Complete**, **Blocked**.
