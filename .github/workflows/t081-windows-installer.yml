@@ -86,10 +86,31 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Locked installation failed." }
           if (git status --porcelain) { throw "Installation changed reviewed source/configuration." }
 
-      - name: Run the full frontend verification gate
+      # Same stages as pnpm verify; T07's explicit config prevents Vitest from
+      # resolving setupFiles against the parent workflow checkout on Windows.
+      - name: Run all frontend verification stages with explicit source paths
         run: |
-          pnpm verify
-          if ($LASTEXITCODE -ne 0) { throw "Full frontend verification failed." }
+          node scripts/generate-training-plan-types.mjs --check
+          if ($LASTEXITCODE -ne 0) { throw "Generated-type consistency failed." }
+          node node_modules/prettier/bin/prettier.cjs --check .
+          if ($LASTEXITCODE -ne 0) { throw "Formatting failed." }
+          node node_modules/typescript/bin/tsc -b --pretty false
+          if ($LASTEXITCODE -ne 0) { throw "TypeScript failed." }
+          $sourceRoot = (Resolve-Path ".").Path.Replace('\', '/')
+          $setupFile = (Resolve-Path "src/test/setup.ts").Path.Replace('\', '/')
+          $ciConfig = Join-Path $env:RUNNER_TEMP "t081-vitest.config.mjs"
+          $config = @{
+            root = $sourceRoot
+            test = @{
+              environment = "jsdom"
+              setupFiles = @($setupFile)
+            }
+          } | ConvertTo-Json -Depth 5 -Compress
+          Set-Content -LiteralPath $ciConfig -Value "export default $config;" -Encoding UTF8
+          node node_modules/vitest/vitest.mjs run --root "$sourceRoot" --config "$ciConfig"
+          if ($LASTEXITCODE -ne 0) { throw "Complete frontend/domain suite failed." }
+          node node_modules/vite/bin/vite.js build
+          if ($LASTEXITCODE -ne 0) { throw "Production frontend build failed." }
           if (git status --porcelain) { throw "Verification changed reviewed source/configuration." }
           "T081_FRONTEND_VERIFIED=true" >> $env:GITHUB_ENV
 

@@ -62,6 +62,17 @@ installation/launch or normal-profile access. PR #18 stays unchanged and unmerge
   preparation. Actual workflow outcomes/manifests will be recorded on the packaging
   PR. The production profile and all preexisting worktrees remain untouched.
 
+### Initial hosted packaging correction
+
+Installer run `44054569285` stopped before test execution in both matrix jobs:
+Vitest resolved `src/test/setup.ts` against the parent workflow checkout rather
+than the nested pinned source. No installers were produced. The correction was
+explained before editing: restore T07's explicit absolute root/setup CI config
+and run every unchanged frontend gate stage, including the complete test suite.
+No source pins, application code, dependencies, test filtering, security settings
+or native checks change. Preparation PR `#20` remains draft, separate from `#18`. The corrected explicit-path
+configuration passed all 345 tests in the disposable nested PR18 checkout.
+
 ## T07 — guided external conversion
 
 Status: **Testing; independent review requested, owner acceptance pending**. Approved by the owner's T07 specification
