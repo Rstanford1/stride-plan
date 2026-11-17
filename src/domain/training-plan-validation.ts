@@ -258,7 +258,7 @@ export function validateTrainingPlan(value: unknown): PlanValidationResult {
       );
     if (!isObject(item) || !node.properties) return;
     knownObjects.push({ path, node, value: item });
-    if (typeof item.id === "string") {
+    if (has(node.properties, "id") && typeof item.id === "string") {
       if (entities.has(item.id))
         add(
           "duplicate_id",
@@ -485,8 +485,9 @@ export function validateTrainingPlan(value: unknown): PlanValidationResult {
   });
   // A provenance mapping covers descendants. Imported cells can override a
   // container mapping; source contents are verified by later intake, not here.
-  for (const { path, value: item } of knownObjects) {
+  for (const { path, node, value: item } of knownObjects) {
     if (
+      has(node.properties!, "coachText") &&
       has(item, "coachText") &&
       (item.coachText as string[]).length &&
       !plan.provenance.some(

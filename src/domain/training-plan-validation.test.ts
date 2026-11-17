@@ -128,6 +128,71 @@ describe("training-plan 1.1 contract", () => {
     expect(plan.paceReferences[0].pace).toBeUndefined();
   });
 
+  it("does not register optional metadata IDs as contract entity identities", () => {
+    const plan = copy();
+    plan.id = "session-1";
+    session(plan).duration!.id = "session-1";
+    const result = validateTrainingPlan(plan);
+    expect(result.ok).toBe(true);
+    expect(
+      result.diagnostics.filter((issue) => issue.severity === "error"),
+    ).toEqual([]);
+    expect(result.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "unknown_optional_field",
+          path: "/id",
+        }),
+        expect.objectContaining({
+          code: "unknown_optional_field",
+          path: "/weeks/0/days/0/sessions/0/duration/id",
+        }),
+      ]),
+    );
+    expect(parseTrainingPlan(serializeTrainingPlan(plan))).toMatchObject({
+      ok: true,
+      plan,
+    });
+  });
+
+  it("checks coach-text provenance only where the schema defines coachText", () => {
+    const plan = copy();
+    plan.coachText = "Optional metadata, not a contract instruction array.";
+    session(plan).duration!.coachText = {
+      annotation: "Preserve this unknown value.",
+    };
+    plan.provenance = [
+      {
+        path: "/weeks/0/days/0/sessions/0/coachText",
+        sourceId: "synthetic-source",
+        location: { kind: "authored" },
+      },
+      {
+        path: "/weeks/0/days/1/coachText",
+        sourceId: "synthetic-source",
+        location: { kind: "authored" },
+      },
+    ];
+    const result = validateTrainingPlan(plan);
+    expect(result.ok).toBe(true);
+    expect(result.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "unknown_optional_field",
+          path: "/coachText",
+        }),
+        expect.objectContaining({
+          code: "unknown_optional_field",
+          path: "/weeks/0/days/0/sessions/0/duration/coachText",
+        }),
+      ]),
+    );
+    expect(parseTrainingPlan(serializeTrainingPlan(plan))).toMatchObject({
+      ok: true,
+      plan,
+    });
+  });
+
   it("preserves explicit recovery order and adds no final or between-set interval", () => {
     const plan = copy(workout);
     const original = JSON.stringify(plan);
