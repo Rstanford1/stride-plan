@@ -16,7 +16,7 @@ jobs:
       - name: Check out T04 branch
         uses: actions/checkout@v7
         with:
-          ref: codex/t04-garmin-personal-api
+          ref: refs/tags/archive/t04-garmin-source
           persist-credentials: false
 
       - name: Record source revision
