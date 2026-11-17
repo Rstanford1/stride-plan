@@ -52,6 +52,12 @@ Status: **Testing; approved by the owner's revised T06 request on November
   formatting, TypeScript and production build. The existing large-chunk advisory
   remains; the spreadsheet bundle is absent. The shared `replaceData` binding
   remains in DataScreen because FIT intake still needs it.
+- The first GitHub run found a focus-timing race in the unsupported-file
+  regression test: animation-frame focus could run while the button was still
+  disabled. Focus restoration now runs in the post-render effect after controls
+  are enabled, without changing plan/draft operations or increasing test timeouts.
+  The same focus assertions remain in place; the full local gate is rerun for
+  the correction and GitHub verification is checked on the updated PR.
 - Native `cargo test --locked -- --test-threads=1`: **49 passed, zero failed,
   one helper ignored by the parent suite and exercised by the restart test**.
   The initial parallel run had one Windows sharing violation during synthetic

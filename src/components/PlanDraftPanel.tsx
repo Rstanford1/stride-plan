@@ -38,6 +38,13 @@ export function PlanDraftPanel({
   const selectButton = useRef<HTMLButtonElement>(null);
   const recoveryFile = useRef<HTMLInputElement>(null);
   const saveButton = useRef<HTMLButtonElement>(null);
+  const pendingFocus = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (busy) return;
+    const target = pendingFocus.current;
+    pendingFocus.current = null;
+    if (target?.isConnected && !target.disabled) target.focus();
+  });
   useEffect(() => {
     let active = true;
     if (!store) {
@@ -101,10 +108,8 @@ export function PlanDraftPanel({
           : "Draft operation failed. Retry is safe.",
       );
     } finally {
+      pendingFocus.current = focused;
       setBusy(false);
-      requestAnimationFrame(() => {
-        if (focused?.isConnected && !focused.disabled) focused.focus();
-      });
     }
   }
   function showSaved(saved: SavedDraft) {
