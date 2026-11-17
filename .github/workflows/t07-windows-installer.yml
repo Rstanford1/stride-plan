@@ -1,0 +1,124 @@
+name: T07 Windows acceptance installer
+run-name: Isolated T07 Windows acceptance installer
+
+on:
+  push:
+    branches: [codex/t07-windows-acceptance-installer]
+    paths:
+      - .github/workflows/t07-windows-installer.yml
+      - scripts/t07-acceptance-installer.ps1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Replace only after the owner approves and commits the reviewed implementation.
+  # The first step refuses to proceed with a placeholder or a non-full SHA.
+  T07_SOURCE_SHA: 16e08439786df6acc2855ae9b15ba6baf64f5d8f
+  T07_PRODUCT: Stride Plan T07 Test
+  T07_IDENTIFIER: com.strideplan.t07test
+  T07_BINARY: stride-plan-t07-test
+  T07_CREDENTIAL: com.strideplan.t07test/garmin-personal-api/v1
+
+defaults:
+  run:
+    shell: pwsh
+    working-directory: source
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/codex/t07-windows-acceptance-installer'
+    name: Test, build and verify isolated T07 installer
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Reject an unreviewed source pin
+        working-directory: .
+        run: |
+          if ($env:T07_SOURCE_SHA -cnotmatch '^[0-9a-f]{40}$' -or $env:T07_SOURCE_SHA -eq ('0' * 40)) {
+            throw "Pin T07_SOURCE_SHA to the exact owner-approved implementation commit before building."
+          }
+
+      - name: Check out reviewed workflow and verification script
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Check out exact reviewed T07 implementation separately
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.T07_SOURCE_SHA }}
+          path: source
+          persist-credentials: false
+
+      - name: Verify revision and storage boundaries
+        run: ../scripts/t07-acceptance-installer.ps1 -Mode Inspect -SourceDirectory $PWD
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Set up pinned pnpm without automatic installation
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # No package-manager setting overrides or restored compiled/installer caches.
+      - name: Install locked dependencies without scripts or configuration edits
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          if ($LASTEXITCODE -ne 0) { throw "Locked installation failed." }
+          if (git status --porcelain) { throw "Dependency installation changed reviewed files." }
+
+      # Invoke the exact existing verify stages directly: do not invoke pnpm's
+      # pre-command dependency refresh, which has edited configuration locally.
+      - name: Run all frontend verification stages
+        run: |
+          node scripts/generate-training-plan-types.mjs --check
+          if ($LASTEXITCODE -ne 0) { throw "Generated-type consistency failed." }
+          node node_modules/prettier/bin/prettier.cjs --check .
+          if ($LASTEXITCODE -ne 0) { throw "Formatting failed." }
+          node node_modules/typescript/bin/tsc -b --pretty false
+          if ($LASTEXITCODE -ne 0) { throw "TypeScript failed." }
+          node node_modules/vitest/vitest.mjs run
+          if ($LASTEXITCODE -ne 0) { throw "Frontend/domain tests failed." }
+          node node_modules/vite/bin/vite.js build
+          if ($LASTEXITCODE -ne 0) { throw "Production frontend build failed." }
+          if (git status --porcelain) { throw "Frontend verification changed reviewed files." }
+          "T07_FRONTEND_VERIFIED=true" >> $env:GITHUB_ENV
+
+      - name: Run native Rust formatting and synthetic tests
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml --check
+          if ($LASTEXITCODE -ne 0) { throw "Rust formatting failed." }
+          cargo test --manifest-path src-tauri/Cargo.toml --locked -- --test-threads=1
+          if ($LASTEXITCODE -ne 0) { throw "Native tests failed; no installer will be published." }
+          if (git status --porcelain) { throw "Native verification changed reviewed files." }
+          "T07_NATIVE_VERIFIED=true" >> $env:GITHUB_ENV
+
+      - name: Prepare build-only test identity
+        run: ../scripts/t07-acceptance-installer.ps1 -Mode Prepare -SourceDirectory $PWD
+
+      - name: Build isolated current-user NSIS installer without launching it
+        run: |
+          node node_modules/@tauri-apps/cli/tauri.js build --ci --bundles nsis --config src-tauri/tauri.t07test.conf.json -- --locked
+          if ($LASTEXITCODE -ne 0) { throw "Isolated installer build failed." }
+
+      - name: Verify effective configuration, generated definitions and artifact hashes
+        run: ../scripts/t07-acceptance-installer.ps1 -Mode Verify -SourceDirectory $PWD
+
+      - name: Publish only the verified installer and build manifest
+        uses: actions/upload-artifact@v7
+        with:
+          name: stride-plan-t07-windows-test-${{ env.T07_SOURCE_SHA }}
+          path: |
+            ${{ runner.temp }}/t07-verified-installer/*.exe
+            ${{ runner.temp }}/t07-verified-installer/build-manifest.json
+          if-no-files-found: error
+          retention-days: 7
