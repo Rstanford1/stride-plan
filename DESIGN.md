@@ -1,5 +1,67 @@
 # Stride Plan design
 
+## T08.1 isolated Windows acceptance preparation
+
+Status: **Testing**. Owner authorized isolated packaged acceptance preparation
+on November 17, 2026, after PR #18 frontend/native CI passed. The proposed approach
+was explained before implementation: separate packaging branch/PR, two pinned
+builds under one new test identity, read-only synthetic profile checks, no local
+installation/launch or normal-profile access. PR #18 stays unchanged and unmerged.
+
+- Installer branch `codex/t081-windows-acceptance-installer` starts at fetched
+  `origin/main` `0ab554f`; source checkouts are separate and pinned. Baseline
+  `fb7ff13ce64378e7b63a7c39b6df634971029da4` supports JSON 1.1 with the recognized
+  PR16 validator. Upgrade `ff18ad0f7d9875ae0253d2623a292ae0e465abc9` is PR #18.
+- Both use product `Stride Plan T08.1 Test`, identifier `com.strideplan.t081test`,
+  binary `stride-plan-t081-test.exe` and credential target
+  `com.strideplan.t081test/garmin-personal-api/v1`. Test-only versions 0.1.810 and
+  0.1.811 permit a real same-identity installer upgrade. Production config and
+  plan schema/validator bytes remain unchanged in source; CI changes only a
+  temporary override and the single compiled credential target literal.
+- Current-user NSIS only; distinct default install folder/uninstall key;
+  skip shared WebView installation/update. Preserve existing Windows security.
+  Verify effective config, generated installer, executable identity and hashes
+  before uploading the two-file installer artifact. No installers/apps run in CI.
+- Separate acceptance kit includes only allowlisted synthetic fixtures, a
+  read-only profile/recovery comparison tool and manifest/checklist. No database,
+  user export, credentials or runtime report is uploaded. Profile paths are fixed
+  to the new test identity; links/foreign identities are rejected before reading.
+- Old 1.1 source/report/fingerprint stay 1.1 after app upgrade and storage migration.
+  Read/reopen does not trigger migration. An attempted 1.2 save with the old slot
+  occupied triggers preparation then an expected slot conflict; compare before/
+  after to verify v3-to-v4 storage upgrade without replacing the original draft.
+  A fresh test-profile phase covers new 1.2 save/restart/recovery; preserve the
+  earlier synthetic profile in a clearly named test-only archive instead of
+  deleting it. No test helper modifies or migrates any app database.
+- Frontend/native checks run before each build. Package preparation and verification
+  do not establish interactive Windows acceptance. Record actual artifacts and
+  outstanding acceptance before changing status. No merge is authorized.
+
+### Preparation verification and audit A1
+
+- Full local `pnpm verify` passed on this packaging branch's main baseline:
+  generated types, formatting, TypeScript, 303 tests in 23 files and frontend build.
+- Eight Node safety/regression checks passed against disposable synthetic SQLite
+  profiles: both historical fingerprints, exact source/report/record preservation,
+  matching safety copy, changed-evidence rejection, unsupported identities,
+  exclusive kit-only report writes, normal-profile denial and link/shared-file denial.
+- Seventeen PowerShell installer/configuration guard checks passed, with no app
+  build/launch. YAML, source pins, content-read permissions, trigger branch and
+  gate assertions passed; all inline PowerShell run blocks parsed.
+- Kit generation passed against a separate disposable checkout of PR18. Its
+  pre-PR16 recovery is generated with the actual frozen validator and then passed
+  through the current NativeDraftStore reader with a synthetic adapter. Exact
+  source bytes and record/report/fingerprint survive; no native command is called.
+- A1 is present in the older main behavior but already addressed by PR18's closed
+  historical registry and exact report replay. PR18 CI passed 345 frontend and
+  54 native tests, including cross-version migration/recovery and fail-closed tests.
+  No separate compatibility implementation is needed. Releasing the affected main
+  without this fix remains blocked; packaged preservation/recovery acceptance is
+  still required. No fingerprint bypass or historical record rewriting is added.
+- Installer artifacts and packaged interactive acceptance are not claimed by local
+  preparation. Actual workflow outcomes/manifests will be recorded on the packaging
+  PR. The production profile and all preexisting worktrees remain untouched.
+
 ## T07 — guided external conversion
 
 Status: **Testing; independent review requested, owner acceptance pending**. Approved by the owner's T07 specification

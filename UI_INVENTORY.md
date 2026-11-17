@@ -1,5 +1,13 @@
 # Stride Plan UI inventory
 
+## T08.1 isolated Windows acceptance preparation
+
+**Testing**. Owner-authorized same-identity baseline/upgrade installer workflow
+and synthetic verification kit prepared on a separate branch. Local safety checks
+and the full frontend gate passed; actual packaging/acceptance evidence is pending.
+See DESIGN.md, including the PR18 resolution of audit A1.
+PR #18 remains unmerged; no normal-profile access or local application launch.
+
 Statuses: **Not reviewed**, **Under discussion**, **Design approved**, **Implementation in progress**, **Testing**, **Complete**.
 
 All entries start as **Not reviewed**. “Potential” findings are audit observations, not approved changes.

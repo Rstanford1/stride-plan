@@ -1,0 +1,158 @@
+name: T08.1 isolated Windows acceptance installers
+run-name: Pinned T08.1 baseline and upgrade acceptance installers
+
+on:
+  push:
+    branches: [codex/t081-windows-acceptance-installer]
+    paths:
+      - .github/workflows/t081-windows-installer.yml
+      - scripts/t081-*.mjs
+      - scripts/t081-*.ps1
+      - docs/T081_PACKAGED_ACCEPTANCE.md
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  T081_PRODUCT: Stride Plan T08.1 Test
+  T081_IDENTIFIER: com.strideplan.t081test
+  T081_BINARY: stride-plan-t081-test
+  T081_CREDENTIAL: com.strideplan.t081test/garmin-personal-api/v1
+
+defaults:
+  run:
+    shell: pwsh
+    working-directory: source
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/codex/t081-windows-acceptance-installer'
+    name: Verify and package T08.1 ${{ matrix.kind }}
+    runs-on: windows-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - kind: baseline
+            source: fb7ff13ce64378e7b63a7c39b6df634971029da4
+            version: 0.1.810
+          - kind: upgrade
+            source: ff18ad0f7d9875ae0253d2623a292ae0e465abc9
+            version: 0.1.811
+    env:
+      T081_BUILD_KIND: ${{ matrix.kind }}
+      T081_SOURCE_SHA: ${{ matrix.source }}
+      T081_VERSION: ${{ matrix.version }}
+    steps:
+      - name: Check out reviewed packaging workflow and tools
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Check out the exact pinned application separately
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ matrix.source }}
+          path: source
+          persist-credentials: false
+
+      - name: Test packaging configuration and installer guards
+        run: ../scripts/t081-installer-tools.tests.ps1
+
+      - name: Verify revision and storage boundaries
+        run: ../scripts/t081-acceptance-installer.ps1 -Mode Inspect -SourceDirectory $PWD
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Set up pinned pnpm without automatic installation
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Install locked dependencies without scripts or configuration edits
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          if ($LASTEXITCODE -ne 0) { throw "Locked installation failed." }
+          if (git status --porcelain) { throw "Installation changed reviewed source/configuration." }
+
+      - name: Run the full frontend verification gate
+        run: |
+          pnpm verify
+          if ($LASTEXITCODE -ne 0) { throw "Full frontend verification failed." }
+          if (git status --porcelain) { throw "Verification changed reviewed source/configuration." }
+          "T081_FRONTEND_VERIFIED=true" >> $env:GITHUB_ENV
+
+      - name: Verify read-only profile tools using disposable synthetic databases
+        if: matrix.kind == 'upgrade'
+        run: |
+          $env:T081_TEST_SOURCE_DIRECTORY = "$PWD"
+          node --test ../scripts/t081-profile-tools.tests.mjs
+          if ($LASTEXITCODE -ne 0) { throw "Acceptance profile-tool safety tests failed." }
+
+      - name: Run native formatting and all synthetic Rust tests
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+          if ($LASTEXITCODE -ne 0) { throw "Rust formatting failed." }
+          cargo test --manifest-path src-tauri/Cargo.toml --locked -- --test-threads=1
+          if ($LASTEXITCODE -ne 0) { throw "Native tests failed; no installer will be published." }
+          if (git status --porcelain) { throw "Native verification changed reviewed source/configuration." }
+          "T081_NATIVE_VERIFIED=true" >> $env:GITHUB_ENV
+
+      - name: Prepare the shared test-only identity and increasing package version
+        run: ../scripts/t081-acceptance-installer.ps1 -Mode Prepare -SourceDirectory $PWD
+
+      - name: Build the isolated current-user NSIS installer without launching it
+        run: |
+          node node_modules/@tauri-apps/cli/tauri.js build --ci --bundles nsis --config src-tauri/tauri.t081test.conf.json -- --locked
+          if ($LASTEXITCODE -ne 0) { throw "Isolated installer build failed." }
+
+      - name: Verify effective config, generated installer, binary identity and hashes
+        run: ../scripts/t081-acceptance-installer.ps1 -Mode Verify -SourceDirectory $PWD
+
+      - name: Publish only the verified installer and manifest
+        id: installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: stride-plan-t081-${{ matrix.kind }}-${{ matrix.source }}
+          path: |
+            ${{ runner.temp }}/t081-${{ matrix.kind }}-verified-installer/*.exe
+            ${{ runner.temp }}/t081-${{ matrix.kind }}-verified-installer/build-manifest.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Assemble and validate the public synthetic acceptance kit
+        if: matrix.kind == 'upgrade'
+        run: |
+          node ../scripts/t081-acceptance-kit.mjs "$PWD"
+          if ($LASTEXITCODE -ne 0) { throw "Synthetic acceptance kit generation failed." }
+
+      - name: Publish only the allowlisted synthetic kit
+        if: matrix.kind == 'upgrade'
+        id: kit
+        uses: actions/upload-artifact@v7
+        with:
+          name: stride-plan-t081-acceptance-kit-${{ matrix.source }}
+          path: |
+            ${{ runner.temp }}/t081-acceptance-kit/README.md
+            ${{ runner.temp }}/t081-acceptance-kit/profile-check.mjs
+            ${{ runner.temp }}/t081-acceptance-kit/acceptance-manifest.json
+            ${{ runner.temp }}/t081-acceptance-kit/fixtures/*.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Record artifact links
+        working-directory: .
+        run: |
+          "Installer: ${{ steps.installer.outputs.artifact-url }}" >> $env:GITHUB_STEP_SUMMARY
+          "Acceptance kit: ${{ steps.kit.outputs.artifact-url }}" >> $env:GITHUB_STEP_SUMMARY
