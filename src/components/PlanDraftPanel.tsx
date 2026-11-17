@@ -1,3 +1,4 @@
+import { PlanContractPreview } from "./PlanContractPreview";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   PlanConversionGuide,
@@ -154,7 +155,7 @@ export function PlanDraftPanel({
         try {
           if (!/\.json$/i.test(selected.name))
             throw new Error(
-              "Unsupported plan format. Stride Plan accepts Training Plan JSON 1.1 files (.json). Use an external AI agent to convert supported coach documents before importing. PDF conversion guidance remains pending provenance review; JSON 1.1 does not directly support PDF source records. Do not mislabel a PDF or invent provenance.",
+              "Unsupported plan format. Stride Plan accepts Training Plan JSON 1.1 or 1.2 files (.json). Use an external AI agent to convert supported coach documents before importing. PDF conversion guidance remains pending provenance review; JSON 1.1 and 1.2 do not directly support PDF source records. Do not mislabel a PDF or invent provenance.",
             );
           if (selected.size > PLAN_SOURCE_LIMIT)
             throw new Error("Plan JSON exceeds the 8 MiB limit.");
@@ -227,8 +228,8 @@ export function PlanDraftPanel({
     >
       <h2 id="plan-draft-title">Import Training Plan</h2>
       <p>
-        Preview a training-plan JSON 1.1 file and save one read-only draft.
-        Saving does not activate the plan or change scheduled workouts.
+        Preview a training-plan JSON 1.1 or 1.2 file and save one read-only
+        draft. Saving does not activate the plan or change scheduled workouts.
       </p>
       {!store && (
         <p>
@@ -443,6 +444,7 @@ export function PlanDraftPanel({
                     <span>Warnings</span>
                   </div>
                 </div>
+                <PlanContractPreview plan={valid} />
                 <details>
                   <summary>Sessions and original coach instructions</summary>
                   {valid.weeks.flatMap((week) =>

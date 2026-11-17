@@ -1,5 +1,13 @@
 # Stride Plan roadmap
 
+## T08.1 versioned plan contract
+
+**Testing**. Owner-approved JSON 1.2 contract, read-only review and narrow draft
+migration are implemented locally. Frontend/adapter and SQLite SQL checks are
+recorded in DESIGN.md; native compilation/execution is blocked by Windows
+Application Control. Packaged acceptance and user acceptance remain pending.
+Historical 1.1 preservation is covered; no active-plan changes or publication.
+
 ## Status key
 
 **Backlog**, **Under discussion**, **Approved**, **In progress**, **Testing**, **Complete**, **Blocked**.

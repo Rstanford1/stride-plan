@@ -7,20 +7,21 @@ import invalidDate from "./__fixtures__/training-plan/invalid-date.json";
 import unsupported from "./__fixtures__/training-plan/invalid-unsupported-version.json";
 import {
   parseTrainingPlan,
-  serializeTrainingPlan,
   validateTrainingPlan,
 } from "./training-plan-validation";
 import type {
-  TrainingPlan,
+  Plan11 as TrainingPlan,
   Session,
   Quantity,
   Progression,
 } from "./training-plan-contract";
+import { serializeTrainingPlan } from "./training-plan";
+import type { TrainingPlan as AnyTrainingPlan } from "./training-plan-contract";
 import type { ExerciseBlock } from "../../.generated/training-plan";
 
 const copy = (value: unknown = independent) =>
   JSON.parse(JSON.stringify(value)) as TrainingPlan;
-const session = (plan: TrainingPlan) => plan.weeks[0].days[0].sessions[0];
+const session = (plan: AnyTrainingPlan) => plan.weeks[0].days[0].sessions[0];
 const work = (plan: TrainingPlan) =>
   session(plan).workout!.blocks[1] as ExerciseBlock;
 const errors = (value: unknown) => {
