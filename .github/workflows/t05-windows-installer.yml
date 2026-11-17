@@ -16,7 +16,7 @@ jobs:
       - name: Check out T05 branch
         uses: actions/checkout@v7
         with:
-          ref: codex/t05-persist-plan-draft
+          ref: refs/tags/archive/t05-plan-drafts-source
           persist-credentials: false
 
       - name: Record source revision
