@@ -1,0 +1,235 @@
+name: T06 Windows acceptance installer
+run-name: Isolated T06 Windows installer from 60791c0
+
+on:
+  push:
+    branches: [codex/t06-windows-acceptance-installer]
+    paths: [.github/workflows/t06-windows-installer.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  T06_SOURCE_SHA: 60791c0e969fe996909937b1217b84cde2f4a776
+  T06_PRODUCT: Stride Plan T06 Test
+  T06_IDENTIFIER: com.strideplan.t06test
+  T06_BINARY: stride-plan-t06-test
+  T06_CREDENTIAL: com.strideplan.t06test/garmin-personal-api/v1
+  pnpm_config_verify_deps_before_run: "false"
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/codex/t06-windows-acceptance-installer'
+    name: Build and verify isolated T06 installer
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out exact approved T06 implementation
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.T06_SOURCE_SHA }}
+          persist-credentials: false
+
+      - name: Verify source revision and application storage boundaries
+        shell: pwsh
+        run: |
+          $source = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $source -cne $env:T06_SOURCE_SHA) {
+            throw "Unexpected implementation commit."
+          }
+          $checks = @{
+            "src-tauri/src/plan_draft_commands.rs" = @('.app_config_dir()', '.join("stride-plan.db")', '.app_local_data_dir()')
+            "src-tauri/src/fit_source_commands.rs" = @('.app_local_data_dir()')
+            "src-tauri/src/garmin_commands.rs" = @('.app_local_data_dir()')
+            "src/data/repository.ts" = @('Database.load("sqlite:stride-plan.db")', '? new SqliteRepository()')
+          }
+          foreach ($path in $checks.Keys) {
+            $text = Get-Content -LiteralPath $path -Raw
+            foreach ($required in $checks[$path]) {
+              if (-not $text.Contains($required)) { throw "Storage boundary changed: $path" }
+            }
+          }
+          $configHash = (Get-FileHash src-tauri/tauri.conf.json -Algorithm SHA256).Hash
+          "T06_PRODUCTION_CONFIG_HASH=$configHash" >> $env:GITHUB_ENV
+          Write-Host "Verified source commit: $source"
+          Write-Host "Workflow commit: $env:GITHUB_SHA"
+          Write-Host "SQLite/preferences use app_config_dir; draft/FIT/Garmin sources use app_local_data_dir."
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # Fresh hosted runner: do not restore compiled application/installer caches.
+      - name: Install locked dependencies and verify approved source
+        shell: pwsh
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          if ($LASTEXITCODE -ne 0) { throw "Locked installation failed." }
+          pnpm verify
+          if ($LASTEXITCODE -ne 0) { throw "Source verification failed." }
+          if (git status --porcelain) { throw "Verification changed tracked source or added unexpected files." }
+
+      - name: Generate isolated configuration and credential identity
+        shell: pwsh
+        run: |
+          $config = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json -AsHashtable
+          $config.productName = $env:T06_PRODUCT
+          $config.identifier = $env:T06_IDENTIFIER
+          $config.mainBinaryName = $env:T06_BINARY
+          $config.app.windows[0].title = $env:T06_PRODUCT
+          $config.bundle.targets = @("nsis")
+          $config.bundle.windows = @{
+            nsis = @{ installMode = "currentUser" }
+            webviewInstallMode = @{ type = "skip" }
+            minimumWebview2Version = $null
+          }
+          $utf8 = [System.Text.UTF8Encoding]::new($false)
+          [IO.File]::WriteAllText(
+            "$PWD/src-tauri/tauri.t06test.conf.json",
+            ($config | ConvertTo-Json -Depth 30), $utf8
+          )
+          $path = "$PWD/src-tauri/src/garmin_credentials.rs"
+          $text = [IO.File]::ReadAllText($path)
+          $original = "com.strideplan.desktop/garmin-personal-api/v1"
+          if ([regex]::Matches($text, [regex]::Escape($original)).Count -ne 1) {
+            throw "Expected exactly one production credential literal."
+          }
+          [IO.File]::WriteAllText($path, $text.Replace($original, $env:T06_CREDENTIAL), $utf8)
+          $patched = [IO.File]::ReadAllText($path)
+          if ($patched.Contains($original) -or -not $patched.Contains($env:T06_CREDENTIAL)) {
+            throw "Credential identity was not isolated."
+          }
+          "T06_CREDENTIAL_SOURCE_HASH=$((Get-FileHash $path -Algorithm SHA256).Hash)" >> $env:GITHUB_ENV
+          Write-Host "Generated isolated override; production configuration is unchanged."
+
+      - name: Build isolated Windows NSIS installer without running it
+        run: >
+          pnpm tauri build --ci --bundles nsis
+          --config src-tauri/tauri.t06test.conf.json -- --locked
+
+      - name: Verify effective installer identity before publishing
+        shell: pwsh
+        run: |
+          $config = Get-Content src-tauri/tauri.t06test.conf.json -Raw | ConvertFrom-Json
+          if (
+            $config.identifier -cne $env:T06_IDENTIFIER -or
+            $config.productName -cne $env:T06_PRODUCT -or
+            $config.mainBinaryName -cne $env:T06_BINARY -or
+            $config.app.windows[0].title -cne $env:T06_PRODUCT -or
+            $config.app.windows[0].dataDirectory -or $config.app.appDirectoriesOverride -or
+            $config.bundle.windows.webviewInstallMode.type -cne "skip" -or
+            $config.bundle.windows.minimumWebview2Version -or
+            $config.bundle.windows.nsis.installMode -cne "currentUser"
+          ) { throw "Unexpected effective Tauri configuration." }
+          if ((Get-FileHash src-tauri/tauri.conf.json -Algorithm SHA256).Hash -cne $env:T06_PRODUCTION_CONFIG_HASH) {
+            throw "Production configuration was changed."
+          }
+          if ((Get-FileHash src-tauri/src/garmin_credentials.rs -Algorithm SHA256).Hash -cne $env:T06_CREDENTIAL_SOURCE_HASH) {
+            throw "Credential adapter changed after isolation."
+          }
+          $changed = @(git diff --name-only)
+          $untracked = @(git ls-files --others --exclude-standard)
+          if ($changed.Count -ne 1 -or $changed[0] -cne "src-tauri/src/garmin_credentials.rs" -or
+              $untracked.Count -ne 1 -or $untracked[0] -cne "src-tauri/tauri.t06test.conf.json") {
+            throw "Unexpected source, dependency or configuration changes in build checkout."
+          }
+          $script = Get-Content src-tauri/target/release/nsis/x64/installer.nsi -Raw
+          function Read-Define([string]$name) {
+            $match = [regex]::Match($script, '(?m)^!define ' + [regex]::Escape($name) + ' "([^"]*)"\r?$')
+            if (-not $match.Success) { throw "Missing installer define: $name" }
+            return $match.Groups[1].Value
+          }
+          $defines = [ordered]@{}
+          $expected = @{
+            PRODUCTNAME = $env:T06_PRODUCT
+            BUNDLEID = $env:T06_IDENTIFIER
+            MAINBINARYNAME = $env:T06_BINARY
+            INSTALLMODE = "currentUser"
+          }
+          foreach ($name in $expected.Keys) {
+            $defines[$name] = Read-Define $name
+            if ($defines[$name] -cne $expected[$name]) { throw "Incorrect installer define: $name" }
+          }
+          $defines.INSTALLWEBVIEW2MODE = Read-Define "INSTALLWEBVIEW2MODE"
+          if ($defines.INSTALLWEBVIEW2MODE -cnotin @("skip", "") -or (Read-Define "MINIMUMWEBVIEW2VERSION")) {
+            throw "Installer could install or update the shared WebView2 runtime."
+          }
+          foreach ($required in @(
+            'StrCpy $INSTDIR "$LOCALAPPDATA\${PRODUCTNAME}"',
+            '!define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCTNAME}"',
+            'RmDir /r "$APPDATA\${BUNDLEID}"',
+            'RmDir /r "$LOCALAPPDATA\${BUNDLEID}"'
+          )) {
+            if (-not $script.Contains($required)) { throw "Installer storage/registration layout changed." }
+          }
+          $binary = Get-Item "src-tauri/target/release/$($env:T06_BINARY).exe"
+          $installers = @(Get-ChildItem src-tauri/target/release/bundle/nsis -Filter *.exe -File)
+          $expectedName = "$($env:T06_PRODUCT)_$($config.version)_x64-setup.exe"
+          if ($installers.Count -ne 1 -or $installers[0].Name -cne $expectedName) {
+            throw "Expected exactly one distinctly named T06 installer."
+          }
+          $installer = $installers[0]
+          foreach ($file in @($binary, $installer)) {
+            if ($file.VersionInfo.ProductName -cne $env:T06_PRODUCT) {
+              throw "Incorrect Windows product metadata: $($file.Name)"
+            }
+          }
+          $bytes = [IO.File]::ReadAllBytes($binary.FullName)
+          $ascii = [Text.Encoding]::UTF8.GetString($bytes)
+          $wide = [Text.Encoding]::Unicode.GetString($bytes)
+          if (-not ($ascii.Contains($env:T06_CREDENTIAL) -or $wide.Contains($env:T06_CREDENTIAL))) {
+            throw "Isolated credential literal missing from compiled executable."
+          }
+          foreach ($other in @("desktop", "t04test", "t05test")) {
+            $forbidden = "com.strideplan.$other/garmin-personal-api/v1"
+            if ($ascii.Contains($forbidden) -or $wide.Contains($forbidden)) {
+              throw "Compiled executable contains another installation's credential target."
+            }
+          }
+          $artifact = Join-Path $env:RUNNER_TEMP "t06-verified-installer"
+          New-Item -ItemType Directory -Path $artifact | Out-Null
+          $manifest = [ordered]@{
+            sourceCommit = (git rev-parse HEAD).Trim()
+            workflowCommit = $env:GITHUB_SHA
+            sourceBranch = "codex/t06-json-only-import"
+            productName = $env:T06_PRODUCT
+            identifier = $env:T06_IDENTIFIER
+            executable = $binary.Name
+            credentialTarget = $env:T06_CREDENTIAL
+            databaseAndPreferences = '%APPDATA%\com.strideplan.t06test\stride-plan.db'
+            localDataWebViewAndSources = '%LOCALAPPDATA%\com.strideplan.t06test'
+            defaultInstallDirectory = '%LOCALAPPDATA%\Stride Plan T06 Test'
+            installer = $installer.Name
+            installerSha256 = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash
+            executableSha256 = (Get-FileHash $binary.FullName -Algorithm SHA256).Hash
+            installerDefines = $defines
+            applicationInstalledOrLaunched = $false
+            acceptanceInputs = "Synthetic fixtures only; no user profile or credentials included."
+          }
+          if ($manifest.sourceCommit -cne $env:T06_SOURCE_SHA) { throw "Build revision changed." }
+          $manifest | ConvertTo-Json -Depth 10 | Set-Content "$artifact/build-manifest.json" -Encoding utf8
+          Copy-Item -LiteralPath $installer.FullName -Destination $artifact
+          Copy-Item src-tauri/tauri.t06test.conf.json "$artifact/effective-tauri-config.json"
+          $manifest | ConvertTo-Json -Depth 10
+          "## Verified isolated T06 acceptance installer" >> $env:GITHUB_STEP_SUMMARY
+          "Source: $($manifest.sourceCommit); workflow: $($manifest.workflowCommit)" >> $env:GITHUB_STEP_SUMMARY
+          "Installer: $($manifest.installer)" >> $env:GITHUB_STEP_SUMMARY
+          "SHA-256: $($manifest.installerSha256)" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload only the verified isolated acceptance installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: stride-plan-t06-windows-test-60791c0
+          path: ${{ runner.temp }}/t06-verified-installer/*
+          if-no-files-found: error
+          retention-days: 7
