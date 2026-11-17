@@ -154,6 +154,38 @@ mod windows {
     // Resolve user-selected folders first, then pin their real ancestors. A
     // junction selected in Save As is allowed only when its resolved target is
     // outside app storage; later directory/link substitution is denied.
+    fn protected_root(root: &Path) -> Result<PathBuf> {
+        // Conversion downloads are available before any source has been saved,
+        // so AppLocalData may not exist yet. Resolve the existing ancestor and
+        // retain missing suffixes without creating an application profile.
+        let mut existing = root.to_path_buf();
+        let mut suffix = Vec::new();
+        loop {
+            match fs::symlink_metadata(&existing) {
+                Ok(_) => {
+                    let mut resolved = existing
+                        .canonicalize()
+                        .map_err(|_| error("export_unsafe"))?;
+                    for part in suffix.into_iter().rev() {
+                        resolved.push(part);
+                    }
+                    return Ok(resolved);
+                }
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                    suffix.push(
+                        existing
+                            .file_name()
+                            .ok_or_else(|| error("export_unsafe"))?
+                            .to_os_string(),
+                    );
+                    if !existing.pop() {
+                        return Err(error("export_unsafe"));
+                    }
+                }
+                Err(_) => return Err(error("export_unsafe")),
+            }
+        }
+    }
     fn destination(path: &Path, protected: &[PathBuf]) -> Result<(PathBuf, Vec<File>)> {
         if !path.is_absolute() {
             return Err(error("export_unsafe"));
@@ -167,7 +199,7 @@ mod windows {
         let resolved = parent.join(name);
         let key = resolved.to_string_lossy().to_lowercase();
         for root in protected {
-            let root = root.canonicalize().map_err(|_| error("export_unsafe"))?;
+            let root = protected_root(root)?;
             let root_key = root.to_string_lossy().trim_end_matches('\\').to_lowercase();
             if key == root_key || key.starts_with(&(root_key + "\\")) {
                 return Err(error("export_unsafe"));

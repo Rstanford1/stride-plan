@@ -61,6 +61,7 @@ it("offers JSON-only plan intake without changing legacy imported sessions or tr
       <DataScreen />
     </AppProvider>,
   );
+  fireEvent.click(screen.getByRole("tab", { name: "Import" }));
   expect(
     screen.getByRole("button", { name: "Select JSON plan file" }),
   ).toBeEnabled();

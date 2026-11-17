@@ -13,6 +13,7 @@
     "allow-read-plan-draft",
     "allow-export-plan-draft",
     "allow-save-plan-draft-recovery",
+    "allow-save-plan-conversion-file",
     "allow-recover-plan-draft",
     "allow-replace-legacy-snapshot",
     "allow-garmin-status",

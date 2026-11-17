@@ -30,6 +30,7 @@ async function fixture() {
   return { saved, store };
 }
 async function select(bytes: Uint8Array) {
+  fireEvent.click(screen.getByRole("tab", { name: "Import" }));
   fireEvent.change(screen.getByLabelText("JSON training-plan file"), {
     target: {
       files: [
@@ -41,11 +42,13 @@ async function select(bytes: Uint8Array) {
       ],
     },
   });
-  await screen.findByText("Validation preview");
+  await waitFor(() =>
+    expect(screen.queryByText("Validating plan…")).toBeNull(),
+  );
 }
 describe("T05 focused Data workflow", () => {
   it.each(["coach.xlsx", "coach.xls", "coach.csv", "coach.PDF", "coach.ods"])(
-    "rejects unsupported %s before reading bytes and clears a prior preview",
+    "rejects unsupported %s before reading bytes and retains a prior valid preview",
     async (name) => {
       const { saved, store } = await fixture();
       render(<PlanDraftPanel store={store} />);
@@ -56,6 +59,7 @@ describe("T05 focused Data workflow", () => {
           screen.getByRole("button", { name: "Save as draft" }),
         ).toBeEnabled(),
       );
+      fireEvent.click(screen.getByRole("tab", { name: "Import" }));
       const arrayBuffer = vi.fn();
       fireEvent.change(screen.getByLabelText("JSON training-plan file"), {
         target: { files: [{ name, size: 100, arrayBuffer }] },
@@ -64,17 +68,22 @@ describe("T05 focused Data workflow", () => {
         "Unsupported plan format. Stride Plan accepts Training Plan JSON 1.1 files (.json).",
       );
       expect(screen.getByRole("alert")).toHaveTextContent("external AI agent");
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "PDF conversion guidance remains pending provenance review",
+      );
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Do not mislabel a PDF or invent provenance.",
+      );
       expect(arrayBuffer).not.toHaveBeenCalled();
       expect(store.save).not.toHaveBeenCalled();
-      expect(screen.queryByText("Validation preview")).toBeNull();
-      expect(
-        screen.getByRole("button", { name: "Save as draft" }),
-      ).toBeDisabled();
+      expect(screen.getByText("Validation preview")).not.toBeVisible();
       await waitFor(() =>
         expect(
           screen.getByRole("button", { name: "Select JSON plan file" }),
         ).toHaveFocus(),
       );
+      fireEvent.click(screen.getByRole("tab", { name: "Review" }));
+      expect(screen.getByText("Validation preview")).toBeVisible();
       await select(saved.preview.bytes);
       await waitFor(() =>
         expect(
@@ -89,6 +98,7 @@ describe("T05 focused Data workflow", () => {
     const { saved, store } = await fixture();
     render(<PlanDraftPanel store={store} />);
     await screen.findByText("No draft saved.");
+    fireEvent.click(screen.getByRole("tab", { name: "Import" }));
     fireEvent.change(screen.getByLabelText("JSON training-plan file"), {
       target: {
         files: [
@@ -115,24 +125,29 @@ describe("T05 focused Data workflow", () => {
     render(<PlanDraftPanel store={store} />);
     await screen.findByText("No draft saved.");
     await select(new TextEncoder().encode("not JSON"));
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "cannot be read as JSON",
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "Review" }));
     expect(
       screen.getByRole("button", { name: "Save as draft" }),
     ).toBeDisabled();
-    expect(screen.getByText(/not valid JSON/)).toBeVisible();
     await select(saved.preview.bytes);
     await waitFor(() =>
       expect(
         screen.getByRole("button", { name: "Save as draft" }),
       ).toBeEnabled(),
     );
-    expect(screen.getAllByText(/Warning ·/).length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText("Warning", { exact: true }).length,
+    ).toBeGreaterThan(0);
     expect(
       screen.getByText("Original JSON and raw instructions"),
     ).toHaveProperty("tagName", "SUMMARY");
     expect(store.save).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Select JSON plan file" }),
+        screen.getByRole("heading", { name: "Review & Save Draft" }),
       ).toHaveFocus(),
     );
   });
@@ -155,7 +170,7 @@ describe("T05 focused Data workflow", () => {
     expect(button).toHaveFocus();
     fireEvent.click(button);
     expect(
-      screen.getByRole("button", { name: "Select JSON plan file" }),
+      screen.getByRole("button", { name: "Save as draft" }),
     ).toBeDisabled();
     expect(screen.getByText("Saving and verifying draft…")).toBeVisible();
     expect(screen.queryByText(/Draft saved and verified/)).toBeNull();

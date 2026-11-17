@@ -8,6 +8,7 @@ fn main() {
             "read_plan_draft",
             "export_plan_draft",
             "save_plan_draft_recovery",
+            "save_plan_conversion_file",
             "recover_plan_draft",
             "replace_legacy_snapshot",
             "garmin_status",
