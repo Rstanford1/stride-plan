@@ -3,6 +3,7 @@ mod fit_source_store;
 mod garmin;
 mod garmin_commands;
 mod garmin_credentials;
+mod plan_conversion_commands;
 mod plan_draft_commands;
 mod plan_draft_export;
 mod plan_draft_store;
@@ -22,6 +23,7 @@ pub fn run() {
             plan_draft_commands::save_plan_draft_recovery,
             plan_draft_commands::recover_plan_draft,
             plan_draft_commands::replace_legacy_snapshot,
+            plan_conversion_commands::save_plan_conversion_file,
             garmin_commands::garmin_status,
             garmin_commands::garmin_connect,
             garmin_commands::garmin_verify,

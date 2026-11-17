@@ -1662,3 +1662,80 @@ label textarea {
   margin: 8px 0 0;
   overflow-wrap: anywhere;
 }
+.plan-import-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+  margin-block: 20px;
+}
+.plan-import-tabs button {
+  border: 1px solid transparent;
+  border-radius: 20px;
+  background: transparent;
+  color: var(--muted, #59645f);
+  padding: 10px 4px;
+  font: inherit;
+  cursor: pointer;
+}
+.plan-import-tabs button[aria-selected="true"] {
+  background: #e9efeb;
+  color: #204b3a;
+  border-color: #b9c9bf;
+  font-weight: 700;
+}
+.plan-import-choices {
+  display: grid;
+  gap: 16px;
+  margin-block: 20px;
+}
+.plan-import-card {
+  border: 1px solid #dce2dc;
+  border-radius: 10px;
+  padding: 20px;
+}
+.plan-import-card h4 {
+  margin-top: 0;
+  font-size: 1rem;
+}
+.plan-import-card .button {
+  width: 100%;
+  justify-content: center;
+}
+.plan-import-steps {
+  padding-left: 28px;
+}
+.plan-import-steps li {
+  padding: 12px 0 12px 8px;
+}
+.plan-import-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-block: 20px;
+}
+.plan-import-summary > div {
+  background: #f3f5f1;
+  border-radius: 10px;
+  padding: 16px;
+}
+.plan-import-summary strong,
+.plan-import-summary span {
+  display: block;
+}
+.plan-import-summary strong {
+  font-size: 1.75rem;
+}
+.plan-import-failure {
+  border-left: 3px solid #9d392f;
+  padding-left: 16px;
+  margin-block: 20px;
+  overflow-wrap: anywhere;
+}
+.plan-import-failure details {
+  font-size: 0.875rem;
+}
+@media (forced-colors: active) {
+  .plan-import-tabs button[aria-selected="true"] {
+    border-color: Highlight;
+  }
+}

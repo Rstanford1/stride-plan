@@ -1,5 +1,232 @@
 # Stride Plan design
 
+## T07 — guided external conversion
+
+Status: **Testing; independent review requested, owner acceptance pending**. Approved by the owner's T07 specification
+and implementation request, November 16, 2026. Baseline: fetched `origin/main`
+`e4aa085`; isolated branch `codex/t07-guided-conversion`. No commit/push authorized.
+
+- Keep one Import Training Plan section in the existing Data & settings screen.
+  Five freely navigable, keyboard-accessible tabs: Start, Get files, Use AI,
+  Import, Review. Start links directly to Import or Get files. No wizard/gating.
+- Get files offers exactly two offline artifacts: the canonical JSON 1.1 schema
+  and a valid clearly synthetic example. Native saves reuse verified Save As
+  protections; no general filesystem access. A new scoped command permission
+  was explicitly approved by the owner before modification.
+- Use AI shows four numbered instructions together, a privacy notice and Copy AI
+  Instructions containing the complete original prompt and schema-specific
+  clarifications. All ten screenshot references and the complete original prompt
+  are now available. The latest written specification overrides older screenshots.
+  PDF-specific conversion wording/workarounds remain pending owner review;
+  do not present direct PDF provenance as supported or change the schema.
+  No integrated AI, uploads, keys, parsing or paste-JSON intake.
+- Successful validation opens Review, including warnings. Invalid attempts stay
+  on Import, identified by filename, with plain explanations, exact expandable
+  diagnostics and copyable correction feedback. Clipboard actions are explicit.
+- Keep valid candidate, failed attempt and persisted record separate. Failure
+  never clears a candidate; tab navigation never writes a draft. Review identifies
+  its own filename and retains T06 preview, warnings, exact bytes and Save as draft.
+  Existing duplicate/conflict/persistence/recovery behavior remains authoritative.
+- No activation, schema/validator changes, migrations, dependencies, T11 calendar
+  review, per-workout correction, editor, or unrelated settings changes.
+- Verification and owner acceptance must be recorded before marking Complete.
+
+### T07 implementation and preservation
+
+- Start routes directly to Import or Get files. Get files downloads exactly the
+  canonical schema and existing synthetic `valid-workout.json` fixture, embedded
+  offline by Vite and Rust from the same source files. No ZIP or instructions
+  download. Native Save As accepts only a closed schema/example selector and
+  version, never frontend paths or bytes. Its single new permission was approved.
+- Use AI shows all four numbered instructions together and explicitly copies the
+  complete original owner-supplied prompt followed by contract clarifications.
+  The original prompt text is retained intact. No added PDF conversion procedure
+  is included; the interface says guidance remains pending provenance review.
+- The clarifications make actual root names, units, role/double links, independent
+  sessions, required/optional/core/flexible semantics, recovery boundaries,
+  ordered components, hammer indices, within-workout progressions, exact
+  coachText arrays, JSON Pointer paths and essential clarification rules explicit.
+  Required file-source hashes cannot be omitted when unknown; no self-hash is
+  invented. The synthetic example supplies structure, never workout prescriptions.
+  Unsupported week/phase progression remains text with review notes. No schema or
+  validator wording/rules were changed to accommodate the prompt.
+- Import reuses T06 byte loading and T01 validation. Syntax, schema, blocking
+  semantics and nonblocking warnings have distinct labels and expandable exact
+  code/path/message details. Validation feedback copies actual diagnostics and
+  correction instructions only on request. It omits filenames/full JSON and
+  redacts source-provided note text, quoted identifiers and arbitrary pointer keys
+  that could contain private content. Exact diagnostics remain visible locally.
+- Valid selection replaces only the candidate and opens Review, focusing its
+  heading. Failed selection stores its filename/errors independently, returns
+  to Import and restores picker-button focus. The prior valid candidate remains
+  on Review under its own filename. Tabs preserve candidate/disclosure state.
+  Review retains T06 exact-source disclosures, warnings and explicit Save as draft,
+  adding only week/day/warning counts. No T11 calendar/editor/correction workflow.
+- The persisted record is never replaced by selecting a file, validating, copying,
+  downloading or switching tabs. Existing T05 save/reopen/recovery operations and
+  native conflict/idempotence rules remain unchanged. Save still revalidates an
+  independent copy of original bytes at the unchanged store boundary. Draft
+  recovery controls remain available; native draft-presence guards are preserved.
+- The native export writer has one directly necessary adjustment: resolve missing
+  protected app-directory suffixes against their existing ancestor. Downloads
+  must work before the first source save creates AppLocalData. It creates no
+  profile/storage directories, still excludes application storage and retains
+  guarded destinations, verified staging/publication/readback and cancellation.
+
+### Focused T07 privacy/PDF correction pass
+
+Owner-authorized bounded correction, November 16, 2026. The final narrowed request
+limits this pass to clipboard privacy, focused regressions and PDF error guidance.
+
+- Replaced clipboard message/path redaction with a closed diagnostic-code catalog
+  and fixed descriptions. Raw validator messages are never copied. Structural
+  locations must traverse explicit properties/array positions in the unchanged
+  schema; malformed, unknown and metadata-defined locations receive a generic
+  location description. Source-provided review-note paths are always omitted,
+  including those that resemble valid structural pointers. Unknown codes are
+  represented generically. Exact original diagnostics remain visible locally.
+- Added regressions for drive/UNC Windows paths, Unix paths, mixed separators,
+  malformed pointers, misleading metadata paths, private source text and unknown
+  codes, while confirming useful safe codes/locations and unchanged input data.
+- Unsupported-file guidance now states that PDF provenance guidance is pending,
+  JSON 1.1 does not directly support PDF sources, and sources must not be mislabeled
+  or fabricated. Read/encoding/size/extension failures retain ordinary errors;
+  no additional AI-correction action was added. The original prompt is unchanged.
+- Focused command: `node node_modules/vitest/vitest.mjs run
+src/domain/plan-conversion.test.ts src/components/PlanConversionFlow.test.tsx
+src/components/PlanDraftPanel.test.tsx`: **56 passed in three files** (32 domain,
+  9 guided workflow, 15 draft/import). These include 28 additional privacy cases.
+  The earlier full-suite result below is historical; the full suite was not
+  repeated for this correction. TypeScript, formatting and diff checks are
+  recorded with this pass's final report.
+- Only the feedback helper, its tests, the import guidance and two existing UI
+  test files, plus this design record, changed during the pass. No schema, native
+  code/permission, prompt, dependency configuration or Windows policy changes.
+  Native-test, actual clipboard paste and packaged acceptance limits below remain.
+  PDF provenance is still unresolved. No commit, push, PR or merge.
+
+### PDF provenance investigation — decision pending
+
+These are findings about the unchanged 1.1 contract, not approved PDF workarounds.
+
+1. Root `sources` and `provenance` are required, both with `minItems: 1`.
+   `$defs.Source` supports `FileSource.kind` only `workbook` or `json`, each with
+   required `id`, `fileName` and lowercase 64-character `sha256`; its other branch
+   is `AuthoredSource`, requiring `id` and `kind: authored`. `$defs.Location`
+   supports only workbook `cell` (`sheet`/`cell` required), `json` (`pointer`
+   required), or `authored`. It has no PDF/page-location alternative.
+2. The semantic validator requires location/source kinds to agree
+   (`source_location_mismatch`), prohibits fileName/sha256 on authored sources
+   (`source_kind_conflict`) and requires covering provenance for nonempty
+   coachText (`missing_provenance`). Empty sources, invented cell references,
+   relabeling a PDF, fake hashes, or falsely claiming authored content cannot
+   supply truthful original-PDF provenance. Optional extensions are preserved
+   metadata; they do not waive these standard semantics or add required features.
+3. Plan sessions derived from a PDF are not inherently unimportable. A genuinely
+   separate intermediate JSON transcription could truthfully be a `json` source
+   with its own real filename, calculated hash and pointers, and the plan could
+   pass 1.1 validation/import. That records the intermediate JSON, **not direct
+   original-PDF provenance**. Establishing such a transcription workflow and how
+   it preserves the PDF chain needs owner approval. It has not been implemented
+   or recommended in the production instructions. Simply using authored for any
+   imported PDF is not an approved or truthful automatic fallback. Passing a
+   validator alone never verifies the claimed source facts or fidelity.
+4. The smallest immediate safe behavior is the implemented limitation notice,
+   preserving the original prompt's non-fabrication rule and normal JSON import.
+   No schema change or migration is necessary for the unblocked T07 work.
+   A separately approved intermediate-transcription policy could retain 1.1
+   without a schema change, at the cost of an extra source and incomplete direct
+   PDF provenance. If direct original-PDF provenance is required, the smallest
+   clean contract extension is a PDF file-source kind with its real hash/name
+   and a defined PDF/page location, plus matching semantic rules/types/tests.
+   This requires schema work and an explicit versioning decision, not an enum
+   silently added under the existing 1.1 identity.
+5. Compatibility is material: the parser accepts only 1.1; existing clients would
+   reject a new version. Both TS and Rust bind saved draft/recovery validation to
+   the shipped schema/validator fingerprint. Editing either in place would make
+   existing saved records fail verification. Native `plan_draft_validation`
+   constrains schema_version to `1.1` and validator_version to `t01-1`. A future
+   version therefore needs compatible validator selection, retained old-draft/
+   recovery support and a separately approved migration if new-version drafts
+   are persisted. None of those changes is included in T07.
+
+### T07 verification and limits
+
+All tests use synthetic data or temporary directories. No real app profile was
+opened or migrated. This branch remains uncommitted and unpushed.
+
+- Complete frontend/domain suite via `node node_modules/vitest/vitest.mjs run`:
+  **273 passed in 23 files** on the final full run, including the additional
+  no-warning UI regression. The existing 81 T01 and 14
+  T05 adapter tests are included. Rendered tests cover five tabs/arrow/Home/End
+  focus, direct import, separate downloads, full prompt copying/retry, syntax/
+  schema/semantic failures, actual privacy-conscious feedback, retained candidate
+  and distinct failed/saved identities, warnings/save and no automatic transmission.
+- `node scripts/generate-training-plan-types.mjs --check`,
+  `node node_modules/prettier/bin/prettier.cjs --check .`,
+  `node node_modules/typescript/bin/tsc -b --pretty false`, production
+  `node node_modules/vite/bin/vite.js build`, Rust formatting and `git diff --check`
+  passed. Existing Vite large-chunk advisory remains.
+- Required `pnpm verify` was attempted. The first attempt could not acquire its
+  launcher-store lock. The permitted rerun triggered pnpm's automatic local
+  dependency refresh (247 reused, zero downloaded) and stopped with
+  `ERR_PNPM_IGNORED_BUILDS` before running the gate. Its incidental allowBuilds
+  edit was removed. `pnpm-workspace.yaml` exactly matches HEAD (Git blob
+  `915e8a4bb149317fa3e9c37e8f9556f668afaefd`). No package-manager bypass,
+  script approval or manual package installation was performed. The individual
+  checks above are not represented as a passing combined pnpm gate.
+- `cargo test --manifest-path src-tauri/Cargo.toml --locked --offline --
+--test-threads=1` stopped before project compilation because Windows Application
+  Control blocked dependency build scripts (`serde_core`, `parking_lot_core`,
+  `zmij`, OS error 4551). Added native request/artifact/download/protected-directory
+  tests and existing export tests **did not execute**. No Windows policy changed.
+  Packaged build/interactive acceptance is blocked; no executable was launched.
+- Browser rendering: all five tabs, direct Start routing, four simultaneous
+  instructions, arrow/End navigation, solid visible keyboard focus, empty Review
+  and disabled save were exercised. Measured CSS widths 680, 1133 and 1360 px had
+  no horizontal document overflow in checked states. Screenshots are saved as
+  external review artifacts, not repository files. The light/green application
+  styling is retained; screenshots supplied workflow/card references, not a
+  request to reskin the application.
+- Both browser artifact downloads completed; SHA-256 matches the canonical schema
+  and synthetic fixture exactly. The browser reported AI instructions copied,
+  but automation clipboard readback was empty; actual end-to-end clipboard
+  contents are not claimed verified. Automated tests assert the exact complete
+  payload passed to writeText. Native WebView2 clipboard acceptance is pending.
+- Browser selection of only synthetic `valid-partial.json` was attempted through
+  the chooser. Upload permission was declined; no file was uploaded, and it was
+  not retried or worked around. Populated flow/retention/persistence evidence is
+  from rendered unit/adapter tests, not populated browser or packaged acceptance.
+- The local preview is Node/Vite 6.4.5 on `127.0.0.1:1427`, started in this isolated
+  worktree (observed listener PID 15544). The intended file was the repository's
+  synthetic test fixture only; no personal plan, secret or unrelated file was
+  selected for upload. Such browser file selection is optional for this review.
+
+Remaining Windows acceptance: build in an environment permitting the locked Rust
+dependencies; use a synthetic isolated app identity/profile; exercise each native
+Save As, cancellation, overwrite confirmation, protection of app/source storage,
+exact downloaded bytes, actual clipboard paste/readback and failure/retry; save,
+restart, reopen and recover one synthetic draft, confirming the active schedule
+is unchanged. Test forced colors, screen-reader announcements and 200% Windows
+scaling. Owner acceptance and PDF-specific wording remain pending.
+
+T07 changed-file manifest (uncommitted):
+
+- `DESIGN.md`, `ROADMAP.md`, `UI_INVENTORY.md`
+- `src/components/PlanDraftPanel.tsx`, `src/components/PlanDraftPanel.test.tsx`
+- `src/components/PlanConversionGuide.tsx`, `src/components/PlanValidationIssues.tsx`
+- `src/components/PlanConversionFlow.test.tsx`, `src/screens/DataScreen.test.tsx`
+- `src/data/plan-conversion-files.ts`, `src/data/plan-conversion-files.test.ts`
+- `src/domain/plan-conversion.ts`, `src/domain/plan-conversion.test.ts`
+- `src/domain/plan-conversion-prompt.ts`, `src/styles.css`
+- `src-tauri/src/plan_conversion_commands.rs`, `src-tauri/src/plan_draft_export.rs`
+- `src-tauri/src/lib.rs`, `src-tauri/build.rs`, `src-tauri/capabilities/default.json`
+
+Unchanged: canonical schema/validator/fixtures, T05 store/commands/migration,
+package manifests/lockfiles, pnpm/Vite/TypeScript/Tauri app configuration, FIT and
+Garmin code. The only capability change is the approved single conversion-save
+command. No unexpected configuration modifications remain.
+
 ## Revised T06 — JSON-only training-plan intake
 
 Status: **Testing; approved by the owner's revised T06 request on November

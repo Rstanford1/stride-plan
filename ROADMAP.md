@@ -72,8 +72,14 @@ Strengths:
   Implemented and verified with 254 frontend tests, 116 focused checks and 49
   sequential native tests; browser checks use synthetic files only. Approved
   scope, packaging evidence and pending owner acceptance: DESIGN.md.
-- Revised T07: **Backlog** — guided external-AI document-to-JSON conversion,
-  including an authoritative conversion prompt and accessible JSON 1.1 schema.
+- Revised T07: **Testing** on isolated `codex/t07-guided-conversion`, based on
+  fetched `origin/main` `e4aa085`. Five tabs, separate offline schema/example
+  downloads, complete original clipboard prompt with contract clarifications,
+  validation feedback and retained valid previews are implemented for review.
+  All 273 frontend/domain tests pass; native execution and combined pnpm gate
+  are environment-blocked. PDF provenance guidance and owner acceptance remain
+  pending. No schema change, PDF workaround, T11, commit, push or PR.
+  Scope, exact verification and compatibility findings: DESIGN.md.
 - Revised T08: **Backlog** — validate AI-generated JSON against representative
   40, 55, 65 and 75+ MPW coach plans.
 - Revised T11: **Backlog** — integrate and refine JSON-based import and the draft
