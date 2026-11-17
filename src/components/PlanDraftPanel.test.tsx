@@ -44,6 +44,72 @@ async function select(bytes: Uint8Array) {
   await screen.findByText("Validation preview");
 }
 describe("T05 focused Data workflow", () => {
+  it.each(["coach.xlsx", "coach.xls", "coach.csv", "coach.PDF", "coach.ods"])(
+    "rejects unsupported %s before reading bytes and clears a prior preview",
+    async (name) => {
+      const { saved, store } = await fixture();
+      render(<PlanDraftPanel store={store} />);
+      await screen.findByText("No draft saved.");
+      await select(saved.preview.bytes);
+      await waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "Save as draft" }),
+        ).toBeEnabled(),
+      );
+      const arrayBuffer = vi.fn();
+      fireEvent.change(screen.getByLabelText("JSON training-plan file"), {
+        target: { files: [{ name, size: 100, arrayBuffer }] },
+      });
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "Unsupported plan format. Stride Plan accepts Training Plan JSON 1.1 files (.json).",
+      );
+      expect(screen.getByRole("alert")).toHaveTextContent("external AI agent");
+      expect(arrayBuffer).not.toHaveBeenCalled();
+      expect(store.save).not.toHaveBeenCalled();
+      expect(screen.queryByText("Validation preview")).toBeNull();
+      expect(
+        screen.getByRole("button", { name: "Save as draft" }),
+      ).toBeDisabled();
+      await waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "Select JSON plan file" }),
+        ).toHaveFocus(),
+      );
+      await select(saved.preview.bytes);
+      await waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "Save as draft" }),
+        ).toBeEnabled(),
+      );
+      expect(screen.queryByRole("alert")).toBeNull();
+    },
+  );
+
+  it("accepts uppercase JSON filenames even with an unspecified MIME type", async () => {
+    const { saved, store } = await fixture();
+    render(<PlanDraftPanel store={store} />);
+    await screen.findByText("No draft saved.");
+    fireEvent.change(screen.getByLabelText("JSON training-plan file"), {
+      target: {
+        files: [
+          {
+            name: "COACH.JSON",
+            size: saved.preview.bytes.length,
+            type: "",
+            arrayBuffer: async () =>
+              Uint8Array.from(saved.preview.bytes).buffer,
+          },
+        ],
+      },
+    });
+    await screen.findByText("Validation preview");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Save as draft" }),
+      ).toBeEnabled(),
+    );
+  });
+
   it("previews errors and warnings, disables invalid save and exposes original instructions", async () => {
     const { saved, store } = await fixture();
     render(<PlanDraftPanel store={store} />);

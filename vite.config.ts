@@ -14,7 +14,6 @@ export default defineConfig({
       output: {
         manualChunks: {
           charts: ["recharts"],
-          spreadsheet: ["xlsx"],
         },
       },
     },

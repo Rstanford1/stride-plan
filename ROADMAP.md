@@ -44,10 +44,10 @@ Strengths:
 - Manual journal mileage is counted, but manual journal dates do not count as run days.
 - Session `week` is not recalculated when a move crosses week boundaries.
 - The SQLite migration defines normalized tables, while runtime persistence uses one JSON row in `app_state`.
-- Windows packaging reaches the Tauri resource step but cannot produce an installer until an approved `src-tauri/icons/icon.ico` is added.
+- T06 Windows packaging passes for MSI and NSIS. Packaged interactive acceptance remains pending; no real profile was launched or migrated.
 - Repository save failures are not surfaced; rapid updates may complete out of order.
 - Backup validation checks top-level shapes only.
-- Plan import is repeat-safe for an identical file but is not a complete current-vs-imported diff.
+- New plan intake is JSON 1.1 preview/draft only; duplicate detection uses exact original bytes. Direct CSV/XLS/XLSX parsing is retired by revised T06. Activation and broader JSON import integration remain future work.
 - Only domain/repository tests exist; there are no rendered component or end-to-end tests.
 - The hard minimum page width produces horizontal scrolling and threatens 200% scaling support.
 - The Tauri capabilities include broad default filesystem/dialog/SQL permissions and should be reviewed against actual use.
@@ -65,6 +65,23 @@ Strengths:
 
 ## Current work
 
+- Revised T06: **Testing** on `codex/t06-json-only-import`, from fetched
+  `origin/main` `d78e698` after T05 PR #9. Remove direct spreadsheet/CSV parsing
+  and unnecessary dependencies; preserve JSON 1.1 validation, exact source bytes,
+  draft persistence/recovery, legacy records and unrelated FIT/Garmin behavior.
+  Implemented and verified with 254 frontend tests, 116 focused checks and 49
+  sequential native tests; browser checks use synthetic files only. Approved
+  scope, packaging evidence and pending owner acceptance: DESIGN.md.
+- Revised T07: **Backlog** — guided external-AI document-to-JSON conversion,
+  including an authoritative conversion prompt and accessible JSON 1.1 schema.
+- Revised T08: **Backlog** — validate AI-generated JSON against representative
+  40, 55, 65 and 75+ MPW coach plans.
+- Revised T11: **Backlog** — integrate and refine JSON-based import and the draft
+  experience; direct workbook parsing is no longer intended product behavior.
+- The authoritative Phase 0 `IMPLEMENTATION_ROADMAP.md`, `DESIGN_SPEC.md` and
+  `ARCHITECTURE_DECISIONS.md` are absent from this branch. Apply these decisions
+  there when those documents are incorporated through their own reviewed work;
+  do not copy uncommitted documents from other worktrees.
 - T05 persist/reopen one JSON 1.1 plan draft: **Testing** on isolated
   `codex/t05-persist-plan-draft`, based on fetched `origin/main` `3335223` after
   T04 PR #8 merged. Exact native tables, compatibility, safety copy, source

@@ -9,7 +9,7 @@ Stride Plan is a Windows-first, local running-plan and journal application. It k
 - Activity review for plan matching, bundles, primary/supporting roles, and lap classification.
 - Weekly review with core and flexible planned mileage, actual mileage, completion, outcomes, long run, run days, and explainable observations.
 - Two restrained trends with accessible table alternatives.
-- CSV/XLSX plan validation and repeat-import protection, legacy JSON snapshot export/restore, editable reference values, and FIT import handoff.
+- Training Plan JSON 1.1 validation and preview, one durable draft with exact source preservation and recovery, legacy JSON snapshot export/restore, editable reference values, and FIT import handoff.
 - A Tauri 2 shell, SQLite migration, browser development fallback, and testable domain modules.
 
 ## Run for development
@@ -94,11 +94,20 @@ and the T04 record in DESIGN.md. User-supplied keys do not waive this gate.
 - Packaged app database: the Tauri application-data folder for `com.strideplan.desktop`, normally `%APPDATA%\com.strideplan.desktop\stride-plan.db` on Windows.
 - Browser development data: local storage for the development origin.
 - Legacy JSON snapshots (exclude original FIT bytes): saved wherever the user chooses through **Data & settings → Export backup**.
-- Source workbook: read only. It is never modified by the import flow.
+- Coach documents: convert independently before import; Stride Plan never opens or modifies the original workbook/PDF.
 
 ## Plan import format
 
-The Windows app also supports **Data & settings → JSON training-plan draft**.
+Training plans are imported only as **Training Plan JSON 1.1**, through
+**Data & settings → JSON training-plan draft**. Convert a coach-provided Excel,
+CSV, PDF or other document using an external AI agent of your choosing before
+importing. Stride Plan does not parse spreadsheets or PDFs and does not integrate
+an AI provider or request AI credentials. The authoritative
+[JSON 1.1 schema and contract](schemas/training-plan/README.md) describe the
+accepted format. Stride Plan validates the result, preserves provenance and
+exact original JSON bytes, previews errors/warnings and saves a draft. Activation
+will require a later explicitly confirmed workflow.
+
 Select a JSON 1.1 file, review its validation preview, and choose **Save as draft**.
 Use **Reopen saved draft** after restarting. This keeps one read-only draft and
 its exact original JSON bytes; it does not activate the plan or change workouts.
@@ -114,19 +123,18 @@ and FIT files; legacy restore/reset is blocked while a draft exists. Browser
 development supports preview only. See DESIGN.md for the supported migration
 baseline, retained pre-migration safety copies and remaining acceptance checks.
 
-The importer accepts the replacement workbook's `Plan` sheet, the earlier `Daily Plan` structure, or a CSV/XLSX first sheet with these headers:
-
-`date,title,planned_miles,session_type,guidance,instructions,flexible,phase`
-
-Dates use `YYYY-MM-DD`; session type is `rest`, `easy`, `recovery`, `workout`, or `long`. A preview reports invalid rows and same-day sessions before import. Exact file fingerprints and stable row keys prevent silent duplicate imports.
+Unsupported non-JSON files receive conversion guidance before any bytes are read.
+Previously imported plans, original/revised prescriptions, import fingerprints
+and workout history remain readable; removing direct spreadsheet import does
+not migrate or remove saved data.
 
 ## Current limitations
 
 - The FIT foundation decodes files, keeps immutable normalized samples and laps, detects byte-identical duplicates, and records partial-success import batches. The packaged app preserves a verified untouched source copy; browser development labels durable preservation unavailable. Activity Review confirmation is still being implemented.
-- The Tauri/SQLite source and migrations are present. Rust and the Windows toolchain are available, but packaging currently stops because the project does not yet contain the required `src-tauri/icons/icon.ico` application icon.
+- T06 built Windows MSI and NSIS installers successfully. Packaged interactive acceptance remains pending; verification did not launch or migrate the real application profile.
 - The browser fallback stores the canonical state as one local snapshot; the packaged repository stores that snapshot in SQLite while the normalized tables are ready for incremental persistence.
 - The built-in plan is the 13-week November 2, 2026–January 31, 2027 block: Monday flexible recovery, Friday rest, cutbacks in weeks 4/8/12, threshold sessions from week 6, and a 50-mile peak.
-- Import preview supports the reference `Plan` and `Daily Plan` structures plus the documented row format. Arbitrary workbook layouts are intentionally rejected.
+- Direct CSV/XLS/XLSX and PDF plan import are unsupported. Guided external-AI conversion (T07), representative coach-plan validation (T08), and broader JSON import/draft refinement (T11) remain future work.
 
 ## Next improvements
 
