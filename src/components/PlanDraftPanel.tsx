@@ -38,6 +38,13 @@ export function PlanDraftPanel({
   const selectButton = useRef<HTMLButtonElement>(null);
   const recoveryFile = useRef<HTMLInputElement>(null);
   const saveButton = useRef<HTMLButtonElement>(null);
+  const pendingFocus = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (busy) return;
+    const target = pendingFocus.current;
+    pendingFocus.current = null;
+    if (target?.isConnected && !target.disabled) target.focus();
+  });
   useEffect(() => {
     let active = true;
     if (!store) {
@@ -101,10 +108,8 @@ export function PlanDraftPanel({
           : "Draft operation failed. Retry is safe.",
       );
     } finally {
+      pendingFocus.current = focused;
       setBusy(false);
-      requestAnimationFrame(() => {
-        if (focused?.isConnected && !focused.disabled) focused.focus();
-      });
     }
   }
   function showSaved(saved: SavedDraft) {
@@ -120,6 +125,10 @@ export function PlanDraftPanel({
     await run(
       "Validating plan…",
       async () => {
+        if (!/\.json$/i.test(selected.name))
+          throw new Error(
+            "Unsupported plan format. Stride Plan accepts Training Plan JSON 1.1 files (.json). Convert Excel, CSV, PDF or other coach documents to this format with an external AI agent before importing.",
+          );
         if (selected.size > PLAN_SOURCE_LIMIT)
           throw new Error("Plan JSON exceeds the 8 MiB limit.");
         const next = await previewPlan(
@@ -170,6 +179,10 @@ export function PlanDraftPanel({
       <p>
         Preview a training-plan JSON 1.1 file and save one read-only draft.
         Saving does not activate the plan or change scheduled workouts.
+      </p>
+      <p>
+        Have an Excel, PDF or other coach document? Use an external AI agent of
+        your choosing to convert it to Stride Plan JSON 1.1 before importing.
       </p>
       {!store && (
         <p>

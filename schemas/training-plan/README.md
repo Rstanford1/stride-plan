@@ -11,8 +11,11 @@ AppData snapshot versions, SQL migrations, backups and native command contracts.
 
 One document describes an immutable original plan version. It contains no active
 plan state, schedule revisions, actual results or persistence instructions. T01
-does not connect the validator to the application, replace the spreadsheet reader,
-access source files, or write user data. It implements the approved Section 4 and
+did not connect the validator to the application, replace the spreadsheet reader,
+access source files, or write user data. T05 subsequently connected this contract
+to JSON preview/draft persistence. Revised T06 retires direct spreadsheet import: users
+independently convert coach documents with an external AI agent, and Stride Plan
+validates the resulting JSON and preserves its exact bytes/provenance. It implements the approved Section 4 and
 Appendix A semantics of the owner's Phase 0 DESIGN_SPEC, with exact field names
 approved in the T01 conversation. Those original Phase 0 documents remain preserved
 in the owner's existing development workspace; they were not silently folded into
@@ -146,8 +149,9 @@ location. Source/location kinds must agree. Optional workbook `rawValue`,
 `formattedText` and `formula` retain source evidence without formula evaluation.
 Container mappings cover descendants, with specific field/cell mappings adding
 precision. Coach text requires a covering mapping. JSON source pointers have
-validated syntax; their external targets cannot be verified here. Later workbook
-adapters must provide precise source cells for mapped values and instructions.
+validated syntax; their external targets cannot be verified here. External document-to-JSON
+producers should provide precise source cells for mapped workbook values and
+instructions. Stride Plan preserves that evidence without reading the workbook.
 
 Every object preserves unknown optional fields and warns. Namespaced `extensions`
 are preserved and reported as uninterpreted metadata. Extensions cannot change
@@ -157,9 +161,10 @@ conflicts are errors, not silently accepted as optional metadata.
 
 Only version 1.1 is accepted. Version 1.0, unknown minor versions and future majors
 return `unsupported_version`; no authentic 1.0 mapping has been established. Unknown
-required features/types/units reject the document. Existing spreadsheet import is
-unchanged. Round trips preserve JSON values, unknown metadata and exact strings,
-not original JSON byte formatting/property order. Duplicate JSON keys (including
+required features/types/units reject the document. Direct spreadsheet import is
+retired by revised T06. Domain round trips preserve JSON values, unknown metadata
+and exact strings, not original JSON byte formatting/property order. T05 intake
+separately preserves the original source bytes without reserialization. Duplicate JSON keys (including
 escaped equivalents) reject rather than silently losing earlier values.
 
 ## Validation and reproducible types
@@ -186,13 +191,15 @@ also generate their prerequisites explicitly, so `install --ignore-scripts` work
 `pnpm verify` starts with the consistency check. Compile-time tests check required
 fields and discriminated unions alongside runtime valid/invalid fixtures.
 
-## Workbook acceptance and verification
+## External conversion acceptance and verification
 
 All committed fixtures are synthetic, including the deliberately fake workbook
 filename/hash used in tests. No coach workbook, private text, FIT, database, recovery
-archive or user import is committed. Actual parity is deferred to the roadmap's
-workbook adapter/parity tasks, using owner-controlled local fixtures and source
-hashes before/after read-only runs.
+archive or user import is committed. Revised T08 will validate externally
+AI-generated JSON against representative 40, 55, 65 and 75+ MPW coach documents
+using owner-controlled local fixtures. Direct workbook adapters are no longer
+planned. T07 will supply the guided external-conversion workflow and authoritative
+prompt; neither T07 nor T08 is implemented by T06.
 
 | Workbook tier | Parity status                                     |
 | ------------- | ------------------------------------------------- |

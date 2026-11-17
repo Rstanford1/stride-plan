@@ -210,6 +210,52 @@ describe("T05 plan preview and native boundary", () => {
       await expect(new NativeDraftStore(call).read()).rejects.toThrow();
     }
   });
+  it("reimports identical JSON under a new filename without changing draft identity, then exports, recovers and reopens it", async () => {
+    const saved = await syntheticDraft();
+    const text = await recoveryDraft(saved);
+    let present = true;
+    const call = vi.fn(
+      async (command: string, args?: Record<string, unknown>) => {
+        if (command === "inspect_plan_draft")
+          return {
+            contractVersion: 1,
+            snapshot,
+            draft: present ? saved.record : null,
+          };
+        if (command === "save_plan_draft") {
+          expect(args?.request).toMatchObject({
+            sourceHash: saved.record.sourceHash,
+            bytes: Array.from(saved.preview.bytes),
+            originalFileName: "renamed.JSON",
+            expectedDraftId: saved.record.draftId,
+            expectedRevision: saved.record.revision,
+            expectedSnapshot: snapshot,
+          });
+          return wireDraft(saved);
+        }
+        if (command === "export_plan_draft") return text;
+        if (command === "recover_plan_draft") {
+          expect(args?.request).toMatchObject({
+            envelopeJson: text,
+            expectedSnapshot: snapshot,
+          });
+          present = true;
+          return wireDraft(saved);
+        }
+        if (command === "read_plan_draft")
+          return present ? wireDraft(saved) : null;
+        throw new Error("Unexpected command");
+      },
+    ) as typeof invoke;
+    const store = new NativeDraftStore(call);
+    const reimport = await previewPlan(saved.preview.bytes, "renamed.JSON");
+    expect(await store.save(reimport, saved.record)).toEqual(saved);
+    const exported = await store.exportRecovery();
+    expect(exported).toBe(text);
+    present = false; // A separate empty synthetic native profile.
+    expect(await new NativeDraftStore(call).recover(exported)).toEqual(saved);
+    expect(await new NativeDraftStore(call).read()).toEqual(saved);
+  });
   it("does not publish invalid recovery and preserves every record and byte for valid recovery", async () => {
     const saved = await syntheticDraft();
     const call = vi.fn(async (command: string) =>

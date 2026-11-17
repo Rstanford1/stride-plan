@@ -1,5 +1,84 @@
 # Stride Plan design
 
+## Revised T06 — JSON-only training-plan intake
+
+Status: **Testing; approved by the owner's revised T06 request on November
+14, 2026.** Based on fetched `origin/main` `d78e698`, including merged T05 PR #9.
+
+- Users independently convert coach documents (Excel, PDF or other formats) to
+  Training Plan JSON 1.1 with an external AI agent of their choosing. Stride Plan
+  has no AI provider integration, hosted conversion service or API credentials.
+- Stride Plan owns strict T01 validation, semantic warnings, provenance, exact
+  original JSON bytes, preview and T05 draft persistence/recovery. Activation
+  remains a later explicitly confirmed workflow; saving a draft changes no
+  active plan, workout, journal or totals.
+- Remove the direct CSV/XLS/XLSX action, workbook readers, row transformations,
+  obsolete validation/tests and exclusive dependencies. Keep historical session
+  identities, import fingerprints, snapshot adapters and saved records readable.
+  No database or migration changes are needed or authorized.
+- Keep the existing JSON draft panel as the primary plan import action, with
+  its current controls and preview. Add brief external-conversion guidance.
+  Reject non-JSON filenames before reading bytes with a helpful unsupported-
+  format message directing users to JSON 1.1. Preserve keyboard focus and the
+  existing announced error and disabled-save behavior.
+- Preserve FIT, Garmin, backup and restore behavior. T07's guided conversion
+  prompt/schema experience, T08's representative-plan validation and T11's
+  broader JSON import/draft refinements are outside this change.
+
+### T06 implementation and verification record
+
+- Removed the workbook/CSV import card, parsing/transformation/active-plan-write
+  path and row preview from `DataScreen.tsx`; removed `src/domain/imports.ts` and
+  its obsolete tests. Its activity duplicate helper had no production callers;
+  actual FIT duplicate checks remain in the unchanged FIT services.
+- Removed `xlsx` 0.18.5, Vite's spreadsheet chunk and eight exclusive locked
+  dependencies: `adler-32`, `cfb`, `codepage`, `crc-32`, `frac`, `ssf`, `wmf`,
+  `word`. The installed production graph (58 unique package names) contains none
+  of these nine packages. Lockfile changes only remove those entries; no other
+  versions change. `zod` remains required by JSON drafts and snapshot validation.
+- Kept historical `sourceKey`, import fingerprints, session/revision structures,
+  seed data, snapshot adapters and the T01 workbook-provenance contract/fixtures.
+  These describe retained evidence, not an executable workbook reader. T01 schema,
+  validator, T05 native storage/recovery, Rust sources, migrations, FIT and Garmin
+  implementation files are unchanged.
+- Clean `pnpm install --frozen-lockfile --ignore-scripts`: passed after removing
+  only this isolated worktree's dependency directory. pnpm 11's automatic
+  pre-command reinstall attempts to rewrite the existing build-script policy;
+  those incidental edits were reverted. Verification used the session-only
+  `pnpm_config_verify_deps_before_run=false` after the explicit locked install;
+  no tracked package-manager configuration changed.
+- Focused JSON/legacy/recovery tests: **116 passed in six files**. Full
+  `pnpm verify`: **passed, 254 tests in 20 files**, generation consistency,
+  formatting, TypeScript and production build. The existing large-chunk advisory
+  remains; the spreadsheet bundle is absent. The shared `replaceData` binding
+  remains in DataScreen because FIT intake still needs it.
+- The first GitHub run found a focus-timing race in the unsupported-file
+  regression test: animation-frame focus could run while the button was still
+  disabled. Focus restoration now runs in the post-render effect after controls
+  are enabled, without changing plan/draft operations or increasing test timeouts.
+  The same focus assertions remain in place; the full local gate is rerun for
+  the correction and GitHub verification is checked on the updated PR.
+- Native `cargo test --locked -- --test-threads=1`: **49 passed, zero failed,
+  one helper ignored by the parent suite and exercised by the restart test**.
+  The initial parallel run had one Windows sharing violation during synthetic
+  temporary-profile cleanup; the sequential rerun passed the entire suite.
+  Existing Garmin dead-code compiler warning remains. No native code was changed.
+- Browser evidence: synthetic JSON 1.1 validates with all six semantic warnings;
+  original coach instructions and raw JSON disclosures open with Enter and solid
+  visible focus. Empty preview, invalid JSON, PDF/XLSX rejection, cleared stale
+  preview and browser-only disabled draft/recovery controls were exercised.
+  At measured CSS widths 680, 816 and 1133 px, the checked panel states have no
+  horizontal page overflow. The production browser build was also exercised at
+  816 × 816. Browser/native source paths and profiles are distinct; browser checks
+  do not claim packaged native draft persistence.
+- `pnpm tauri build --ci`: **passed on November 16, 2026**, producing both x64
+  MSI (6.43 MiB) and NSIS (4.82 MiB) installers under the ignored
+  `src-tauri/target/release/bundle` directory. No generated output is committed.
+  The app was not installed or launched; packaged interactive acceptance is
+  pending and the real application profile was never opened.
+- Owner acceptance remains pending, so status stays **Testing**. No T07/T08/T11
+  implementation, activation or database migration is included.
+
 ## T05 — one durable JSON plan draft
 
 Status: **Testing. Architecture, migration, recovery and focused UI approved
