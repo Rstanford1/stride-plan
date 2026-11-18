@@ -31,6 +31,7 @@
     "windows": [
       {
         "title": "Stride Plan QA I13",
+        "create": false,
         "width": 1360,
         "height": 860,
         "minWidth": 680,

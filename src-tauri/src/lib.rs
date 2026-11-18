@@ -20,6 +20,11 @@ pub fn run() {
         "com.strideplan.qa.i13",
         "QA identity required"
     );
+    #[cfg(feature = "qa-isolated")]
+    assert!(
+        context.config().app.windows.len() == 1 && !context.config().app.windows[0].create,
+        "QA window must wait for isolation verification"
+    );
     #[cfg(not(feature = "qa-isolated"))]
     assert_ne!(
         context.config().identifier,
@@ -55,6 +60,10 @@ pub fn run() {
         {
             return Err("Unexpected resolved QA storage paths".into());
         }
+        if app.config().app.windows.len() != 1 || app.config().app.windows[0].create {
+            return Err("QA window must wait for isolation verification".into());
+        }
+        tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?.build()?;
         Ok(())
     });
     #[cfg(not(feature = "qa-isolated"))]

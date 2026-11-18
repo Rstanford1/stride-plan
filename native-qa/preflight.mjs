@@ -41,6 +41,7 @@ const config = JSON.parse(readFileSync("src-tauri/tauri.qa.conf.json", "utf8"));
 assert.equal(config.identifier, "com.strideplan.qa.i13");
 assert.equal(config.mainBinaryName, "stride-plan-qa-i13");
 assert.equal(config.app.windows[0].title, "Stride Plan QA I13");
+assert.equal(config.app.windows[0].create, false);
 assert.equal(config.bundle.active, false);
 const permissions = config.app.security.capabilities.flatMap(
   (c) => c.permissions,
