@@ -1,0 +1,90 @@
+name: I13 native QA proof of concept
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  native-qa:
+    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'infra/i13-native-qa')
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm verify
+      - name: Verify production Rust configuration
+        working-directory: src-tauri
+        run: |
+          cargo fmt --all -- --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build isolated QA executable
+        env:
+          VITE_STRIDE_QA: "1"
+        run: pnpm tauri build --no-bundle --features qa-isolated --config src-tauri/tauri.qa.conf.json
+      - name: Install official driver
+        run: |
+          cargo install tauri-driver --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustc --version
+          node --version
+          pnpm exec wdio --version
+          tauri-driver --version
+          git rev-parse HEAD
+      - name: Prepare disposable profile and validate before launch
+        shell: pwsh
+        run: |
+          $qaRoot = Join-Path $env:RUNNER_TEMP "stride-i13-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          if (Test-Path -LiteralPath $qaRoot) { throw 'QA profile already exists' }
+          New-Item -ItemType Directory -Path $qaRoot, 'native-qa-results' | Out-Null
+          "STRIDE_QA_ROOT=$qaRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "STRIDE_QA_CONFIG_BASE=$([Environment]::GetFolderPath('ApplicationData'))" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "STRIDE_QA_LOCAL_BASE=$([Environment]::GetFolderPath('LocalApplicationData'))" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Fail-closed prelaunch isolation checks
+        shell: pwsh
+        run: |
+          node native-qa/preflight.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $savedRoot = $env:STRIDE_QA_ROOT
+          $env:STRIDE_QA_ROOT = ''
+          node native-qa/preflight.mjs 2>$null
+          if ($LASTEXITCODE -eq 0) { throw 'Missing QA root was accepted' }
+          $env:STRIDE_QA_ROOT = $env:RUNNER_TEMP
+          node native-qa/preflight.mjs 2>$null
+          if ($LASTEXITCODE -eq 0) { throw 'Unsafe QA root was accepted' }
+          $env:STRIDE_QA_ROOT = $savedRoot
+          Write-Host "Negative isolation checks passed"
+      - name: Native proof of concept
+        run: pnpm exec wdio run native-qa/wdio.conf.mjs
+      - name: Recheck isolation and repeat native proof
+        env:
+          STRIDE_QA_REPEAT: "1"
+        run: |
+          node native-qa/preflight.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm exec wdio run native-qa/wdio.conf.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Capture failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: i13-native-failure-${{ github.run_id }}
+          path: native-qa-results/
+          if-no-files-found: ignore
+          retention-days: 7

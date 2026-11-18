@@ -1,0 +1,43 @@
+{
+  "productName": "Stride Plan QA I13",
+  "mainBinaryName": "stride-plan-qa-i13",
+  "identifier": "com.strideplan.qa.i13",
+  "app": {
+    "security": {
+      "capabilities": [
+        {
+          "identifier": "qa-only",
+          "windows": ["main"],
+          "permissions": [
+            "core:default",
+            "dialog:default",
+            "allow-store-fit-source",
+            "allow-read-fit-source",
+            "allow-inspect-plan-draft",
+            "allow-save-plan-draft",
+            "allow-read-plan-draft",
+            "allow-export-plan-draft",
+            "allow-save-plan-draft-recovery",
+            "allow-save-plan-conversion-file",
+            "allow-recover-plan-draft",
+            "allow-replace-legacy-snapshot",
+            "sql:default",
+            "sql:allow-execute",
+            "sql:allow-select"
+          ]
+        }
+      ]
+    },
+    "windows": [
+      {
+        "title": "Stride Plan QA I13",
+        "width": 1360,
+        "height": 860,
+        "minWidth": 680,
+        "minHeight": 680,
+        "resizable": true
+      }
+    ]
+  },
+  "bundle": { "active": false }
+}

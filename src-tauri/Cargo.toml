@@ -5,6 +5,9 @@ description = "Local-first personal running plan"
 authors = ["Stride Plan"]
 edition = "2021"
 
+[features]
+qa-isolated = []
+
 [lib]
 name = "stride_plan_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]

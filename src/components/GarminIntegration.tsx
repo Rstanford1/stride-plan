@@ -104,8 +104,9 @@ export function GarminIntegration() {
       </p>
       {!available ? (
         <p>
-          Available in the Windows desktop app. Browser development cannot store
-          credentials or connect to Garmin.
+          {import.meta.env.VITE_STRIDE_QA
+            ? "Garmin is disabled in this isolated QA build."
+            : "Available in the Windows desktop app. Browser development cannot store credentials or connect to Garmin."}
         </p>
       ) : (
         <>

@@ -1,5 +1,6 @@
 node_modules/
 test-results/
+native-qa-results/
 playwright-report/
 .generated/
 dist/
