@@ -1,8 +1,10 @@
 # T08.1 isolated Windows acceptance kit
 
-Preparation is authorized; interactive acceptance is pending. PR #18 remains
-unmerged. These packages must never use the normal Stride Plan profile. No
-application installation, launch or profile migration occurs in the build workflow.
+The owner-performed interactive acceptance sequence is complete; its permanent
+results are recorded in [T08.1 packaged Windows acceptance results](T081_PACKAGED_ACCEPTANCE_RESULTS.md).
+PR #18 remains unmerged. These packages must never use the normal Stride Plan
+profile. No application installation, launch or profile migration occurs in the
+build workflow.
 
 ## The two pinned installers
 
@@ -28,8 +30,10 @@ Keep the distinct default installation directory. Do not browse to the regular
 Stride Plan directory. The standard NSIS installer allows a person to choose a
 custom directory; these checks verify the safe default and generated identities,
 not every manual choice. Install for the current user. Shared WebView2 setup/update
-is disabled, so an existing WebView2 runtime is required. Do not weaken Windows
-Application Control or other security settings if execution is blocked.
+is disabled, so an existing WebView2 runtime is required. The completed
+host-Windows run included a documented Smart App Control exception; see the
+permanent results. Future testing must not weaken Windows Application Control or
+other host security settings if execution is blocked.
 
 ## Build provenance and safety
 
@@ -163,4 +167,5 @@ A1 blocks releasing the affected main without the compatibility fix. It does not
 need a second implementation task alongside PR18. Packaged preservation/recovery
 acceptance remains a release gate; the generated kit adds an actual baseline
 upgrade and a separately generated pre-PR16 recovery test. Preparation/build success
-alone is not interactive user acceptance. PR18 and this packaging PR remain unmerged.
+alone is not interactive user acceptance. The owner-performed sequence is now
+recorded in the permanent results. PR18 and this packaging PR remain unmerged.
