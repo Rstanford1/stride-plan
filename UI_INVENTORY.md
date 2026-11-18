@@ -5,6 +5,20 @@ Current task references in this inventory use
 unchanged where they are part of historical branch, pull-request, commit, test,
 evidence, or acceptance records.
 
+## F1 shared foundation update — November 17, 2026
+
+This section records the F1 implementation over the historical inventory below. **F1 implementation: Complete for approved scope; owner visual acceptance passed; PR #21 merged. Packaged installation and existing-profile compatibility remain deferred/unverified release requirements.** Automated verification, owner visual acceptance, and packaged acceptance remain distinct.
+
+| Component                   | F1 implementation                                                                                                               | Status                         |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| Main navigation and sidebar | Today, Training, Activities, Analytics, Shoes, Settings; `Alt+1`–`Alt+6`, active text and accessibility state, collapse control | Complete for approved F1 scope |
+| Training grouping           | Existing Plan and Weekly Review screens remain selectable under Training; Today opens Plan                                      | Complete for approved F1 scope |
+| Theme foundation            | Semantic warm-light/dark-charcoal tokens follow system appearance, including live system changes through CSS media queries      | Complete for approved F1 scope |
+| Shoes landing               | Read-only existing shoe names, recorded mileage, default and retired status; empty state                                        | Complete for approved F1 scope |
+| Shared layout and controls  | Tokenized surfaces, text, borders and states; focus, responsive shell and small-window stacking                                 | Complete for approved F1 scope |
+
+F1 does not implement the later full-screen redesigns or shoe management. Owner visual acceptance passed: navigation, keyboard/focus, sidebar, Training tabs, browser system-following light/dark, native light/dark, and native 100%/150%/200% scaling were reviewed. The owner recommends 200% scaling; narrow layouts had no confirmed F1 visual merge blocker, while existing Training-table wrapping is deferred to F3. Prior `pnpm verify` passed 307 tests and hosted frontend/Rust checks passed on `a176f95`; those are automated evidence, not packaged acceptance. The locally built NSIS installer has not been installed or smoke-tested, and existing-profile compatibility, full native storage, and Garmin Credential Manager isolation remain unverified release requirements.
+
 ## B08.1 contract and read-only draft preview (legacy record: T08.1)
 
 **Testing**. Owner-approved JSON 1.2 contract, read-only review and narrow draft

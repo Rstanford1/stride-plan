@@ -1247,3 +1247,31 @@ Exact T03 changed-file manifest:
 - `src/data/fit-source-store.test.ts`
 - `src/data/fit-import-service.test.ts`
 - `src/data/restore.ts`
+
+# F1 approved shared visual foundation and application shell
+
+Status: **F1 implementation: Complete for approved scope; owner visual acceptance passed; PR #21 awaiting merge decision. Packaged installation and existing-profile compatibility remain deferred/unverified release requirements.** The F1 design specification and Option C theme decision supersede older five-item navigation and single-theme visual examples. Scope is presentation and navigation only.
+
+- Primary destinations, in shortcut order `Alt+1`–`Alt+6`: Today, Training, Activities, Analytics, Shoes, Settings. The active destination has visible text and `aria-current="page"`. Sidebar collapse retains accessible labels and keyboard operation.
+- Training contains the existing Plan and Weekly Review screens as selectable subviews. Their calculations, editing, and review behavior remain unchanged. Today links to the Plan subview; Activities, Analytics, and Settings reuse their existing screens.
+- Shoes is a read-only view of existing shoe names, mileage, default designation, and active/retired status. It supports empty records and makes no claim to shoe management, categories, goals, or an allocation ledger.
+- Appearance follows the operating system's light/dark setting by default and responds while the application is open. Warm-light and dark-charcoal palettes use semantic CSS tokens for canvas, text, muted text, sidebar, surfaces, borders, actions, focus, and status colors. The token model permits a later explicit System/Light/Dark override without adding persistence in F1.
+- Shared shell and controls use Segoe UI Variable/Segoe UI, a restrained spacing scale, quiet bordered surfaces, consistent buttons, visible focus, text alongside status color, and responsive stacking. Core actions stay reachable at representative window widths and 100%, 150%, and 200% Windows scaling.
+- Loading and saved-data recovery remain accessible. Garmin, JSON plan intake and drafts, FIT import, activity workflows, persistence, and all domain contracts remain untouched.
+
+### F1 verification record
+
+Status: **F1 implementation: Complete for approved scope; owner visual acceptance passed; PR #21 awaiting merge decision. Packaged installation and existing-profile compatibility remain deferred/unverified release requirements.**
+
+- **Owner visual acceptance:** six-destination navigation; Training Plan and Weekly Review navigation; read-only Shoes; `Alt+1`–`Alt+6`; keyboard focus; sidebar collapse/expand; and Training tabs were reviewed and passed. Browser light/dark switching passed after the browser was configured to follow the system. A native Tauri development window launched successfully; native light/dark switching and Windows scaling at 100%, 150%, and 200% were visually confirmed. The owner recommends 200% Windows scaling. Narrow native layouts at 200% had no confirmed F1 visual merge blocker; heavy wrapping in the existing Training table is deferred to F3.
+- **Automated verification:** the prior `pnpm verify` passed with 307 tests, and hosted frontend and Rust checks passed on original F1 commit `a176f95`. These checks do not substitute for owner visual acceptance or packaged installation acceptance.
+- **Packaged build evidence:** a local NSIS installer build succeeded after moving Cargo build outputs outside OneDrive with `CARGO_TARGET_DIR`, producing `Stride Plan_0.1.0_x64-setup.exe`. The generated installer has not been installed or smoke-tested. Packaged Windows acceptance, existing installed-profile compatibility, full native storage, and Garmin Credential Manager isolation remain unverified and deferred to release testing by owner agreement.
+- **Repository and merge state:** the F1 worktree was clean at `a176f95`, and `git diff --check origin/main...HEAD` returned no errors. PR #21 remains awaiting an explicit owner merge decision; do not treat this visual acceptance as full release acceptance or merge authorization.
+
+### F1 authorized main-merge verification — November 17, 2026
+
+- Merged fetched `origin/main` `d54cc0cefe40cbe09bf9a7ba9d50500df50ffd43` into the existing F1 branch. Fresh `git merge-tree --write-tree origin/main HEAD` analysis identified content conflicts only in `ROADMAP.md` and `UI_INVENTORY.md`; both retain main's T08.1/A3 records and the approved F1 information. The F1 roadmap now records PR #18 as merged and PR #20 as an open draft.
+- Reviewed automatically merged `DESIGN.md`: incoming T08.1/A3 records and the F1 specification/acceptance record were retained without new contradictions, accidental deletions or duplicated decisions. All application, test, schema and infrastructure changes from main use Git's automatic merge result without manual rewrites.
+- Restored `docs/PROJECT_STATUS.md` exactly from main. This centrally maintained tracker receives no feature-branch updates; F1 acceptance evidence remains in the task-specific sections of this document, `ROADMAP.md` and `UI_INVENTORY.md`.
+- Local `pnpm verify` passed generated-type consistency, Prettier, TypeScript, **366 tests in 29 files**, and the production frontend build. `git diff --check` and the staged equivalent passed. The production build retains the existing large-chunk advisory.
+- This merge verification is automated local evidence. Browser/native visual acceptance, keyboard/navigation, live system-theme changes, Windows 100%/150%/200% scaling, narrow-window review and the successful NSIS build remain the prior evidence recorded above; they were not rerun. Packaged installation/smoke testing, existing-profile compatibility, full native storage and Garmin Credential Manager isolation remain deferred/unverified. PR #21 remains a draft and requires separate explicit merge authorization.
