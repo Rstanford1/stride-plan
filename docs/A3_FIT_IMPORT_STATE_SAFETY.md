@@ -53,11 +53,69 @@ A rejected restore candidate conservatively invalidates pending import handles;
 fresh selection is required. In-memory commit is not a new durable-save promise;
 existing save failures still enter recovery.
 
+## PR #23 independent-review follow-up — November 17, 2026
+
+### Concurrent FIT-import UI ownership (P2) — acceptable behavior; no code change
+
+`DataScreen` already disables the native multi-file picker while its progress
+state is present, so a normal subsequent user selection is unavailable. The
+picker and its cancellation control are driven by that same non-null progress
+state. A native file picker must return before it dispatches its `change` event;
+the state update from that discrete event is applied before the user can reopen
+the picker. The controller is therefore not replaced through the supported UI,
+and its terminal cleanup/message remain associated with its only active import.
+
+The context/domain intentionally permits programmatic concurrent batches and
+rechecks them at commit time; that behavior is exercised separately by existing
+synthetic integration coverage. Dispatching a second `change` event directly to
+the disabled input is not a user-reachable path, so no defensive UI rewrite or
+additional regression test is warranted in this narrowly scoped follow-up.
+
+### Unreferenced FIT-object retention (P2) — acceptable under the current contract; cleanup is future work
+
+Packaged source bytes are immutable content-addressed objects at
+`fit-sources/<first-two-hash-characters>/<sha256>.fit`. Native storage checks
+the FIT header, size and SHA-256 before writing; the frontend validates returned
+metadata and hashes every read. A source can only be associated with a dataset
+through a `fitSources` record carrying the same hash, which snapshot validation
+uses to constrain source activities and batch results. Reset and legacy restore
+replace the application snapshot and invalidate pending commits; they do not
+offer, document, or implement physical deletion of preserved FIT bytes. Legacy
+restore also verifies every referenced byte object before it permits replacement.
+
+Consequently, an old object cannot be accidentally linked to a replacement
+dataset, and a retained object remains integrity-checked. Repeated discarded
+imports can accumulate content-addressed bytes, however. That is a storage
+retention tradeoff rather than a violation of the documented backup/restore
+boundary: backups explicitly exclude original FIT bytes and restores say that
+original FIT files must already be preserved locally. No automatic deletion or
+garbage collection is added in A3. A separately approved lifecycle feature
+should define user-visible removal, reachability, recovery/safety-copy handling,
+failure semantics, and privacy wording before any cleanup is introduced.
+
+### Compatibility recheck
+
+After fetching on November 17, 2026, non-checkout merge-tree simulations were
+clean for current `origin/main` (`0f98fee`) and the current T08.1 heads
+`origin/codex/t08-1-plan-contract` (`ff18ad0`) and
+`origin/codex/t081-windows-acceptance-installer` (`c5104b8`). The current F1
+head `origin/design/f1-shared-visual-foundation` (`276d080`) has an existing
+add/add documentation conflict at `docs/PROJECT_STATUS.md`; `DataScreen.tsx`
+auto-merges. This documentation conflict is outside the follow-up change and
+must be resolved deliberately when the broader branches are integrated.
+
 ## Regression evidence
 
 All fixtures are generated synthetic bytes, Map-backed test storage or temporary
 SQLite files with the preexisting guarded fixture cleanup. No normal installed
 profile, credentials, real FIT files, personal plans, drafts or databases opened.
+
+Independent-review follow-up verification (November 17, 2026):
+
+- `pnpm verify`: passed **320 tests in 24 files**, formatting, generated
+  declarations, TypeScript, and production frontend build. The existing Vite
+  chunk-size advisory remains; the build succeeded.
+- `git diff --check`: passed.
 
 Controlled asynchronous tests cover:
 
