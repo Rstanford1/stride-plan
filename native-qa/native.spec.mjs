@@ -22,7 +22,18 @@ function processIds() {
 
 describe("isolated native QA", () => {
   it("opens the QA window and navigates", async () => {
-    assert.equal(await browser.getTitle(), "Stride Plan QA I13");
+    await browser.waitUntil(
+      () =>
+        execFileSync(
+          "powershell.exe",
+          [
+            "-NoProfile",
+            "-Command",
+            "(Get-Process -Name 'stride-plan-qa-i13' -ErrorAction SilentlyContinue).MainWindowTitle",
+          ],
+          { encoding: "utf8" },
+        ).trim() === "Stride Plan QA I13",
+    );
     const settings = await $('[aria-label="Settings, Alt+6"]');
     await settings.waitForDisplayed();
     await settings.click();
@@ -35,11 +46,12 @@ describe("isolated native QA", () => {
   });
 
   it("persists a synthetic value after an application restart", async () => {
+    const value = process.env.STRIDE_QA_VALUE || "131";
     await $('[aria-label="Settings, Alt+6"]').click();
     const field = await $("label=Easy HR low").$("input");
     await field.waitForDisplayed();
-    await field.setValue("131");
-    await browser.waitUntil(async () => (await field.getValue()) === "131");
+    await field.setValue(value);
+    await browser.waitUntil(async () => (await field.getValue()) === value);
     const database = path.join(
       process.env.STRIDE_QA_CONFIG_BASE,
       "com.strideplan.qa.i13",
@@ -55,7 +67,7 @@ describe("isolated native QA", () => {
               JSON.parse(
                 db.prepare("SELECT payload FROM app_state WHERE id=1").get()
                   .payload,
-              ).settings.easyHrLow === 131
+              ).settings.easyHrLow === Number(value)
             );
           } finally {
             db.close();
@@ -79,7 +91,7 @@ describe("isolated native QA", () => {
     await $('[aria-label="Settings, Alt+6"]').waitForDisplayed();
     await $('[aria-label="Settings, Alt+6"]').click();
     const reloaded = await $("label=Easy HR low").$("input");
-    await browser.waitUntil(async () => (await reloaded.getValue()) === "131");
+    await browser.waitUntil(async () => (await reloaded.getValue()) === value);
   });
 
   it("does not expose Garmin credential commands", async () => {
