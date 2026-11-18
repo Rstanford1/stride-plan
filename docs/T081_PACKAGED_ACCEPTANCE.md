@@ -2,9 +2,9 @@
 
 The owner-performed interactive acceptance sequence is complete; its permanent
 results are recorded in [T08.1 packaged Windows acceptance results](T081_PACKAGED_ACCEPTANCE_RESULTS.md).
-PR #18 remains unmerged. These packages must never use the normal Stride Plan
-profile. No application installation, launch or profile migration occurs in the
-build workflow.
+The B08.1 implementation from PR #18 is merged into `main`. These packages must
+never use the normal Stride Plan profile. No application installation, launch or
+profile migration occurs in the build workflow.
 
 ## The two pinned installers
 
@@ -168,4 +168,4 @@ need a second implementation task alongside PR18. Packaged preservation/recovery
 acceptance remains a release gate; the generated kit adds an actual baseline
 upgrade and a separately generated pre-PR16 recovery test. Preparation/build success
 alone is not interactive user acceptance. The owner-performed sequence is now
-recorded in the permanent results. PR18 and this packaging PR remain unmerged.
+recorded in the permanent results. This packaging PR remains unmerged.

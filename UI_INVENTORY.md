@@ -1,12 +1,12 @@
 # Stride Plan UI inventory
 
-## T08.1 isolated Windows acceptance preparation
+## T08.1 contract and read-only draft preview
 
-**Testing**. Owner-authorized same-identity baseline/upgrade installer workflow
-and synthetic verification kit prepared on a separate branch. Local safety checks
-and the full frontend gate passed; actual packaging/acceptance evidence is pending.
-See DESIGN.md, including the PR18 resolution of audit A1.
-PR #18 remains unmerged; no normal-profile access or local application launch.
+**Testing**. Owner-approved JSON 1.2 contract, read-only review and narrow draft
+migration are implemented locally. Frontend/adapter and SQLite SQL checks are
+recorded in DESIGN.md; native compilation/execution is blocked by Windows
+Application Control. Packaged acceptance and user acceptance remain pending.
+Historical 1.1 preservation is covered; no active-plan changes or publication.
 
 Statuses: **Not reviewed**, **Under discussion**, **Design approved**, **Implementation in progress**, **Testing**, **Complete**.
 
@@ -144,6 +144,16 @@ Source: `src/screens/DataScreen.tsx`, import/backup domain modules.
 | Restore                   | Replaces all local data from JSON.                                                                       | Icon card and button + hidden file input.                                                                            | `inspectLegacyRestore`, `restoreBackup`                                 | T02: deep validation, preview, confirmation, verified safety copy, staged durable replacement; missing FIT blocks.                                                                  | Testing      |
 | Personal reference values | Edits unit and three HR values immediately.                                                              | Four-column form in a panel.                                                                                         | Settings state                                                          | Unit selection does not change displayed values; no numeric ranges or save feedback.                                                                                                | Not reviewed |
 | Reset local demo data     | Resets state to seed plan.                                                                               | Red text button below settings.                                                                                      | `window.confirm`, `resetDemo`                                           | Label says demo even when it would replace real local data; browser confirm is visually inconsistent.                                                                               | Not reviewed |
+
+## A3 FIT state-integrity verification — November 17, 2026
+
+**Testing, not Complete.** The FIT card now commits through a generation-bound
+context operation against latest state and reports reconciled duplicates or an
+invalidated import. Existing progress, cancellation, picker and layout remain.
+Synthetic rendered React tests and SQLite tests are recorded in
+[the A3 record](docs/A3_FIT_IMPORT_STATE_SAFETY.md). Packaged Windows keyboard,
+focus, errors/cancellation and persistence acceptance remain pending. This record
+updates only A3 safety behavior, not the broader FIT workflow's acceptance status.
 
 ## 9. Shared primitives
 

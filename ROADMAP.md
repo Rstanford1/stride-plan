@@ -1,12 +1,12 @@
 # Stride Plan roadmap
 
-## T08.1 isolated Windows acceptance preparation
+## T08.1 versioned plan contract
 
-**Testing**. Owner-authorized same-identity baseline/upgrade installer workflow
-and synthetic verification kit prepared on a separate branch. Local safety checks
-and the full frontend gate passed; actual packaging/acceptance evidence is pending.
-See DESIGN.md, including the PR18 resolution of audit A1.
-PR #18 remains unmerged; no normal-profile access or local application launch.
+**Testing**. Owner-approved JSON 1.2 contract, read-only review and narrow draft
+migration are implemented locally. Frontend/adapter and SQLite SQL checks are
+recorded in DESIGN.md; native compilation/execution is blocked by Windows
+Application Control. Packaged acceptance and user acceptance remain pending.
+Historical 1.1 preservation is covered; no active-plan changes or publication.
 
 ## Status key
 
@@ -42,6 +42,17 @@ Strengths:
 | P2       | Improve empty, loading, success, error, and disabled states across screens.                                                                                                                        | Clarity and confidence.                                                                    | Medium      | Messaging conventions                                  | Backlog     |
 | P2       | Rework Trends empty states and choose which signals genuinely help.                                                                                                                                | Avoids empty/noisy dashboards.                                                             | Low–medium  | Metrics trust                                          | Backlog     |
 | P3       | Split the global CSS and large Data screen into maintainable feature modules after behavior stabilizes.                                                                                            | Developer maintainability.                                                                 | Medium      | Approved design system                                 | Backlog     |
+
+## A3 integrity fix — November 17, 2026
+
+**Testing; review and isolated packaged Windows/owner acceptance pending** on
+`codex/a3-fit-import-state-safety`, based on `origin/main` `0f98fee`.
+Authorized scope: latest-state FIT batch commit, commit-time hash deduplication,
+dataset-generation invalidation and ordered snapshot publication. Synthetic
+React/context/controller/browser and real SQLite regression evidence is in
+[the A3 record](docs/A3_FIT_IMPORT_STATE_SAFETY.md). This is not approval of other
+backup/restore or UI redesign backlog items. Do not mark Complete or merge before
+review and explicit owner approval.
 
 ## Known technical findings
 
