@@ -188,3 +188,51 @@ test("navigation remains usable at a constrained width", async ({ page }) => {
     page.getByRole("heading", { name: "Settings", exact: true }),
   ).toBeInViewport();
 });
+
+test("Today browses weeks independently and expands a planned workout", async ({
+  page,
+}) => {
+  const heading = await page
+    .getByRole("heading", { level: 1 })
+    .first()
+    .textContent();
+  await page.getByRole("button", { name: "Next week" }).click();
+  await expect(page.getByRole("heading", { level: 1 }).first()).toHaveText(
+    heading!,
+  );
+  await page.getByRole("button", { name: "Today", exact: true }).click();
+  const expand = page.getByRole("button", { name: /^Expand / }).first();
+  if (await expand.count()) {
+    await expand.click();
+    await expect(
+      page.getByRole("button", { name: /^Collapse / }).first(),
+    ).toHaveAttribute("aria-expanded", "true");
+  }
+  await page
+    .getByRole("navigation", { name: "Week dates" })
+    .getByRole("button")
+    .first()
+    .click();
+  await expect(
+    page
+      .getByRole("navigation", { name: "Week dates" })
+      .getByRole("button")
+      .first(),
+  ).toHaveAttribute("aria-current", "date");
+});
+
+test("Today date strip fits narrow viewport in both themes", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 520, height: 700 });
+  for (const scheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    const nav = page.getByRole("navigation", { name: "Week dates" });
+    await expect(nav.getByRole("button")).toHaveCount(7);
+    expect(
+      await nav.evaluate(
+        (element) => element.scrollWidth <= element.clientWidth,
+      ),
+    ).toBe(true);
+  }
+});

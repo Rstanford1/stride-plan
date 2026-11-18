@@ -1,107 +1,135 @@
-import {
-  CalendarDays,
-  ChevronLeft,
-  ChevronRight,
-  Clock3,
-  HeartPulse,
-  Route,
-} from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useAppData } from "../data/app-context";
-import { calculateWeeklyMetrics } from "../domain/metrics";
-import type { PlannedSession } from "../domain/types";
-import { formatDuration } from "../domain/run-entry";
+import type { PlannedSession, JournalEntry } from "../domain/types";
 import { formatDate, formatMiles } from "../utils/format";
-import { Metric } from "../components/Metric";
+import { formatDuration } from "../domain/run-entry";
 import { Modal } from "../components/Modal";
 import { RunEntryWorkflow } from "../components/RunEntryWorkflow";
 import { StatusBadge } from "../components/StatusBadge";
 
-function isoDate(date: Date): string {
+export function isoDate(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
-
-function dateAtNoon(value: string): Date {
-  return new Date(`${value}T12:00:00`);
-}
-
-function addDays(value: string, amount: number): string {
-  const date = dateAtNoon(value);
+export function addDays(value: string, amount: number): string {
+  const date = new Date(`${value}T12:00:00`);
   date.setDate(date.getDate() + amount);
   return isoDate(date);
 }
-
-function weekDates(value: string): string[] {
-  const date = dateAtNoon(value);
-  const day = date.getDay();
-  const mondayOffset = day === 0 ? -6 : 1 - day;
-  date.setDate(date.getDate() + mondayOffset);
-  return Array.from({ length: 7 }, (_, index) => {
-    const item = new Date(date);
-    item.setDate(date.getDate() + index);
-    return isoDate(item);
-  });
+export function weekDates(value: string): string[] {
+  const date = new Date(`${value}T12:00:00`);
+  const start = addDays(value, date.getDay() === 0 ? -6 : 1 - date.getDay());
+  return Array.from({ length: 7 }, (_, index) => addDays(start, index));
 }
 
-function relativeDateLabel(selected: string, today: string): string {
-  if (selected === today) return "Today";
-  if (selected === addDays(today, -1)) return "Yesterday";
-  if (selected === addDays(today, 1)) return "Tomorrow";
-  return formatDate(selected, {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
+function WorkoutCard({
+  session,
+  journal,
+  past,
+  onLog,
+}: {
+  session: PlannedSession;
+  journal?: JournalEntry;
+  past: boolean;
+  onLog: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  if (session.kind === "rest")
+    return (
+      <section className="primary-panel f2-card">
+        <h2>Rest day</h2>
+        <p>{session.instructions || "Rest is planned for this day."}</p>
+      </section>
+    );
+  return (
+    <section className="primary-panel f2-card">
+      <div className="session-heading">
+        <div>
+          <span className="session-kind">
+            {session.kind} · {session.flexible ? "Flexible" : "Core"}
+          </span>
+          <h2>{session.title}</h2>
+        </div>
+        <StatusBadge status={session.status} />
+      </div>
+      <p>
+        <strong>{formatMiles(session.plannedDistanceMiles)} planned</strong>
+        {session.guidance && <> · {session.guidance}</>}
+      </p>
+      {session.revisions.length > 0 && <p>Plan or outcome revised</p>}
+      {journal && (
+        <p>
+          Recorded:{" "}
+          {journal.actualDistanceMiles === undefined
+            ? "Distance unavailable"
+            : formatMiles(journal.actualDistanceMiles)}{" "}
+          ·{" "}
+          {journal.durationSeconds === undefined
+            ? "Duration unavailable"
+            : formatDuration(journal.durationSeconds)}
+        </p>
+      )}
+      {!journal &&
+        past &&
+        session.status !== "completed" &&
+        session.status !== "modified" && (
+          <p>No result recorded for this day.</p>
+        )}
+      <div className="button-row">
+        <button
+          type="button"
+          className="button secondary"
+          aria-expanded={expanded}
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded ? "Collapse" : "Expand"} {session.title}
+        </button>
+        <button type="button" className="button secondary" onClick={onLog}>
+          {journal ? "Update entry" : "Log this run"}
+        </button>
+      </div>
+      {expanded && (
+        <div className="instruction">
+          <p>{session.instructions || "No instructions available."}</p>
+          <p>
+            Original prescription: {formatMiles(session.originalDistanceMiles)}{" "}
+            on {formatDate(session.originalDate)}
+          </p>
+        </div>
+      )}
+    </section>
+  );
 }
 
 export function TodayDashboard({
-  openActivityReview,
   openPlan,
 }: {
   openActivityReview: () => void;
   openPlan: () => void;
 }) {
   const { data } = useAppData();
-  const today = useMemo(() => isoDate(new Date()), []);
+  const today = isoDate(new Date());
   const [selectedDate, setSelectedDate] = useState(today);
+  const [displayedWeek, setDisplayedWeek] = useState(today);
   const [editing, setEditing] = useState<PlannedSession | null>(null);
-  const selectedWeek = weekDates(selectedDate);
-  const session = data.sessions.find(
+  const dates = weekDates(displayedWeek);
+  const sessions = data.sessions.filter(
     (item) => item.scheduledDate === selectedDate,
   );
-  const journal = data.journals.find(
-    (entry) =>
-      entry.date === selectedDate &&
-      (!session || !entry.sessionId || entry.sessionId === session.id),
-  );
-  const weekSessions = data.sessions
-    .filter((item) => selectedWeek.includes(item.scheduledDate))
-    .sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
-  const referenceSession = session ?? weekSessions[0];
-  const metrics = useMemo(
-    () =>
-      referenceSession
-        ? calculateWeeklyMetrics(
-            referenceSession.week,
-            data.sessions,
-            data.activities,
-            data.journals,
-          )
-        : null,
-    [data, referenceSession],
-  );
-  const importCutoff = addDays(today, -3);
-  const newActivities = data.activities.filter(
-    (activity) => activity.importedAt.slice(0, 10) >= importCutoff,
-  );
-  const nextSession = data.sessions
+  const next = data.sessions
     .filter((item) => item.scheduledDate > selectedDate && item.kind !== "rest")
     .sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate))[0];
-  const isPast = selectedDate < today;
-
+  function selectDate(date: string) {
+    setSelectedDate(date);
+    setDisplayedWeek(date);
+  }
+  function resetToday() {
+    const current = isoDate(new Date());
+    selectDate(current);
+  }
   return (
     <div className="screen today-screen">
-      <header className="page-header date-aware-header">
+      <header className="page-header">
         <div>
           <p className="eyebrow">
             {formatDate(selectedDate, {
@@ -111,273 +139,113 @@ export function TodayDashboard({
               year: "numeric",
             })}
           </p>
-          <h1>{relativeDateLabel(selectedDate, today)}</h1>
+          <h1>
+            {selectedDate === today
+              ? "Today"
+              : formatDate(selectedDate, {
+                  weekday: "long",
+                  month: "long",
+                  day: "numeric",
+                })}
+          </h1>
         </div>
-        <div className="date-stepper" aria-label="Select day">
-          <button
-            className="icon-button"
-            type="button"
-            aria-label="Previous day"
-            onClick={() => setSelectedDate(addDays(selectedDate, -1))}
-          >
-            <ChevronLeft size={19} />
-          </button>
-          <button
-            type="button"
-            className="button secondary"
-            onClick={() => setSelectedDate(today)}
-            disabled={selectedDate === today}
-          >
-            Today
-          </button>
-          <button
-            className="icon-button"
-            type="button"
-            aria-label="Next day"
-            onClick={() => setSelectedDate(addDays(selectedDate, 1))}
-          >
-            <ChevronRight size={19} />
-          </button>
-        </div>
+        <button type="button" className="button secondary" onClick={resetToday}>
+          Today
+        </button>
       </header>
-
-      <nav className="week-date-picker" aria-label="Week dates">
-        {selectedWeek.map((date) => {
-          const item = data.sessions.find(
-            (candidate) => candidate.scheduledDate === date,
+      <div className="f2-week-controls">
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Previous week"
+          onClick={() => setDisplayedWeek(addDays(displayedWeek, -7))}
+        >
+          <ChevronLeft size={19} />
+        </button>
+        <span>
+          {formatDate(dates[0])} – {formatDate(dates[6], { year: "numeric" })}
+        </span>
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Next week"
+          onClick={() => setDisplayedWeek(addDays(displayedWeek, 7))}
+        >
+          <ChevronRight size={19} />
+        </button>
+      </div>
+      <nav className="week-date-picker f2-date-picker" aria-label="Week dates">
+        {dates.map((date) => {
+          const daySessions = data.sessions.filter(
+            (item) => item.scheduledDate === date,
           );
-          const hasResult = data.journals.some((entry) => entry.date === date);
           return (
             <button
               key={date}
               type="button"
-              className={`${date === selectedDate ? "selected" : ""} ${date === today ? "literal-today" : ""}`.trim()}
+              aria-label={`${formatDate(date, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}${date === today ? ", today" : ""}`}
               aria-current={date === selectedDate ? "date" : undefined}
-              onClick={() => setSelectedDate(date)}
+              className={`${date === selectedDate ? "selected" : ""} ${date === today ? "literal-today" : ""}`}
+              onClick={() => selectDate(date)}
             >
               <span>
-                {dateAtNoon(date).toLocaleDateString("en-US", {
+                {new Date(`${date}T12:00:00`).toLocaleDateString("en-US", {
                   weekday: "short",
                 })}
               </span>
-              <strong>{dateAtNoon(date).getDate()}</strong>
+              <strong>{new Date(`${date}T12:00:00`).getDate()}</strong>
               <small>
-                {item?.kind === "rest"
-                  ? "Rest"
-                  : hasResult
-                    ? "Recorded"
-                    : item
-                      ? `${item.plannedDistanceMiles} mi`
-                      : "—"}
+                {daySessions.length === 0
+                  ? "—"
+                  : daySessions.every((s) => s.kind === "rest")
+                    ? "Rest"
+                    : daySessions.length > 1
+                      ? `${daySessions.length} sessions`
+                      : `${daySessions[0].plannedDistanceMiles} mi`}
               </small>
             </button>
           );
         })}
       </nav>
-
-      {session ? (
-        <section className="today-layout" aria-labelledby="today-session-title">
-          <div className="primary-panel session-hero">
-            <div className="session-heading">
-              <div>
-                <span className="session-kind">{session.kind}</span>
-                <h2 id="today-session-title">{session.title}</h2>
-              </div>
-              <StatusBadge status={session.status} />
-            </div>
-            <div className="session-target">
-              <strong>
-                {session.kind === "rest"
-                  ? "Rest day"
-                  : formatMiles(session.plannedDistanceMiles)}
-              </strong>
-              <span>{session.guidance}</span>
-            </div>
-            <div className="instruction">
-              <p>{session.instructions}</p>
-              <span>
-                Original prescription:{" "}
-                {session.kind === "rest"
-                  ? "Rest"
-                  : formatMiles(session.originalDistanceMiles)}{" "}
-                on {formatDate(session.originalDate)}
-              </span>
-            </div>
-            {journal ? (
-              <div className="recorded-day-summary">
-                <div>
-                  <span>Recorded result</span>
-                  <strong>
-                    {journal.actualDistanceMiles === undefined
-                      ? session.status
-                      : `${journal.actualDistanceMiles.toFixed(2)} mi`}
-                  </strong>
-                </div>
-                <div>
-                  <span>Duration</span>
-                  <strong>
-                    {journal.durationSeconds === undefined
-                      ? "Not recorded"
-                      : formatDuration(journal.durationSeconds)}
-                  </strong>
-                </div>
-                <div>
-                  <span>RPE</span>
-                  <strong>
-                    {journal.rpe === undefined
-                      ? "Not recorded"
-                      : `${journal.rpe}/10`}
-                  </strong>
-                </div>
-              </div>
-            ) : isPast && session.kind !== "rest" ? (
-              <p className="missing-day-message">
-                No result has been recorded for this day. Add the run data when
-                you are ready.
-              </p>
-            ) : null}
-            <div className="button-row">
-              {session.kind === "rest" ? (
-                <button className="button primary" onClick={openPlan}>
-                  View weekly plan
-                </button>
-              ) : (
-                <button
-                  className="button primary"
-                  onClick={() => setEditing(session)}
-                >
-                  {journal ? "Update entry" : "Log this run"}
-                </button>
+      <div className="f2-cards">
+        {sessions.length ? (
+          sessions.map((session) => (
+            <WorkoutCard
+              key={session.id}
+              session={session}
+              journal={data.journals.find(
+                (entry) => entry.sessionId === session.id,
               )}
-            </div>
-          </div>
-
-          <aside
-            className="week-progress"
-            aria-labelledby="week-progress-title"
-          >
-            <div className="section-heading">
-              <div>
-                <p className="eyebrow">
-                  Week {session.week} · {session.phase}
-                </p>
-                <h2 id="week-progress-title">Week progress</h2>
-              </div>
-              <strong>
-                {metrics?.coreCompletionRate === null ||
-                metrics?.coreCompletionRate === undefined
-                  ? "—"
-                  : `${Math.round(metrics.coreCompletionRate * 100)}%`}
-              </strong>
-            </div>
-            <div className="metrics-row compact">
-              <Metric
-                label="Actual"
-                value={formatMiles(metrics?.actualMiles ?? 0)}
-              />
-              <Metric
-                label="Core plan"
-                value={formatMiles(metrics?.corePlannedMiles ?? 0)}
-              />
-              <Metric label="Run days" value={metrics?.runDays ?? 0} />
-            </div>
-            <ol className="week-strip" aria-label="Week sessions">
-              {weekSessions.map((item) => (
-                <li
-                  key={item.id}
-                  className={item.scheduledDate === selectedDate ? "today" : ""}
-                >
-                  <span>
-                    {dateAtNoon(item.scheduledDate)
-                      .toLocaleDateString("en-US", { weekday: "short" })
-                      .slice(0, 2)}
-                  </span>
-                  <i
-                    className={`day-mark mark-${item.status}`}
-                    aria-hidden="true"
-                  />
-                  <small>
-                    {item.kind === "rest" ? "Rest" : item.plannedDistanceMiles}
-                  </small>
-                </li>
-              ))}
-            </ol>
-          </aside>
-        </section>
-      ) : (
-        <section className="primary-panel no-session-day">
-          <CalendarDays size={24} aria-hidden="true" />
-          <div>
+              past={selectedDate < today}
+              onLog={() => setEditing(session)}
+            />
+          ))
+        ) : (
+          <section className="primary-panel f2-card">
             <h2>No planned session</h2>
-            <p>This literal date has no session in the current plan.</p>
-          </div>
-          <button className="button secondary" onClick={openPlan}>
-            View plan
+            <p>No prescription is available for this date.</p>
+            <button
+              type="button"
+              className="button secondary"
+              onClick={openPlan}
+            >
+              View plan
+            </button>
+          </section>
+        )}
+      </div>
+      {next && (
+        <p className="f2-next">
+          Next scheduled · {formatDate(next.scheduledDate)} · {next.title}{" "}
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => selectDate(next.scheduledDate)}
+          >
+            View session
           </button>
-        </section>
+        </p>
       )}
-
-      <section className="secondary-grid">
-        <div className="panel next-panel">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Next up</p>
-              <h2>{nextSession?.title ?? "No upcoming session"}</h2>
-            </div>
-            <CalendarDays size={20} />
-          </div>
-          {nextSession && (
-            <>
-              <p>
-                {formatDate(nextSession.scheduledDate)} ·{" "}
-                {formatMiles(nextSession.plannedDistanceMiles)}
-              </p>
-              <span>{nextSession.guidance}</span>
-            </>
-          )}
-        </div>
-        <div className="panel import-panel">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Imports</p>
-              <h2>{newActivities.length} activities ready</h2>
-            </div>
-            <Route size={20} />
-          </div>
-          <p>Matches are suggested and remain editable.</p>
-          <button className="text-button" onClick={openActivityReview}>
-            Review activities <ChevronRight size={16} />
-          </button>
-        </div>
-        <div className="panel reference-panel">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Reference</p>
-              <h2>Easy guidance</h2>
-            </div>
-            <HeartPulse size={20} />
-          </div>
-          <dl>
-            <div>
-              <dt>Heart rate</dt>
-              <dd>
-                {data.settings.easyHrLow ?? "—"}–
-                {data.settings.easyHrHigh ?? "—"} bpm
-              </dd>
-            </div>
-            <div>
-              <dt>Review time</dt>
-              <dd>
-                <Clock3 size={14} /> under 2 min
-              </dd>
-            </div>
-          </dl>
-        </div>
-      </section>
-      <p className="medical-note">
-        Training observations are review prompts only. This app does not provide
-        medical advice or prescribe training.
-      </p>
       {editing && (
         <Modal
           title={`${formatDate(editing.scheduledDate)} · ${editing.title}`}
@@ -385,6 +253,7 @@ export function TodayDashboard({
         >
           <RunEntryWorkflow
             session={editing}
+            initialMethod="manual"
             onSaved={() => setEditing(null)}
             onCancel={() => setEditing(null)}
           />
