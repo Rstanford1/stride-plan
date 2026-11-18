@@ -717,6 +717,39 @@ contract, validation, types, synthetic fixtures/tests, and necessary build/docum
 support. Existing application UI, SQLite, saved profiles and Garmin are untouched.
 Verification and compatibility limits are recorded in the contract documentation.
 
+## A3 — FIT import state integrity
+
+Status: **Testing; code review, packaged Windows acceptance and owner acceptance pending**.
+Owner-authorized correctness fix, November 17, 2026; baseline `origin/main` `0f98fee`.
+This changes no subjective layout or training behavior.
+
+- An import captures a dataset generation before asynchronous work. Its dedicated
+  context commit merges only FIT sources, source activities and a batch into the
+  latest accepted snapshot. All unrelated records and original values survive.
+- Hashes are rechecked at commit, so overlapping same-file imports publish one
+  source/activity set and an exact-duplicate result for the losing batch. Reports
+  use the reconciled batch. Repeated commits of one batch are idempotent.
+- Reset, restore, explicit replacement, recovery/reload and provider disposal
+  invalidate earlier imports. An invalidated result adds no records or batch and
+  asks the user to select files again. Invalidation begins when restore starts,
+  even if the restore candidate is rejected. Existing data remains writable after
+  candidate rejection; the old import still requires a fresh selection.
+- Context commands advance a synchronous latest-snapshot reference before
+  publishing React values. This narrowly necessary shared-state adjustment also
+  lets restore flush edits accepted in the same event before taking its safety
+  copy. No persistence or ref mutation runs inside a React state updater.
+- Persistence remains in an effect with serialized repository operations. A
+  render whose data is no longer the latest accepted snapshot cannot enqueue a
+  save. Supplied repositories receive the same serialization as the default path.
+- Decoding, cancellation (stop after current file), partial failures and immutable
+  original-byte preservation are unchanged. A discarded import can leave a
+  verified unreferenced source object; it is retained, never deleted or linked to
+  the replacement dataset automatically.
+
+Evidence, scoped files, verification and isolated Windows acceptance requirements:
+[A3 record](docs/A3_FIT_IMPORT_STATE_SAFETY.md). Automated React and SQLite evidence
+does not establish packaged WebView2/SQL-plugin acceptance. A3 is not Complete.
+
 ## Product principles
 
 - Local-first and private: no account, cloud backend, telemetry, or social layer.
