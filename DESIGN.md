@@ -1,6 +1,11 @@
 # Stride Plan design
 
-## T08.1 — versioned training-plan contract
+> **Task IDs:** Current design references use the IDs in
+> [docs/TASK_ID_MAPPING.md](docs/TASK_ID_MAPPING.md). Legacy labels are retained
+> unchanged inside historical branch/PR/commit references, test and evidence
+> records, and original acceptance records.
+
+## B08.1 — versioned training-plan contract (legacy record: T08.1)
 
 Status: **In progress**. Owner approved JSON 1.2 and the narrow draft-storage
 migration on November 17, 2026, including older-build incompatibility. Local branch
@@ -36,7 +41,7 @@ No push, PR, merge or normal-profile execution is authorized.
   conversion workouts remain a separate fidelity issue. No original coach data.
 - Verification and owner acceptance are required before Complete.
 
-### T08.1 implementation and verification record
+### B08.1 implementation and verification record (legacy record: T08.1)
 
 Status: **Testing**, owner acceptance pending. T07 acceptance and squash merges
 #13/#14 were confirmed by the owner; the historical T07 records below are retained.
@@ -90,9 +95,9 @@ WebView2/Windows scaling acceptance and owner acceptance remain required.
 [Acceptance and pre-migration recovery](docs/T08_1_WINDOWS_ACCEPTANCE.md) records
 steps and the loss-of-later-changes warning. No normal installed profile is used.
 
-## T07 — guided external conversion
+## B07 — guided external conversion (legacy record: T07)
 
-Status: **Testing; independent review requested, owner acceptance pending**. Approved by the owner's T07 specification
+Status: **Testing; independent review requested, owner acceptance pending**. Approved by the owner's B07 specification (legacy T07)
 and implementation request, November 16, 2026. Baseline: fetched `origin/main`
 `e4aa085`; isolated branch `codex/t07-guided-conversion`. No commit/push authorized.
 
@@ -115,13 +120,13 @@ and implementation request, November 16, 2026. Baseline: fetched `origin/main`
   diagnostics and copyable correction feedback. Clipboard actions are explicit.
 - Keep valid candidate, failed attempt and persisted record separate. Failure
   never clears a candidate; tab navigation never writes a draft. Review identifies
-  its own filename and retains T06 preview, warnings, exact bytes and Save as draft.
+  its own filename and retains B06 preview, warnings, exact bytes and Save as draft.
   Existing duplicate/conflict/persistence/recovery behavior remains authoritative.
 - No activation, schema/validator changes, migrations, dependencies, T11 calendar
   review, per-workout correction, editor, or unrelated settings changes.
 - Verification and owner acceptance must be recorded before marking Complete.
 
-### T07 implementation and preservation
+### B07 implementation and preservation (legacy record: T07)
 
 - Start routes directly to Import or Get files. Get files downloads exactly the
   canonical schema and existing synthetic `valid-workout.json` fixture, embedded
@@ -140,7 +145,7 @@ and implementation request, November 16, 2026. Baseline: fetched `origin/main`
   invented. The synthetic example supplies structure, never workout prescriptions.
   Unsupported week/phase progression remains text with review notes. No schema or
   validator wording/rules were changed to accommodate the prompt.
-- Import reuses T06 byte loading and T01 validation. Syntax, schema, blocking
+- Import reuses B06 byte loading and B01 validation. Syntax, schema, blocking
   semantics and nonblocking warnings have distinct labels and expandable exact
   code/path/message details. Validation feedback copies actual diagnostics and
   correction instructions only on request. It omits filenames/full JSON and
@@ -150,10 +155,10 @@ and implementation request, November 16, 2026. Baseline: fetched `origin/main`
   heading. Failed selection stores its filename/errors independently, returns
   to Import and restores picker-button focus. The prior valid candidate remains
   on Review under its own filename. Tabs preserve candidate/disclosure state.
-  Review retains T06 exact-source disclosures, warnings and explicit Save as draft,
+  Review retains B06 exact-source disclosures, warnings and explicit Save as draft,
   adding only week/day/warning counts. No T11 calendar/editor/correction workflow.
 - The persisted record is never replaced by selecting a file, validating, copying,
-  downloading or switching tabs. Existing T05 save/reopen/recovery operations and
+  downloading or switching tabs. Existing B05 save/reopen/recovery operations and
   native conflict/idempotence rules remain unchanged. Save still revalidates an
   independent copy of original bytes at the unchanged store boundary. Draft
   recovery controls remain available; native draft-presence guards are preserved.
@@ -163,7 +168,7 @@ and implementation request, November 16, 2026. Baseline: fetched `origin/main`
   profile/storage directories, still excludes application storage and retains
   guarded destinations, verified staging/publication/readback and cancellation.
 
-### Focused T07 privacy/PDF correction pass
+### Focused B07 privacy/PDF correction pass (legacy record: T07)
 
 Owner-authorized bounded correction, November 16, 2026. The final narrowed request
 limits this pass to clipboard privacy, focused regressions and PDF error guidance.
@@ -223,7 +228,7 @@ These are findings about the unchanged 1.1 contract, not approved PDF workaround
    validator alone never verifies the claimed source facts or fidelity.
 4. The smallest immediate safe behavior is the implemented limitation notice,
    preserving the original prompt's non-fabrication rule and normal JSON import.
-   No schema change or migration is necessary for the unblocked T07 work.
+   No schema change or migration is necessary for the unblocked B07 work.
    A separately approved intermediate-transcription policy could retain 1.1
    without a schema change, at the cost of an extra source and incomplete direct
    PDF provenance. If direct original-PDF provenance is required, the smallest
@@ -238,9 +243,9 @@ These are findings about the unchanged 1.1 contract, not approved PDF workaround
    constrains schema_version to `1.1` and validator_version to `t01-1`. A future
    version therefore needs compatible validator selection, retained old-draft/
    recovery support and a separately approved migration if new-version drafts
-   are persisted. None of those changes is included in T07.
+   are persisted. None of those changes is included in B07.
 
-### T07 verification and limits
+### B07 verification and limits (legacy record: T07)
 
 All tests use synthetic data or temporary directories. No real app profile was
 opened or migrated. This branch remains uncommitted and unpushed.
@@ -312,21 +317,21 @@ T07 changed-file manifest (uncommitted):
 - `src-tauri/src/plan_conversion_commands.rs`, `src-tauri/src/plan_draft_export.rs`
 - `src-tauri/src/lib.rs`, `src-tauri/build.rs`, `src-tauri/capabilities/default.json`
 
-Unchanged: canonical schema/validator/fixtures, T05 store/commands/migration,
+Unchanged: canonical schema/validator/fixtures, B05 store/commands/migration,
 package manifests/lockfiles, pnpm/Vite/TypeScript/Tauri app configuration, FIT and
 Garmin code. The only capability change is the approved single conversion-save
 command. No unexpected configuration modifications remain.
 
-## Revised T06 — JSON-only training-plan intake
+## Revised B06 — JSON-only training-plan intake (legacy record: T06)
 
-Status: **Testing; approved by the owner's revised T06 request on November
-14, 2026.** Based on fetched `origin/main` `d78e698`, including merged T05 PR #9.
+Status: **Testing; approved by the owner's revised B06 request (legacy T06) on November
+14, 2026.** Based on fetched `origin/main` `d78e698`, including merged legacy T05 PR #9.
 
 - Users independently convert coach documents (Excel, PDF or other formats) to
   Training Plan JSON 1.1 with an external AI agent of their choosing. Stride Plan
   has no AI provider integration, hosted conversion service or API credentials.
-- Stride Plan owns strict T01 validation, semantic warnings, provenance, exact
-  original JSON bytes, preview and T05 draft persistence/recovery. Activation
+- Stride Plan owns strict B01 validation, semantic warnings, provenance, exact
+  original JSON bytes, preview and B05 draft persistence/recovery. Activation
   remains a later explicitly confirmed workflow; saving a draft changes no
   active plan, workout, journal or totals.
 - Remove the direct CSV/XLS/XLSX action, workbook readers, row transformations,
@@ -338,11 +343,11 @@ Status: **Testing; approved by the owner's revised T06 request on November
   Reject non-JSON filenames before reading bytes with a helpful unsupported-
   format message directing users to JSON 1.1. Preserve keyboard focus and the
   existing announced error and disabled-save behavior.
-- Preserve FIT, Garmin, backup and restore behavior. T07's guided conversion
-  prompt/schema experience, T08's representative-plan validation and T11's
+- Preserve FIT, Garmin, backup and restore behavior. B07's guided conversion
+  prompt/schema experience, B08's representative-plan validation and T11's
   broader JSON import/draft refinements are outside this change.
 
-### T06 implementation and verification record
+### B06 implementation and verification record (legacy record: T06)
 
 - Removed the workbook/CSV import card, parsing/transformation/active-plan-write
   path and row preview from `DataScreen.tsx`; removed `src/domain/imports.ts` and
@@ -393,10 +398,10 @@ Status: **Testing; approved by the owner's revised T06 request on November
   `src-tauri/target/release/bundle` directory. No generated output is committed.
   The app was not installed or launched; packaged interactive acceptance is
   pending and the real application profile was never opened.
-- Owner acceptance remains pending, so status stays **Testing**. No T07/T08/T11
+- Owner acceptance remains pending, so status stays **Testing**. No B07/B08/T11
   implementation, activation or database migration is included.
 
-## T05 — one durable JSON plan draft
+## B05 — one durable JSON plan draft (legacy record: T05)
 
 Status: **Testing. Architecture, migration, recovery and focused UI approved
 by the owner on November 14, 2026 before implementation.**
@@ -566,7 +571,7 @@ native restart/recovery, window-size/keyboard checks and unfinished acceptance.
 Status remains Testing until owner acceptance. Only generated temporary native
 profiles and a separate browser-development origin are used for verification.
 
-### T05 implementation and verification record
+### B05 implementation and verification record (legacy record: T05)
 
 - Implemented the additive three-table migration and native version-1 commands.
   SQLx remains pinned to 0.8.6; the lockfile adds only the direct project edge.
@@ -641,7 +646,7 @@ T05 changed-file manifest (source, synthetic fixtures/tests and documentation on
 - `src/styles.css`
 - `src/test/plan-draft-fixture.ts`
 
-### T04 approved Garmin Personal API slice — November 14, 2026
+### B04 approved Garmin Personal API slice — November 14, 2026 (legacy record: T04)
 
 Owner approval is the attached T04 implementation request. Implement the existing
 Data & settings screen's Integrations → Garmin Connect section without redesign.
@@ -791,7 +796,7 @@ Exact T04 changed-file manifest:
 
 This file records the observed design baseline and approved component specifications. The Today date navigation and manual run-entry workflow below were approved through iterative review and are now implemented for testing.
 
-## Approved T01 training-plan contract — November 13, 2026
+## Approved B01 training-plan contract — November 13, 2026 (legacy record: T01)
 
 The owner approved the [JSON 1.1 contract](schemas/training-plan/README.md), its
 Draft 2020-12 schema, Ajv validation, exact original text/provenance, and reproducible
@@ -1025,7 +1030,7 @@ Acceptance criteria: generated or redistributable fixtures cover decoding and er
 - Verified checks: formatting, TypeScript, 17 automated tests, and production build.
 - Not visually verified: populated Activity Review, import validation preview, triggered observation details, native Tauri/SQLite behavior, Windows installer, 200% Windows scaling, and forced-colors rendering.
 
-## Approved T02 loading and legacy restore — November 13, 2026
+## Approved B02 loading and legacy restore — November 13, 2026 (legacy record: T02)
 
 Owner-authorized scope: fail closed on invalid/inaccessible/unsupported saved
 state; stage legacy JSON restore (audit R1/R2, ADR-09, task T02). **Testing**, pending owner acceptance.
@@ -1044,7 +1049,7 @@ v5/v6/future versions are unsupported, never downgraded or reseeded. The three
 unmerged development commits and seven modified files remain separate and intact.
 This PR targets main and does not incorporate or depend on that unaccepted work.
 
-### T02 verification and recovery record
+### B02 verification and recovery record (legacy record: T02)
 
 - Base: origin/main bdf7519711dae9042ad94230e2d4fb34490123bb, T01 PR #5 merged.
   Delivery branch: codex/t02-safe-loading, targeting main with no version-6 dependency.
@@ -1111,7 +1116,7 @@ app_state fails closed. Future normalized migration must handle both historical
 SQL layouts and this snapshot-only layout explicitly. This is not the normalized
 storage migration, and no schema version is rewritten to pretend it occurred.
 
-### T02 final corrections — November 14, 2026
+### B02 final corrections — November 14, 2026 (legacy record: T02)
 
 - Reject v2 snapshots containing newer sleep-mode values before migration so
   conversion cannot overwrite those fields; retain the regression assertion.
@@ -1134,7 +1139,7 @@ storage migration, and no schema version is rewritten to pretend it occurred.
 - Reset Demo behavior is unchanged and remains a separate follow-up. No T03 work,
   dependencies, new PR or merge is included. User acceptance remains pending.
 
-### T03 native FIT source storage — November 14, 2026
+### B03 native FIT source storage — November 14, 2026 (legacy record: T03)
 
 Approved scope: the owner's T03 implementation request authorizes the narrow
 native store described by the Phase 0 roadmap and ADR-05/06/07. No UI redesign,

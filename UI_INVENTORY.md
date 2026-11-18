@@ -1,6 +1,11 @@
 # Stride Plan UI inventory
 
-## T08.1 contract and read-only draft preview
+Current task references in this inventory use
+[docs/TASK_ID_MAPPING.md](docs/TASK_ID_MAPPING.md). Legacy task labels remain
+unchanged where they are part of historical branch, pull-request, commit, test,
+evidence, or acceptance records.
+
+## B08.1 contract and read-only draft preview (legacy record: T08.1)
 
 **Testing**. Owner-approved JSON 1.2 contract, read-only review and narrow draft
 migration are implemented locally. Frontend/adapter and SQLite SQL checks are
@@ -119,8 +124,8 @@ Source: `src/screens/TrendsScreen.tsx`, Recharts.
 
 ## 8. Data & Settings
 
-T04 addition: **Integrations → Garmin Connect — Testing**. Approved by the owner's
-T04 request, implemented as one focused panel using existing settings/form/button
+B04 addition (legacy T04): **Integrations → Garmin Connect — Testing**. Approved by the owner's
+B04 request (legacy T04), implemented as one focused panel using existing settings/form/button
 styles. Masked/show-hide key, official key link, connect/verify/replace, saved
 credential and verification status, confirmed disconnect, explicit recent list,
 single selection/retrieval, cancellation and safe differentiated errors. Browser
@@ -137,11 +142,11 @@ Source: `src/screens/DataScreen.tsx`, import/backup domain modules.
 | ------------------------- | -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
 | Privacy header            | Reinforces local-only behavior.                                                                          | Page title and privacy pill.                                                                                         | Static copy                                                             | Accurate for current architecture.                                                                                                                                                  | Not reviewed |
 | Status message            | Reports import/restore/reset outcomes.                                                                   | Green inline status panel.                                                                                           | Local message state                                                     | Errors use the same positive styling; messages are not dismissible.                                                                                                                 | Not reviewed |
-| Plan import card          | T07 Start, Get files, Use AI, Import, Review; separate offline downloads and explicit clipboard actions. | Keyboard tabs, two starting choices, four simultaneous AI instructions.                                              | Unchanged T01 validation, T05 draft store, scoped native artifact save. | PDF provenance guidance and packaged Windows acceptance pending; see DESIGN.md.                                                                                                     | Testing      |
-| Import preview            | Valid candidate, latest failed file and persisted record remain separate; warnings stay saveable.        | Valid selection opens Review; failure stays on Import with exact details and copyable feedback.                      | Unchanged T01 validator, T05 store.                                     | 273 frontend/domain tests pass; populated browser upload not authorized; native checks blocked.                                                                                     | Testing      |
+| Plan import card          | B07 Start, Get files, Use AI, Import, Review; separate offline downloads and explicit clipboard actions. | Keyboard tabs, two starting choices, four simultaneous AI instructions.                                              | Unchanged B01 validation, B05 draft store, scoped native artifact save. | PDF provenance guidance and packaged Windows acceptance pending; see DESIGN.md.                                                                                                     | Testing      |
+| Import preview            | Valid candidate, latest failed file and persisted record remain separate; warnings stay saveable.        | Valid selection opens Review; failure stays on Import with exact details and copyable feedback.                      | Unchanged B01 validator, B05 store.                                     | 273 frontend/domain tests pass; populated browser upload not authorized; native checks blocked.                                                                                     | Testing      |
 | FIT import card           | Starts the shared one-or-many-file import workflow used by Data & Settings and run entry.                | File picker followed by progress, per-source results, cancellation, preservation state, and Activity Review handoff. | Shared FIT import service                                               | Data & Settings now decodes sequentially, records partial success, supports stop-after-current-file, and reports exact duplicates. Per-source result UI and run-entry reuse remain. | In progress  |
 | Backup export             | Downloads full AppData JSON.                                                                             | Icon card and button.                                                                                                | `serializeBackup`, browser download                                     | No encryption; appropriate for portable local backup but sensitivity is not stated.                                                                                                 | Not reviewed |
-| Restore                   | Replaces all local data from JSON.                                                                       | Icon card and button + hidden file input.                                                                            | `inspectLegacyRestore`, `restoreBackup`                                 | T02: deep validation, preview, confirmation, verified safety copy, staged durable replacement; missing FIT blocks.                                                                  | Testing      |
+| Restore                   | Replaces all local data from JSON.                                                                       | Icon card and button + hidden file input.                                                                            | `inspectLegacyRestore`, `restoreBackup`                                 | B02: deep validation, preview, confirmation, verified safety copy, staged durable replacement; missing FIT blocks.                                                                  | Testing      |
 | Personal reference values | Edits unit and three HR values immediately.                                                              | Four-column form in a panel.                                                                                         | Settings state                                                          | Unit selection does not change displayed values; no numeric ranges or save feedback.                                                                                                | Not reviewed |
 | Reset local demo data     | Resets state to seed plan.                                                                               | Red text button below settings.                                                                                      | `window.confirm`, `resetDemo`                                           | Label says demo even when it would replace real local data; browser confirm is visually inconsistent.                                                                               | Not reviewed |
 
@@ -169,7 +174,7 @@ updates only A3 safety behavior, not the broader FIT workflow's acceptance statu
 
 ## 10. Approved slice verification status
 
-T05 JSON plan draft and draft-only recovery: **Testing** on
+B05 JSON plan draft and draft-only recovery (legacy T05): **Testing** on
 `codex/t05-persist-plan-draft`. The proposed three-table schema, ownership,
 migration/safety-copy policy, recovery limits and focused Data-screen workflow
 are recorded in DESIGN.md and were approved by the owner on November 14, 2026.
@@ -177,15 +182,15 @@ Implemented the focused panel, validation/preview, durable native save/reopen,
 and draft recovery. Synthetic verification is recorded in DESIGN.md; packaged
 Windows UI restart/recovery and owner acceptance remain pending.
 
-T05 export acceptance correction: **Testing**. The owner's request approves a
+B05 export acceptance correction (legacy T05): **Testing**. The owner's request approves a
 native Save As dialog with the suggested recovery filename, verified file writes,
 and confirmation/cancellation/errors immediately beside Export draft recovery.
 Frontend filesystem permissions and the recovery format are unchanged. Focused
 rendered tests cover acknowledgement timing, location, cancellation, failures and
 focus; native verification and packaged-dialog acceptance are recorded in DESIGN.md
-and the existing T05 PR.
+and the existing legacy T05 PR.
 
-T01 training-plan JSON 1.1 domain contract: **Testing**. The approved contract and
+B01 training-plan JSON 1.1 domain contract (legacy T01): **Testing**. The approved contract and
 verification record are in [schemas/training-plan/README.md](schemas/training-plan/README.md).
 This is a domain-only addition with no UI integration or changed screen behavior;
 owner acceptance remains pending. Four-tier workbook parity is not run.
@@ -197,10 +202,10 @@ owner acceptance remains pending. Four-tier workbook parity is not run.
 | Shared form controls  | Consistent labels, segmented controls, fixed module geometry, auto-growing note                         | Testing |
 | Persistence           | Atomic session/journal/shoe update, schema-v3 upgrade, SQLite migration                                 | Testing |
 
-T02 loading/recovery and legacy JSON restore: **Testing**. Approved scope and
+B02 loading/recovery and legacy JSON restore (legacy T02): **Testing**. Approved scope and
 compatibility policy and browser/SQLite/native evidence are recorded in DESIGN.md. User acceptance is pending.
 
-T03 native FIT source preservation: **Testing; native verification blocked**.
+B03 native FIT source preservation (legacy T03): **Testing; native verification blocked**.
 The existing FIT import UI now uses scoped Rust store/read commands through
 FitSourceStore, with typed failures and byte/hash verification. No UI redesign.
 Restore previews clear stale verification metadata when original bytes cannot

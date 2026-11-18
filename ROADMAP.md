@@ -14,6 +14,13 @@ Historical 1.1 preservation is covered; no active-plan changes or publication.
 
 No redesign item is approved by this audit. Priorities are recommendations for discussion.
 
+## Task identifiers
+
+Use the current IDs in [docs/TASK_ID_MAPPING.md](docs/TASK_ID_MAPPING.md) for
+new roadmap references. Legacy IDs remain unchanged where they identify a
+historical branch, pull request, commit, test report, evidence file, or original
+acceptance record.
+
 ## Audit summary
 
 Strengths:
@@ -63,10 +70,10 @@ review and explicit owner approval.
 - Manual journal mileage is counted, but manual journal dates do not count as run days.
 - Session `week` is not recalculated when a move crosses week boundaries.
 - The SQLite migration defines normalized tables, while runtime persistence uses one JSON row in `app_state`.
-- T06 Windows packaging passes for MSI and NSIS. Packaged interactive acceptance remains pending; no real profile was launched or migrated.
+- B06 Windows packaging passes for MSI and NSIS. Packaged interactive acceptance remains pending; no real profile was launched or migrated.
 - Repository save failures are not surfaced; rapid updates may complete out of order.
 - Backup validation checks top-level shapes only.
-- New plan intake is JSON 1.1 preview/draft only; duplicate detection uses exact original bytes. Direct CSV/XLS/XLSX parsing is retired by revised T06. Activation and broader JSON import integration remain future work.
+- New plan intake is JSON 1.1 preview/draft only; duplicate detection uses exact original bytes. Direct CSV/XLS/XLSX parsing is retired by revised B06. Activation and broader JSON import integration remain future work.
 - Only domain/repository tests exist; there are no rendered component or end-to-end tests.
 - The hard minimum page width produces horizontal scrolling and threatens 200% scaling support.
 - The Tauri capabilities include broad default filesystem/dialog/SQL permissions and should be reviewed against actual use.
@@ -84,14 +91,14 @@ review and explicit owner approval.
 
 ## Current work
 
-- Revised T06: **Testing** on `codex/t06-json-only-import`, from fetched
-  `origin/main` `d78e698` after T05 PR #9. Remove direct spreadsheet/CSV parsing
+- Revised B06 (legacy T06): **Testing** on `codex/t06-json-only-import`, from fetched
+  `origin/main` `d78e698` after legacy T05 PR #9. Remove direct spreadsheet/CSV parsing
   and unnecessary dependencies; preserve JSON 1.1 validation, exact source bytes,
   draft persistence/recovery, legacy records and unrelated FIT/Garmin behavior.
   Implemented and verified with 254 frontend tests, 116 focused checks and 49
   sequential native tests; browser checks use synthetic files only. Approved
   scope, packaging evidence and pending owner acceptance: DESIGN.md.
-- Revised T07: **Testing** on isolated `codex/t07-guided-conversion`, based on
+- Revised B07 (legacy T07): **Testing** on isolated `codex/t07-guided-conversion`, based on
   fetched `origin/main` `e4aa085`. Five tabs, separate offline schema/example
   downloads, complete original clipboard prompt with contract clarifications,
   validation feedback and retained valid previews are implemented for review.
@@ -99,7 +106,7 @@ review and explicit owner approval.
   are environment-blocked. PDF provenance guidance and owner acceptance remain
   pending. No schema change, PDF workaround, T11, commit, push or PR.
   Scope, exact verification and compatibility findings: DESIGN.md.
-- Revised T08: **Backlog** — validate AI-generated JSON against representative
+- Revised B08 (legacy T08): **Backlog** — validate AI-generated JSON against representative
   40, 55, 65 and 75+ MPW coach plans.
 - Revised T11: **Backlog** — integrate and refine JSON-based import and the draft
   experience; direct workbook parsing is no longer intended product behavior.
@@ -107,9 +114,9 @@ review and explicit owner approval.
   `ARCHITECTURE_DECISIONS.md` are absent from this branch. Apply these decisions
   there when those documents are incorporated through their own reviewed work;
   do not copy uncommitted documents from other worktrees.
-- T05 persist/reopen one JSON 1.1 plan draft: **Testing** on isolated
+- B05 (legacy T05) persist/reopen one JSON 1.1 plan draft: **Testing** on isolated
   `codex/t05-persist-plan-draft`, based on fetched `origin/main` `3335223` after
-  T04 PR #8 merged. Exact native tables, compatibility, safety copy, source
+  legacy T04 PR #8 merged. Exact native tables, compatibility, safety copy, source
   preservation and draft-only recovery were approved by the owner on November
   14, 2026 and are recorded in DESIGN.md. The focused implementation and temporary
   synthetic profile tests are present. Verification and remaining packaged-app
@@ -117,21 +124,21 @@ review and explicit owner approval.
   untouched. No activation or workbook adapters are included.
   Acceptance correction: replace browser-download export with native Save As,
   verified scoped file publication and visible adjacent feedback. The existing
-  T05 branch/PR carries this narrow correction; no database or import changes.
+  legacy T05 branch/PR carries this narrow correction; no database or import changes.
 
-- T04 secure Garmin Personal API slice: **Testing** on
-  `codex/t04-garmin-personal-api`, isolated from merged T03 at `4ad6fca`.
+- B04 (legacy T04) secure Garmin Personal API slice: **Testing** on
+  `codex/t04-garmin-personal-api`, isolated from merged legacy T03 at `4ad6fca`.
   Approved scope and evidence are in DESIGN.md. Windows Credential Manager,
   Rust-only authentication, explicit five-activity listing and one bounded ZIP/FIT
-  retrieval reuse T03. Provider receipts are separate from content identity.
+  retrieval reuse B03. Provider receipts are separate from content identity.
   No snapshot/database migration, confirmed workout, training totals, plan or shoe
   changes. Full frontend gate passed (223 tests), final focused checks passed
   (31 tests), and Windows Rust CI passed (27 native tests). Owner real-account/
   packaged Windows acceptance remains required.
   Public/commercial distribution is blocked pending Garmin licensing authorization.
-  Background sync, history/review and T05/T25/T26 are deferred.
+  Background sync, history/review and B05/T25/T26 are deferred.
 
-- T01 training-plan JSON 1.1 contract: **Testing** on
+- B01 (legacy T01) training-plan JSON 1.1 contract: **Testing** on
   `codex/t01-training-plan-contract`, isolated from `origin/main` at `dac964e`.
   [Contract and verification record](schemas/training-plan/README.md). Scope is
   schema, pure validation, generated types, synthetic fixtures/tests and minimal
@@ -139,9 +146,9 @@ review and explicit owner approval.
   parity and authentic 1.0 compatibility remain deferred.
 - The preexisting development branch, three unmerged commits, seven modified source
   files and untracked Phase 0 documents/archive remain preserved separately, with
-  a verified local recovery copy. They were not incorporated into T01. Before T02,
+  a verified local recovery copy. They were not incorporated into B01. Before B02,
   explicitly reconcile the version-6 development baseline; do not run the older
-  main application against a newer profile. T02 now proceeds separately from main with explicit v5/v6 rejection (see the T02 record below).
+  main application against a newer profile. B02 now proceeds separately from main with explicit v5/v6 rejection (see the B02 record below).
 
 - Phase 1 architecture/application audit: **Complete on `docs/ui-ux-audit`**.
 - Phase 2 UI inventory: **Complete on `docs/ui-ux-audit`**.
@@ -152,18 +159,18 @@ review and explicit owner approval.
 - Supporting engineering retained from the later investigation: import batches, exact/possible duplicate explanations, verified source preservation, typed decode/persistence failures, cancellation/retry, deterministic matching, and idempotent confirmation.
 - Implementation has not started. The approved specification, relevant tests, verification evidence, and explicit user acceptance remain required before the component can advance beyond Testing or become Complete.
 
-- T02 fail-closed loading and staged legacy restore: **Testing** on
-  `codex/t02-safe-loading`, isolated from current `origin/main` bdf7519 after T01.
+- B02 (legacy T02) fail-closed loading and staged legacy restore: **Testing** on
+  `codex/t02-safe-loading`, isolated from current `origin/main` bdf7519 after legacy T01.
   v2/v3/v4 supported; v5/v6 rejected without writes. Development work is preserved.
-  Only T02 is authorized; native normalization and complete backup remain deferred.
+  Only B02 is authorized; native normalization and complete backup remain deferred.
 
-T02 verification and native-build limitation are recorded in DESIGN.md. Owner
+The B02 verification and native-build limitation are recorded in DESIGN.md. Owner
 acceptance remains pending. The following record supersedes the historical
-statements that T03 has not started.
+statements that B03 has not started.
 
-- T03 secure native FIT source storage: **Testing; native verification blocked**
+- B03 (legacy T03) secure native FIT source storage: **Testing; native verification blocked**
   on `codex/t03-native-fit-storage`, isolated from `origin/main` `6fdde51` after
-  T02 PR #6 merged. Rust owns bounded, content-addressed, verified immutable
+  legacy T02 PR #6 merged. Rust owns bounded, content-addressed, verified immutable
   storage and reads; the minimal frontend adapter preserves source references.
   Broad frontend filesystem access is removed. Original names stay in existing
   records; unavailable source bytes never gain verified status. No snapshot,
@@ -176,5 +183,5 @@ statements that T03 has not started.
 - Owner acceptance, native execution/restart and capability acceptance remain
   outstanding. Complete portable FIT backup, reconciliation/cleanup, generated
   bindings and historical migration remain deferred. Development work and real
-  data are untouched. No PR, merge, installer build or T04 work is authorized
+  data are untouched. No PR, merge, installer build or B04 work is authorized
   by this delivery.
