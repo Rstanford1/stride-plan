@@ -1,9 +1,10 @@
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const binary = path.resolve("src-tauri/target/release/stride-plan-qa-i13.exe");
 export const config = {
   runner: "local",
-  specs: ["./native-qa/native.spec.mjs"],
+  specs: [fileURLToPath(new URL("./native.spec.mjs", import.meta.url))],
   maxInstances: 1,
   capabilities: [
     { browserName: "tauri", "tauri:options": { application: binary } },
