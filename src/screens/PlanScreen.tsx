@@ -28,7 +28,7 @@ export function PlanScreen() {
       <header className="page-header">
         <div>
           <p className="eyebrow">{maxWeek}-week plan</p>
-          <h1>Weekly plan</h1>
+          <h2>Weekly plan</h2>
           <p>Changes keep the original prescription and session identity.</p>
         </div>
         <button className="button secondary" onClick={() => setCreating(true)}>

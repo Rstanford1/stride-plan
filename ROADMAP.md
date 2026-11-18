@@ -1,5 +1,9 @@
 # Stride Plan roadmap
 
+## F1 shared visual foundation — November 17, 2026
+
+**Status: F1 implementation: Complete for approved scope; owner visual acceptance passed; PR #21 awaiting merge decision. Packaged installation and existing-profile compatibility remain deferred/unverified release requirements.** Scope: six primary destinations; Plan and Weekly Review under Training; system-following warm-light/dark-charcoal semantic tokens; shared shell, focus and responsive treatment; read-only Shoes landing. No backend, persistence, Garmin, FIT, or plan-contract changes. T08.1 PR #18 is merged into main; the separate Windows acceptance PR #20 remains an open draft. Prior `pnpm verify` passed 307 tests, and hosted frontend/Rust checks passed on `a176f95`; those automated results are distinct from visual acceptance. Browser and native development acceptance passed, including native light/dark switching and 100%/150%/200% scaling. A local NSIS build produced `Stride Plan_0.1.0_x64-setup.exe`, but it has not been installed or smoke-tested. Narrow 200% Training-table wrapping is deferred to F3. Do not merge PR #21 without separate explicit owner authorization.
+
 ## T08.1 versioned plan contract
 
 **Testing**. Owner-approved JSON 1.2 contract, read-only review and narrow draft

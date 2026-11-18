@@ -162,7 +162,7 @@ export function DataScreen() {
       <header className="page-header">
         <div>
           <p className="eyebrow">Local data</p>
-          <h1>Data & settings</h1>
+          <h1>Settings</h1>
           <p>
             Local imports, backups, preferences, and optional Garmin access.
           </p>
