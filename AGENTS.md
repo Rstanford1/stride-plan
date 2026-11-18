@@ -32,7 +32,7 @@
 - Review one component or tightly related workflow at a time.
 - Explain current behavior, separate objective defects from preferences, propose alternatives with tradeoffs, and ask focused questions.
 - Record an approved component specification in `DESIGN.md` before implementation.
-- Update the component status in `UI_INVENTORY.md` and the work item in `ROADMAP.md` as it progresses.
+- Record approved component behavior and task evidence in the task's own specification and evidence files. Project Coordination alone updates the shared tracker documents (`docs/PROJECT_STATUS.md`, `ROADMAP.md`, and `UI_INVENTORY.md`) unless it explicitly assigns that update in the task boundary.
 - Preserve unrelated behavior and avoid broad rewrites.
 - Do not merge to `main` without explicit user approval.
 
@@ -68,3 +68,11 @@ A component is not **Complete** until its approved specification, implementation
 - Local coding agents must work within a clearly defined task boundary, preserve unrelated files, add targeted tests, and report changes and limitations. Do not independently redesign workflows or merge branches.
 - For experimental local agents, allow one implementation attempt and at most one focused correction before escalating for review.
 - Report exactly which checks passed and whether evidence came from unit tests, browser rendering, or packaged Windows acceptance.
+
+## Parallel development and integration
+
+- Follow `docs/PARALLEL_DEVELOPMENT.md` for every concurrent task. Use one isolated branch and worktree per task, based on freshly fetched `origin/main`; never edit another agent's worktree.
+- Before implementation, inspect active PRs and identify overlapping files, shared interfaces, database migrations, dependencies, and the named owner for each shared document. Stop for coordination when ownership or ordering is unclear.
+- Do not use destructive Git commands (`reset`, `clean`, `stash`, forced checkout, or force-push) in another agent's workspace. Never merge automatically, change GitHub settings, or merge without explicit owner authorization.
+- Test only with synthetic or isolated data and profiles. Do not open, read, or write the normal installed Stride Plan profile during development or acceptance.
+- PR evidence must state the source SHA, changed files, local and hosted verification, conflicts/resolutions, remaining work, and packaged Windows acceptance status when applicable. Preserve legacy B/T and I/A references in history and acceptance evidence.
