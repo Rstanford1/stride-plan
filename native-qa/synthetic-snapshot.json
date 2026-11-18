@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 4,
+  "sessions": [
+    {
+      "id": "i13-synthetic-session",
+      "sourceKey": "i13-synthetic-session",
+      "week": 1,
+      "originalDate": "2026-01-05",
+      "scheduledDate": "2026-01-05",
+      "originalDistanceMiles": 0,
+      "plannedDistanceMiles": 0,
+      "title": "Synthetic QA rest",
+      "kind": "rest",
+      "instructions": "Synthetic fixture only.",
+      "guidance": "Synthetic fixture only.",
+      "flexible": false,
+      "phase": "Synthetic QA",
+      "status": "planned",
+      "revisions": []
+    }
+  ],
+  "activities": [],
+  "fitSources": [],
+  "fitSourceActivities": [],
+  "fitImportBatches": [],
+  "journals": [],
+  "shoes": [],
+  "settings": {
+    "distanceUnit": "mi",
+    "easyHrLow": 120,
+    "easyHrHigh": 140,
+    "recoveryHrHigh": 130
+  },
+  "importFingerprints": []
+}

@@ -72,7 +72,11 @@ jobs:
           Write-Host "Negative isolation checks passed"
           exit 0
       - name: Native proof of concept
-        run: pnpm exec wdio run native-qa/wdio.conf.mjs
+        run: |
+          node native-qa/seed.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm exec wdio run native-qa/wdio.conf.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Recheck isolation and repeat native proof
         env:
           STRIDE_QA_REPEAT: "1"

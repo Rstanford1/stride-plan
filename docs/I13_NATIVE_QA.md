@@ -13,8 +13,10 @@ checks the QA configuration and
 binary identity, checks the binary for the production credential target and
 credential API imports, and tests refusal of missing or unsafe roots. The QA
 executable also checks its identity and resolved Tauri storage paths before
-application use. These checks must all pass; compilation alone is insufficient.
-No real Garmin credentials or FIT files are used. Disposable profiles are left
+application use. The harness creates a validated synthetic snapshot in
+the fresh QA database before launch, avoiding the built-in training schedule.
+These checks must all pass; compilation alone is insufficient. No real Garmin
+credentials or FIT files are used. Disposable profiles are left
 to the runner's lifecycle; no user directory is deleted.
 
 The workflow uses the external official tauri-driver and Edge WebDriver. It
