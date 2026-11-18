@@ -71,8 +71,10 @@ A component is not **Complete** until its approved specification, implementation
 
 ## Parallel development and integration
 
-- Follow `docs/PARALLEL_DEVELOPMENT.md` for every concurrent task. Use one isolated branch and worktree per task, based on freshly fetched `origin/main`; never edit another agent's worktree.
-- Before implementation, inspect active PRs and identify overlapping files, shared interfaces, database migrations, dependencies, and the named owner for each shared document. Stop for coordination when ownership or ordering is unclear.
-- Do not use destructive Git commands (`reset`, `clean`, `stash`, forced checkout, or force-push) in another agent's workspace. Never merge automatically, change GitHub settings, or merge without explicit owner authorization.
+- Follow `docs/PARALLEL_DEVELOPMENT.md` for every concurrent task. Before work, verify repository/tool access, fetched `origin/main`, GitHub access available to the task, active PRs, and the local worktree state.
+- Use one dedicated branch and isolated worktree per approved task. Own that task end-to-end: make ordinary in-scope technical decisions, repair formatting/compilation/tests, resolve mechanical conflicts in your own branch, verify, commit, push, and open or update a draft PR when access permits.
+- Before implementation, identify overlapping files, shared interfaces, migrations, dependencies, and the named owner for each shared document. Project Coordination owns the master tracker; task agents preserve approved decisions and evidence in task-specific records unless assigned a shared-document update.
+- Escalate only material scope, product, architecture, safety, security, data-integrity, semantic-conflict, or integration decisions. Do not use routine uncertainty to delay an approved task.
+- Never use destructive Git commands (`reset`, `clean`, `stash`, forced checkout, or force-push) in another agent's workspace. Never merge automatically, release, change GitHub settings, or merge without explicit owner authorization.
 - Test only with synthetic or isolated data and profiles. Do not open, read, or write the normal installed Stride Plan profile during development or acceptance.
-- PR evidence must state the source SHA, changed files, local and hosted verification, conflicts/resolutions, remaining work, and packaged Windows acceptance status when applicable. Preserve legacy B/T and I/A references in history and acceptance evidence.
+- Preserve exact tested revisions and acceptance evidence. PR reports state source and acceptance SHAs, changed files, local and hosted verification, conflicts/resolutions, remaining work, and packaged Windows acceptance status when applicable; retain legacy B/T and I/A references in history and acceptance evidence.

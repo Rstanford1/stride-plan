@@ -1,8 +1,10 @@
 # Parallel development and merge coordination
 
-This policy governs simultaneous Stride Plan work. It supplements `AGENTS.md`;
-when there is a conflict, preserve product and data-safety boundaries and ask
-the repository owner or Project Coordination to resolve it.
+This policy governs simultaneous Stride Plan work. It lets an agent complete an
+owner-approved task through a review-ready draft PR without changing merge,
+release, product, safety, or data authority. It supplements `AGENTS.md`; when
+there is a conflict, preserve product and data-safety boundaries and ask the
+repository owner or Project Coordination to resolve it.
 
 ## Roles and ownership
 
@@ -20,8 +22,10 @@ the repository owner or Project Coordination to resolve it.
 
 ## Task preflight and lifecycle
 
-1. Fetch `origin`, inspect `origin/main`, the current worktree list, local
-   status, and active PRs. Record the exact source SHA in the task evidence.
+1. Verify the repository location, Git, required task tools, available GitHub
+   authentication/permissions, fetched `origin/main`, the current worktree
+   list, local status, and active PRs. Record the exact source SHA and any
+   unavailable tool or connection; do not claim an unavailable operation passed.
 2. Create one new branch and one isolated worktree for the task from current
    `origin/main`. Do not repurpose a worktree that has another task or changes.
 3. Before editing, list the files to change and identify overlaps with active
@@ -34,6 +38,16 @@ the repository owner or Project Coordination to resolve it.
 5. Keep the branch narrowly scoped. Rebase or merge only your own worktree
    after checking current `origin/main`; resolve only conflicts within your
    approved task boundary.
+
+After the owner approves a task, make routine in-scope technical decisions
+independently: implement and refine the approved behavior, repair formatting,
+compilation, and tests, add regression coverage, resolve mechanical conflicts
+in your own branch, rerun checks, commit, push, and open or update a draft PR
+when access permits. Do not seek additional approval for those routine steps.
+Escalate only material scope, product, architecture, safety, security,
+data-integrity, semantic-conflict, shared-interface, or integration decisions.
+Routine authority never authorizes destructive operations, unapproved
+migrations, historical-data rewrites, or GitHub settings changes.
 
 Never reset, clean, stash, force-checkout, force-push, delete, or otherwise
 alter another agent's workspace. Never use normal installed-profile data during
@@ -56,6 +70,28 @@ order; consuming tasks do not assume an unmerged API or schema. Database
 migrations must be ordered, reversible or safely forward-only as approved, and
 tested against the applicable isolated baseline/upgrade path. Parallel PRs must
 not use the same migration identifier.
+
+An agent may resolve a mechanical Git conflict in its own branch by preserving
+both approved changes, then rerunning relevant verification and reporting the
+resolution. A semantic conflict is an escalation, not a merge-resolution task.
+Do not rebase merely to refresh documents; refresh only when required for
+compatibility or controlled integration.
+
+## Acceptance revisions and reporting
+
+Record the exact tested SHA and preserve its acceptance evidence. Avoid an
+unnecessary rebase after acceptance. When a later commit affects tested
+behavior, rerun the relevant verification and record the new SHA; it does not
+inherit prior acceptance automatically. Distinguish implemented behavior,
+automated verification, packaged Windows acceptance, owner acceptance, merged
+code, and released application.
+
+Every draft PR or task handoff records task ID and scope; branch; source SHA;
+exact tested SHA and acceptance SHA when relevant; changed files; active-PR
+overlaps and dependencies; conflicts and resolution; local and hosted results;
+packaged Windows status; remaining risks/work; and the exact owner action
+needed. Preserve legacy B/T and I/A identifiers in historical and acceptance
+records.
 
 ## Integration sequence
 
@@ -87,16 +123,23 @@ prepare a focused compatibility PR, or defer the task. A rejected or superseded
 PR remains historical evidence; preserve its legacy identifiers and acceptance
 record rather than rewriting history.
 
-## Read-only walkthrough
+## Walkthrough A — routine documentation conflict
 
-Example: PR A adds a frontend activity panel and PR B adds its backend response
-type. Preflight marks the response type as a shared interface and B as the
-producer. Coordination merges B only after owner authorization, records its
-SHA and checks, then asks A to refresh against the new `origin/main` and rerun
-its checks before A can merge. A does not code against an assumed unmerged B.
+Two approved feature branches edit the same task-evidence section. Preflight
+detects the overlap. If both statements are compatible, the agent updating its
+own branch performs a mechanical resolution that retains both facts, runs
+documentation and applicable repository checks, and reports the result without
+unnecessary approval. If the statements assert competing approved behavior or
+ownership, the agent preserves both versions, identifies the decision required,
+and asks Project Coordination or the owner to choose. The master tracker itself
+remains with Project Coordination unless specifically assigned.
 
-If both PRs also propose edits to `docs/PROJECT_STATUS.md`, neither feature PR
-edits the tracker. Each records evidence in its task document. Project
-Coordination consolidates both entries after the integration sequence, resolving
-the shared-document change once from the recorded source SHAs. This avoids a
-content conflict and leaves one accountable owner.
+## Walkthrough B — unapproved schema or data change
+
+An approved frontend task discovers that a SQLite schema change or historical
+data rewrite would be needed. The agent identifies it as outside the approved
+scope, stops that affected implementation path, leaves existing data and
+worktrees untouched, records the risk and safe alternatives, and requests
+explicit owner approval for a separately scoped migration. It may finish
+unrelated safe frontend work and verification. It does not create a production
+migration or demonstrate the policy with destructive operations.
