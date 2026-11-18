@@ -112,7 +112,7 @@ Do not change my training plan, provide coaching advice, or invent workouts. You
 /** Additions reconcile the approved T07 requirements with the unchanged T01 contract.
  * No PDF workaround or new PDF conversion procedure is approved here.
  */
-export const conversionPrompt = `${originalConversionPrompt}
+const legacyClarifiedPrompt = `${originalConversionPrompt}
 
 ## Stride Plan JSON 1.1 contract clarifications
 
@@ -131,3 +131,19 @@ export const conversionPrompt = `${originalConversionPrompt}
 - reviewNotes codes are ambiguous, unsupported, conflict, or missing-source-text. The first three are review warnings; missing-source-text is blocking. Do not hide missing original instructions as a harmless warning. Preserve uncertainties, conflicts and unreadable source content.
 - Before delivery compare training dates, weeks/phases, every session and explicit rest day, supplied weekly mileage, core/flexible/optional/required distinctions, doubles and links, repetition counts/distances, recoveries/units, hammer/progression wording, exact original instructions, and unresolved ambiguities against the source. JSON Schema validation alone does not prove source fidelity or Stride Plan semantic validity. Report exactly what validation actually ran.
 - Deliver JSON only in the downloadable UTF-8 stride-plan-training-plan.json file. Keep the short title/date-range/week/session-count/ambiguity/validation/manual-comparison report separate in chat. Do not provide training advice or change the plan.`;
+
+/** Current downloadable artifacts and instructions both target 1.2. */
+export const conversionPrompt =
+  legacyClarifiedPrompt.replaceAll("1.1", "1.2") +
+  `
+
+## Version 1.2: independent mileage, scheduling and priority
+
+- Existing JSON 1.1 files remain accepted without reinterpretation. Produce new conversions against the supplied 1.2 schema. PDF provenance remains unsupported; never invent a source type or hash.
+- Week totalMileageTarget is the independently supplied weekly total, using value/unit or min/max/unit with m, km or mi. Do not calculate it from sessions, coreTarget, flexibleTarget or the manifest mileage-tier label. A 75+ tier label is not an instruction to invent a range. Omit unknown targets.
+- Session schedulingPolicy is fixed-date, movable-within-week or unspecified. The original containing date and week stay unchanged. A movable policy permits redistribution only inside that original week; it never executes a move.
+- Session priorityClass is priority, supporting or unspecified. Keep it independent of participation (required/optional), completionClass (core/flexible), role and runType. Never infer a priority long run merely from its title. Missing classifications remain missing or unspecified with review notes, never false, supporting, fixed, required or optional defaults.
+- Preserve coachText and its provenance exactly. For each supplied known new field add interpretationEvidence with its exact JSON Pointer path. kind coach requires covering source provenance. kind user-policy requires policyId referencing an interpretationPolicies record with id, exact statement and approval user-approved. Only record approval actually supplied by the user; never manufacture it or put the user's policy into coachText. If neither basis is established, omit the classification rather than guess.
+- When the user explicitly approves Option B, record that policy separately: key workouts (including designated threshold, intervals and long runs) are priority; prescribed easy mileage may be redistributed within the same week; weekly mileage and priority completion are separate; optional doubles remain optional; moving easy mileage creates no automatic missed-priority penalty; meeting mileage cannot conceal a missed priority workout. Explicitly identify the sessions covered by that approval through evidence paths. This is interpretation evidence, not a new coach instruction.
+- Do not alter workout blocks, sets, repetitions, recovery parsing or prescriptions to satisfy these new fields. Previously reported 18 malformed workouts remain a separate conversion-fidelity review. Validation cannot establish fidelity to inaccessible source documents.
+`;

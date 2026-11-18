@@ -63,7 +63,7 @@ A component is not **Complete** until its approved specification, implementation
 - Multiple Git worktrees may contain valuable uncommitted work. Inspect `git worktree list` and relevant working-tree status before making changes. Never reset, clean, stash, delete, switch, or overwrite protected work without explicit authorization.
 - Use an isolated worktree for new coding tasks. Do not treat the root working tree as disposable.
 - Distinguish **approved design decisions**, **proposed roadmap items**, and **implemented behavior**. If they conflict, stop and report the conflict rather than inventing a resolution.
-- Training-plan intake is JSON 1.1 only. Excel, CSV, PDF and other coach documents are converted externally. Stride Plan validates the JSON, preserves exact original bytes and instructions, and saves a draft without automatically activating it.
+- Training-plan intake is JSON 1.1 or 1.2 only (owner-approved T08.1 extension). Excel, CSV, PDF and other coach documents are converted externally. Stride Plan validates the JSON, preserves exact original bytes and instructions, and saves a draft without automatically activating it.
 - Do not reintroduce workbook parsing, embedded AI integrations, or automatic plan activation without new approval.
 - Local coding agents must work within a clearly defined task boundary, preserve unrelated files, add targeted tests, and report changes and limitations. Do not independently redesign workflows or merge branches.
 - For experimental local agents, allow one implementation attempt and at most one focused correction before escalating for review.

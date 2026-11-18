@@ -184,7 +184,11 @@ describe("T07 guided conversion", () => {
     await screen.findByText(/AI instructions copied/);
     expect(writeText).toHaveBeenCalledOnce();
     expect(writeText).toHaveBeenCalledWith(conversionPrompt);
-    expect(conversionPrompt.startsWith(originalConversionPrompt)).toBe(true);
+    expect(
+      conversionPrompt.startsWith(
+        originalConversionPrompt.replaceAll("1.1", "1.2"),
+      ),
+    ).toBe(true);
     expect(copy).toHaveFocus();
   });
 

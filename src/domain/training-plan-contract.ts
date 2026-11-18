@@ -1,5 +1,4 @@
 export type {
-  TrainingPlan,
   Session,
   Workout,
   Block,
@@ -11,7 +10,10 @@ export type {
   Progression,
 } from "../../.generated/training-plan";
 
-import type { TrainingPlan } from "../../.generated/training-plan";
+import type { TrainingPlan as Plan11 } from "../../.generated/training-plan";
+import type { TrainingPlan as Plan12 } from "../../.generated/training-plan-1.2";
+export type TrainingPlan = Plan11 | Plan12;
+export type { Plan11, Plan12 };
 
 export interface PlanDiagnostic {
   severity: "error" | "warning";

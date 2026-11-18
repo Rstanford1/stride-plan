@@ -1,3 +1,4 @@
+import plan12 from "../domain/__fixtures__/training-plan/valid-1.2-40.json";
 import {
   act,
   cleanup,
@@ -65,7 +66,7 @@ describe("T05 focused Data workflow", () => {
         target: { files: [{ name, size: 100, arrayBuffer }] },
       });
       expect(await screen.findByRole("alert")).toHaveTextContent(
-        "Unsupported plan format. Stride Plan accepts Training Plan JSON 1.1 files (.json).",
+        "Unsupported plan format. Stride Plan accepts Training Plan JSON 1.1 or 1.2 files (.json).",
       );
       expect(screen.getByRole("alert")).toHaveTextContent("external AI agent");
       expect(screen.getByRole("alert")).toHaveTextContent(
@@ -321,4 +322,32 @@ describe("T05 focused Data workflow", () => {
       expect(button).toBeEnabled();
     },
   );
+  it("imports 1.2 into read-only Review with explicit classifications and a disabled browser save", async () => {
+    render(<PlanDraftPanel store={null} />);
+    await select(new TextEncoder().encode(JSON.stringify(plan12)));
+    expect(screen.getByRole("tab", { name: "Review" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(
+      screen.getByRole("heading", { name: "Review & Save Draft" }),
+    ).toHaveFocus();
+    fireEvent.click(
+      screen.getByText(/Weekly targets, scheduling and priority/),
+    );
+    expect(screen.getByText(/Total mileage target: 40 mi/)).toBeVisible();
+    expect(screen.getAllByText(/Scheduling: Fixed date/)).toHaveLength(3);
+    expect(
+      screen.getAllByText(/Scheduling: Movable within this week/),
+    ).toHaveLength(4);
+    expect(screen.getByText(/double · optional · flexible/)).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Save as draft" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByText(plan12.interpretationPolicies[0].statement, {
+        exact: true,
+      }),
+    ).toBeVisible();
+  });
 });

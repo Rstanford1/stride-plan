@@ -1,4 +1,4 @@
-import schema from "../../schemas/training-plan/1.1.schema.json";
+import schema from "../../schemas/training-plan/1.2.schema.json";
 import type { PlanDiagnostic } from "./training-plan-contract";
 
 /** Presentation only: the T01 validator remains the rule authority. */
@@ -19,6 +19,18 @@ export function validationDescription(issue: PlanDiagnostic): string {
 // locations. Diagnostic messages and source-provided review-note paths are never
 // copied, including for future/unknown diagnostic codes.
 const safeDescriptions: Readonly<Record<string, string>> = {
+  unspecified_total_mileage:
+    "Weekly total mileage was not supplied; no target was inferred.",
+  unspecified_classification:
+    "Scheduling or priority was not established; no default was applied.",
+  invalid_interpretation_path:
+    "Interpretation evidence must identify a known 1.2 target or classification.",
+  duplicate_interpretation_evidence:
+    "A field has more than one interpretation basis.",
+  interpretation_kind_conflict:
+    "Coach evidence cannot refer to a user interpretation policy.",
+  missing_interpretation_evidence:
+    "Identify coach source evidence or an explicitly user-approved interpretation policy.",
   "schema.required": "A required field is missing.",
   "schema.type": "A field has the wrong JSON type.",
   "schema.enum": "A field uses an unsupported value.",
@@ -186,7 +198,7 @@ function safeDiagnostic(issue: PlanDiagnostic): string {
 }
 export function validationFeedback(diagnostics: PlanDiagnostic[]): string {
   return [
-    "Correct my Stride Plan Training Plan JSON 1.1 using the actual validation feedback below.",
+    "Correct my Stride Plan Training Plan JSON (preserve its supplied 1.1 or 1.2 version) using the actual validation feedback below.",
     "Use the original document and authoritative schema already supplied. Correct only the reported problems and directly necessary references. Do not invent values, coach wording, source hashes or locations, or modify unrelated workouts. Preserve original instructions and all unaffected sessions. Ask for clarification only when essential information cannot be represented truthfully.",
     "Errors block import; warnings require review but do not block saving a draft. This feedback uses allowlisted codes and generic descriptions, with schema-defined structural locations only where safe. Source-provided messages, values and review-note paths are omitted; inspect the exact diagnostics locally. No plan contents or filenames are included here.",
     ...diagnostics.map(safeDiagnostic),
