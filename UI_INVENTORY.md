@@ -4,8 +4,8 @@
 
 This section records the F1 implementation over the historical inventory below. **F1 implementation: Complete for approved scope; owner visual acceptance passed; PR #21 awaiting merge decision. Packaged installation and existing-profile compatibility remain deferred/unverified release requirements.** Automated verification, owner visual acceptance, and packaged acceptance remain distinct.
 
-| Component                   | F1 implementation                                                                                                               | Status  |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Component                   | F1 implementation                                                                                                               | Status                         |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
 | Main navigation and sidebar | Today, Training, Activities, Analytics, Shoes, Settings; `Alt+1`–`Alt+6`, active text and accessibility state, collapse control | Complete for approved F1 scope |
 | Training grouping           | Existing Plan and Weekly Review screens remain selectable under Training; Today opens Plan                                      | Complete for approved F1 scope |
 | Theme foundation            | Semantic warm-light/dark-charcoal tokens follow system appearance, including live system changes through CSS media queries      | Complete for approved F1 scope |
