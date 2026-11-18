@@ -18,8 +18,13 @@ import { PlanDraftPanel } from "../components/PlanDraftPanel";
 import { nativeDraftsAvailable } from "../data/plan-draft-store";
 
 export function DataScreen() {
-  const { data, replaceData, resetDemo, updateSettings, restoreBackup } =
-    useAppData();
+  const {
+    data,
+    beginFitImportBatch,
+    resetDemo,
+    updateSettings,
+    restoreBackup,
+  } = useAppData();
   const [message, setMessage] = useState("");
   const [nativeDraftPresent, setNativeDraftPresent] = useState<boolean | null>(
     nativeDraftsAvailable() ? null : false,
@@ -103,6 +108,7 @@ export function DataScreen() {
   }
 
   async function importFitFiles(files: FileList) {
+    const pendingBatch = beginFitImportBatch();
     if (files.length === 0) return;
     const controller = new AbortController();
     fitImportController.current = controller;
@@ -113,7 +119,7 @@ export function DataScreen() {
         name: file.name,
         loadBytes: async () => new Uint8Array(await file.arrayBuffer()),
       })),
-      existingSources: data.fitSources,
+      existingSources: pendingBatch.existingSources,
       decoder: new FitFileParserDecoder(),
       sourceStore: createFitSourceStore(),
       createdAt: new Date().toISOString(),
@@ -121,13 +127,16 @@ export function DataScreen() {
       onProgress: (completed, total) =>
         setFitImportProgress({ completed, total }),
     });
-    replaceData({
-      ...data,
-      fitSources: [...data.fitSources, ...result.sources],
-      fitSourceActivities: [...data.fitSourceActivities, ...result.activities],
-      fitImportBatches: [...data.fitImportBatches, result.batch],
-    });
-    const counts = result.batch.sourceResults.reduce<Record<string, number>>(
+    const committed = pendingBatch.commitFitImportBatch(result);
+    if (!committed) {
+      setMessage(
+        "FIT import was not added because local data was replaced or is unavailable. Choose the files again to import into the current data.",
+      );
+      fitImportController.current = null;
+      setFitImportProgress(null);
+      return;
+    }
+    const counts = committed.sourceResults.reduce<Record<string, number>>(
       (current, item) => ({
         ...current,
         [item.status]: (current[item.status] ?? 0) + 1,

@@ -1,5 +1,95 @@
 # Stride Plan design
 
+## T08.1 — versioned training-plan contract
+
+Status: **In progress**. Owner approved JSON 1.2 and the narrow draft-storage
+migration on November 17, 2026, including older-build incompatibility. Local branch
+`codex/t08-1-plan-contract`, based on fetched `origin/main` `fb7ff13`.
+No push, PR, merge or normal-profile execution is authorized.
+
+- Keep 1.1 schema and validator behavior immutable. Recognize only the exact
+  pre-PR16 and PR16 schema/validator identities for historical drafts/recovery.
+  Replay the matching validator and compare the exact stored report; never
+  rewrite bytes, records, reports or fingerprints. New 1.1 uses the PR16 validator.
+- Add 1.2 alongside 1.1. Week `totalMileageTarget` uses exact/range quantities
+  with distance units. Session `schedulingPolicy` is fixed-date,
+  movable-within-week or unspecified; `priorityClass` is priority, supporting
+  or unspecified. Omitted values remain unknown. No classification is inferred
+  from titles, participation, core/flexible, dates, run types or mileage sums.
+- Separate user-approved interpretation policies (exact statement, explicit
+  approval assertion, scoped field pointers) from original coachText/provenance.
+  Each supplied new target/classification needs explicit coach provenance or
+  a policy reference. Policy evidence is a producer assertion, never app approval.
+- Read-only Review adds weekly target, classifications and evidence within the
+  existing disclosure layout. Show unknown values explicitly, with no new editor,
+  completion calculation, calendar, activation or unrelated redesign.
+- Upgrade only draft validation storage to permit the supported version pairs.
+  Before any writable migration connection, create/fsync/reopen/integrity-check
+  a complete SQLite safety copy and compare its logical inventory. Recheck the
+  source under a transaction; rebuild only the validation table, preserve all
+  rows, and commit the schema version atomically. Failed migrations roll back.
+- Test interrupted migration, restart/retry, unchanged historical records and
+  recovery from the safety copy in isolated synthetic profiles. Document manual
+  older-build recovery and potential loss of changes made after the backup.
+- Optional doubles remain optional; mileage and priority completion remain
+  separate concepts. Existing active-plan rules are untouched. The 18 malformed
+  conversion workouts remain a separate fidelity issue. No original coach data.
+- Verification and owner acceptance are required before Complete.
+
+### T08.1 implementation and verification record
+
+Status: **Testing**, owner acceptance pending. T07 acceptance and squash merges
+#13/#14 were confirmed by the owner; the historical T07 records below are retained.
+The current T08.1 baseline additionally includes PR #15 and PR #16 (`fb7ff13`).
+All implementation remains local in the isolated worktree; no push/PR/merge.
+
+- Added standalone 1.2 schema/types/validator and version dispatch. The 1.1 schema
+  and validator are byte-for-byte unchanged. The pre-PR16 validator is preserved
+  verbatim from `f58ad59`. Closed identities are pinned in a synthetic test catalog;
+  new 1.1 intake uses PR16 validation, historical reopen/recovery replays its exact
+  validator and requires its original diagnostics. Idempotent reimport retains
+  historical records and exports. No fingerprint bypass or report rewriting.
+- `totalMileageTarget`, `schedulingPolicy`, `priorityClass`, `interpretationPolicies`
+  and `interpretationEvidence` implement the approved separation. Existing
+  participation/core/flexible labels and all workout semantics are unchanged.
+  Policy approval is explicitly a producer assertion. Missing/unspecified values
+  stay unknown; optional doubles stay optional. No completion metrics execute.
+- Migration 0004 rebuilds only draft validation constraints and is used for 1.2
+  save/recovery. Read/reopen is not a migration trigger. A verified, flushed,
+  reopened full SQLite safety copy is retained before the writable transaction;
+  original draft sources and recognized record identities are checked first.
+  Complete inventory is compared before/after, with only approved DDL permitted
+  to differ. Version and table changes commit atomically. No SQLx ledger edit,
+  active snapshot migration, Garmin change or downgrade mechanism.
+- Review adds one native disclosure for weekly targets, classifications and
+  evidence, plus separately displayed policy statements. Existing coach-text and
+  original-JSON disclosures remain. Offline schema/example and current external
+  conversion guidance consistently target 1.2; existing 1.1 intake stays supported.
+  The historical original prompt export is retained, with the current copied
+  prompt updating its version references and adding scoped 1.2 instructions.
+- Synthetic fixtures cover 40, 55, 65 and 75+ scenarios. No coach workbooks/private
+  converted plans were read or added. The 18 malformed converted workouts remain
+  separately unresolved fidelity work. PDF provenance remains unsupported.
+
+Verification, November 17, 2026:
+
+| Check                                             | Evidence/result                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pnpm install --frozen-lockfile --ignore-scripts` | Passed in isolated worktree; 247 packages reused, none downloaded; no dependency/lockfile configuration changes.                                                                                                                                                                                                                                                                                                                           |
+| Full `pnpm verify`                                | Passed: generated-type consistency, formatting, TypeScript, **345 tests in 27 files**, and production frontend build.                                                                                                                                                                                                                                                                                                                      |
+| Versioned frontend/adapter tests                  | Both pinned historical 1.1 identities, exact report/bytes/recovery, new 1.1 and 1.2 imports, version/fingerprint/report tampering, BOM/CRLF, idempotence and reopen; synthetic adapter evidence, not packaged persistence.                                                                                                                                                                                                                 |
+| Real SQLite migration SQL                         | Five tests: both historical row sets preserved; failure/rollback after every statement; process killed after the full uncommitted migration and reopened safely; retry; verified backup restored with exact old DDL/version/rows; later edit retained separately and absent from restored copy. Uses Node SQLite in generated temporary profiles, not native orchestration.                                                                |
+| Rust formatting and `git diff --check`            | Passed.                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Native Rust tests                                 | `cargo test --manifest-path src-tauri/Cargo.toml --locked --offline -- --test-threads=1` attempted once. Windows Application Control blocked dependency `serde_core` build script before project compilation (OS error 4551). Added native save/restart/recovery, fingerprint, historical migration and failed-backup/migration tests did not execute. No policy bypass or repeated native build.                                          |
+| Browser component rendering                       | Actual React contract preview only, synthetic data and isolated local origin. Keyboard Tab/Enter opens both disclosures with visible blue focus. 1.2 units, priority/fixed/movable/optional labels and separate policy appeared; 1.1 values remained Not specified. Measured CSS widths 680, 1133 and 1360 px had no horizontal overflow; an additional narrow 566 px observation also fit. Temporary viewport override reset; tab closed. |
+| Packaged Windows acceptance                       | Not run; native build is blocked. No ordinary product executable/profile/database/credential was opened or migrated. Browser file import/durable save was not exercised; populated full-panel rendering and save/recovery boundaries have automated test evidence.                                                                                                                                                                         |
+
+The production build retains the preexisting large-chunk advisory. Native
+compilation, native fault/restart execution, separately identified installer,
+WebView2/Windows scaling acceptance and owner acceptance remain required.
+[Acceptance and pre-migration recovery](docs/T08_1_WINDOWS_ACCEPTANCE.md) records
+steps and the loss-of-later-changes warning. No normal installed profile is used.
+
 ## T07 — guided external conversion
 
 Status: **Testing; independent review requested, owner acceptance pending**. Approved by the owner's T07 specification
@@ -717,6 +807,39 @@ contract, validation, types, synthetic fixtures/tests, and necessary build/docum
 support. Existing application UI, SQLite, saved profiles and Garmin are untouched.
 Verification and compatibility limits are recorded in the contract documentation.
 
+## A3 — FIT import state integrity
+
+Status: **Testing; code review, packaged Windows acceptance and owner acceptance pending**.
+Owner-authorized correctness fix, November 17, 2026; baseline `origin/main` `0f98fee`.
+This changes no subjective layout or training behavior.
+
+- An import captures a dataset generation before asynchronous work. Its dedicated
+  context commit merges only FIT sources, source activities and a batch into the
+  latest accepted snapshot. All unrelated records and original values survive.
+- Hashes are rechecked at commit, so overlapping same-file imports publish one
+  source/activity set and an exact-duplicate result for the losing batch. Reports
+  use the reconciled batch. Repeated commits of one batch are idempotent.
+- Reset, restore, explicit replacement, recovery/reload and provider disposal
+  invalidate earlier imports. An invalidated result adds no records or batch and
+  asks the user to select files again. Invalidation begins when restore starts,
+  even if the restore candidate is rejected. Existing data remains writable after
+  candidate rejection; the old import still requires a fresh selection.
+- Context commands advance a synchronous latest-snapshot reference before
+  publishing React values. This narrowly necessary shared-state adjustment also
+  lets restore flush edits accepted in the same event before taking its safety
+  copy. No persistence or ref mutation runs inside a React state updater.
+- Persistence remains in an effect with serialized repository operations. A
+  render whose data is no longer the latest accepted snapshot cannot enqueue a
+  save. Supplied repositories receive the same serialization as the default path.
+- Decoding, cancellation (stop after current file), partial failures and immutable
+  original-byte preservation are unchanged. A discarded import can leave a
+  verified unreferenced source object; it is retained, never deleted or linked to
+  the replacement dataset automatically.
+
+Evidence, scoped files, verification and isolated Windows acceptance requirements:
+[A3 record](docs/A3_FIT_IMPORT_STATE_SAFETY.md). Automated React and SQLite evidence
+does not establish packaged WebView2/SQL-plugin acceptance. A3 is not Complete.
+
 ## Product principles
 
 - Local-first and private: no account, cloud backend, telemetry, or social layer.
@@ -1139,3 +1262,11 @@ Status: **F1 implementation: Complete for approved scope; owner visual acceptanc
 - **Automated verification:** the prior `pnpm verify` passed with 307 tests, and hosted frontend and Rust checks passed on original F1 commit `a176f95`. These checks do not substitute for owner visual acceptance or packaged installation acceptance.
 - **Packaged build evidence:** a local NSIS installer build succeeded after moving Cargo build outputs outside OneDrive with `CARGO_TARGET_DIR`, producing `Stride Plan_0.1.0_x64-setup.exe`. The generated installer has not been installed or smoke-tested. Packaged Windows acceptance, existing installed-profile compatibility, full native storage, and Garmin Credential Manager isolation remain unverified and deferred to release testing by owner agreement.
 - **Repository and merge state:** the F1 worktree was clean at `a176f95`, and `git diff --check origin/main...HEAD` returned no errors. PR #21 remains awaiting an explicit owner merge decision; do not treat this visual acceptance as full release acceptance or merge authorization.
+
+### F1 authorized main-merge verification — November 17, 2026
+
+- Merged fetched `origin/main` `d54cc0cefe40cbe09bf9a7ba9d50500df50ffd43` into the existing F1 branch. Fresh `git merge-tree --write-tree origin/main HEAD` analysis identified content conflicts only in `ROADMAP.md` and `UI_INVENTORY.md`; both retain main's T08.1/A3 records and the approved F1 information. The F1 roadmap now records PR #18 as merged and PR #20 as an open draft.
+- Reviewed automatically merged `DESIGN.md`: incoming T08.1/A3 records and the F1 specification/acceptance record were retained without new contradictions, accidental deletions or duplicated decisions. All application, test, schema and infrastructure changes from main use Git's automatic merge result without manual rewrites.
+- Restored `docs/PROJECT_STATUS.md` exactly from main. This centrally maintained tracker receives no feature-branch updates; F1 acceptance evidence remains in the task-specific sections of this document, `ROADMAP.md` and `UI_INVENTORY.md`.
+- Local `pnpm verify` passed generated-type consistency, Prettier, TypeScript, **366 tests in 29 files**, and the production frontend build. `git diff --check` and the staged equivalent passed. The production build retains the existing large-chunk advisory.
+- This merge verification is automated local evidence. Browser/native visual acceptance, keyboard/navigation, live system-theme changes, Windows 100%/150%/200% scaling, narrow-window review and the successful NSIS build remain the prior evidence recorded above; they were not rerun. Packaged installation/smoke testing, existing-profile compatibility, full native storage and Garmin Credential Manager isolation remain deferred/unverified. PR #21 remains a draft and requires separate explicit merge authorization.

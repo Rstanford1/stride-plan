@@ -317,7 +317,7 @@ async fn save_as_file_retains_exact_envelope_and_recovers_without_database_mutat
 #[tokio::test]
 async fn future_partial_database_and_invalid_transport_fail_closed() {
     for sql in [
-        "PRAGMA user_version=4",
+        "PRAGMA user_version=5",
         "CREATE TABLE unknown_native(id TEXT)",
         "CREATE TABLE sqliteXfuture(id TEXT)",
         "CREATE TABLE plan_draft_sources(id TEXT)",
@@ -417,7 +417,7 @@ async fn invalid_ledger_or_populated_unused_tables_block_without_modification() 
 async fn duplicate_publish_race_and_legacy_restore_race_are_serialized() {
     let profile = Profile::new(false).await;
     let store = profile.store();
-    store.prepare(SNAPSHOT).await.unwrap();
+    store.prepare(SNAPSHOT, "1.1").await.unwrap();
     let (first, second) = tokio::join!(store.save(request()), store.save(request()));
     assert_eq!(first.unwrap().record, second.unwrap().record);
     let replacement = SNAPSHOT.replace("\"mi\"", "\"km\"");
@@ -470,24 +470,27 @@ fn process_restart_round_trip() {
         .enable_all()
         .build()
         .unwrap();
-    let profile = runtime.block_on(Profile::new(false));
-    for phase in ["save", "read"] {
-        let result = Command::new(std::env::current_exe().unwrap())
-            .args([
-                "--exact",
-                "plan_draft_store::tests::restart_worker",
-                "--ignored",
-                "--nocapture",
-            ])
-            .env("STRIDE_T05_SYNTHETIC_ROOT", &profile.0)
-            .env("STRIDE_T05_SYNTHETIC_PHASE", phase)
-            .output()
-            .unwrap();
-        assert!(
-            result.status.success(),
-            "{}",
-            String::from_utf8_lossy(&result.stdout)
-        );
+    for schema in ["1.1", "1.2"] {
+        let profile = runtime.block_on(Profile::new(false));
+        for phase in ["save", "read"] {
+            let result = Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "plan_draft_store::tests::restart_worker",
+                    "--ignored",
+                    "--nocapture",
+                ])
+                .env("STRIDE_T05_SYNTHETIC_ROOT", &profile.0)
+                .env("STRIDE_T05_SYNTHETIC_PHASE", phase)
+                .env("STRIDE_T081_SYNTHETIC_SCHEMA", schema)
+                .output()
+                .unwrap();
+            assert!(
+                result.status.success(),
+                "{}",
+                String::from_utf8_lossy(&result.stdout)
+            );
+        }
     }
 }
 #[tokio::test]
@@ -507,12 +510,20 @@ async fn restart_worker() {
         sources: root.join("sources"),
         fault: None,
     };
+    let mut input = request();
+    if std::env::var("STRIDE_T081_SYNTHETIC_SCHEMA").as_deref() == Ok("1.2") {
+        input.bytes =
+            include_bytes!("../../src/domain/__fixtures__/training-plan/valid-1.2-75plus.json")
+                .to_vec();
+        input.source_hash = hash(&input.bytes);
+        input.validator_fingerprint = version_fingerprint("1.2", false);
+    }
     if std::env::var("STRIDE_T05_SYNTHETIC_PHASE").unwrap() == "save" {
-        store.save(request()).await.unwrap();
+        store.save(input).await.unwrap();
     } else {
         let saved = store.read().await.unwrap().unwrap();
-        assert_eq!(saved.bytes, bytes());
-        assert_eq!(saved.record.source_hash, hash(&bytes()));
+        assert_eq!(saved.bytes, input.bytes);
+        assert_eq!(saved.record.source_hash, input.source_hash);
     }
 }
 
@@ -534,4 +545,124 @@ fn versioned_wire_contracts_reject_arbitrary_paths() {
     assert!(!timestamp("unbounded"));
     assert!(!timestamp("2026-02-30T03:00:00.000Z"));
     assert!(!Path::new("synthetic.json").is_absolute());
+}
+
+#[tokio::test]
+async fn v12_save_restart_recovery_and_fingerprint_validation() {
+    let first = Profile::new(false).await;
+    let mut input = request();
+    input.bytes =
+        include_bytes!("../../src/domain/__fixtures__/training-plan/valid-1.2-75plus.json")
+            .to_vec();
+    input.source_hash = hash(&input.bytes);
+    input.validator_fingerprint = version_fingerprint("1.2", false);
+    let saved = first.store().save(input).await.unwrap();
+    assert_eq!(version(&first.store()).await, 4);
+    assert_eq!(saved.record.schema_version, "1.2");
+    assert_eq!(saved.record.validator_version, "t081-1");
+    assert_eq!(
+        first.store().read().await.unwrap().unwrap().record,
+        saved.record
+    );
+    let envelope = first.store().export().await.unwrap();
+    let second = Profile::new(true).await;
+    let recovered = second.store().recover(envelope, SNAPSHOT).await.unwrap();
+    assert_eq!(recovered.record, saved.record);
+    assert_eq!(recovered.bytes, saved.bytes);
+    let mut damaged = second.store().export().await.unwrap();
+    damaged.record.validator_fingerprint = "a".repeat(64);
+    damaged.record_hash = hash(&serde_json::to_vec(&damaged.record).unwrap());
+    let third = Profile::new(false).await;
+    assert!(third.store().recover(damaged, SNAPSHOT).await.is_err());
+    assert_eq!(version(&third.store()).await, 0);
+}
+
+#[tokio::test]
+async fn v12_migration_preserves_each_historical_record_report_source_and_recovery() {
+    for pre16 in [false, true] {
+        let original = Profile::new(true).await;
+        let store = original.store();
+        store.save(request()).await.unwrap();
+        sqlx::query("UPDATE plan_draft_validation SET validator_fingerprint=?")
+            .bind(version_fingerprint("1.1", pre16))
+            .execute(&mut store.connect(false).await.unwrap())
+            .await
+            .unwrap();
+        let before = store.read().await.unwrap().unwrap();
+        let envelope = serde_json::to_string(&store.export().await.unwrap()).unwrap();
+        store.prepare(SNAPSHOT, "1.2").await.unwrap();
+        assert_eq!(version(&store).await, 4);
+        let after = store.read().await.unwrap().unwrap();
+        assert_eq!(after.record, before.record);
+        assert_eq!(after.bytes, before.bytes);
+        assert_eq!(
+            serde_json::to_string(&store.export().await.unwrap()).unwrap(),
+            envelope
+        );
+        let restored = Profile::new(false).await;
+        assert_eq!(
+            restored
+                .store()
+                .recover(serde_json::from_str(&envelope).unwrap(), SNAPSHOT)
+                .await
+                .unwrap()
+                .record,
+            before.record
+        );
+        assert_eq!(version(&restored.store()).await, 3);
+    }
+}
+
+#[tokio::test]
+async fn failed_version_migration_rolls_back_and_verified_backup_restores_old_schema() {
+    for fault in ["backup_corrupt", "version_migration", "migration"] {
+        let profile = Profile::new(true).await;
+        let mut store = profile.store();
+        let saved = store.save(request()).await.unwrap();
+        let before = inventory(&mut store.connect(true).await.unwrap())
+            .await
+            .unwrap();
+        store.fault = Some(fault);
+        assert!(store.prepare(SNAPSHOT, "1.2").await.is_err());
+        assert_eq!(version(&store).await, 3);
+        assert_eq!(
+            inventory(&mut store.connect(true).await.unwrap())
+                .await
+                .unwrap(),
+            before
+        );
+        assert_eq!(store.read().await.unwrap().unwrap().record, saved.record);
+        store.fault = None;
+        store.prepare(SNAPSHOT, "1.2").await.unwrap();
+        assert_eq!(version(&store).await, 4);
+        let backups: Vec<_> = fs::read_dir(profile.0.join("t081-safety"))
+            .unwrap()
+            .map(|p| p.unwrap().path())
+            .collect();
+        let mut valid = None;
+        for path in backups {
+            if let Ok(mut copy) = SqliteConnection::connect_with(
+                &SqliteConnectOptions::new().filename(&path).read_only(true),
+            )
+            .await
+            {
+                if check_schema(&mut copy).await.is_ok() {
+                    valid = Some(path.clone());
+                }
+                copy.close().await.unwrap();
+            }
+        }
+        let backup = valid.unwrap();
+        let restored = Profile::new(false).await;
+        fs::copy(backup, &restored.store().database).unwrap();
+        // Immutable sources are retained separately, never rewritten by the migration.
+        FitSourceStorage::plan(restored.store().sources.clone())
+            .store(&saved.record.source_hash, &saved.bytes)
+            .unwrap();
+        assert_eq!(version(&restored.store()).await, 3);
+        assert_eq!(
+            restored.store().read().await.unwrap().unwrap().record,
+            saved.record
+        );
+    }
 }

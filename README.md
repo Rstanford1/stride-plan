@@ -9,7 +9,7 @@ Stride Plan is a Windows-first, local running-plan and journal application. It k
 - Activity review for plan matching, bundles, primary/supporting roles, and lap classification.
 - Weekly review with core and flexible planned mileage, actual mileage, completion, outcomes, long run, run days, and explainable observations.
 - Two restrained trends with accessible table alternatives.
-- Training Plan JSON 1.1 validation and preview, one durable draft with exact source preservation and recovery, legacy JSON snapshot export/restore, editable reference values, and FIT import handoff.
+- Training Plan JSON 1.1/1.2 validation and preview, one durable draft with exact source preservation and recovery, legacy JSON snapshot export/restore, editable reference values, and FIT import handoff.
 - A Tauri 2 shell, SQLite migration, browser development fallback, and testable domain modules.
 
 ## Run for development
@@ -98,17 +98,17 @@ and the T04 record in DESIGN.md. User-supplied keys do not waive this gate.
 
 ## Plan import format
 
-Training plans are imported only as **Training Plan JSON 1.1**, through
+Training plans are imported only as **Training Plan JSON 1.1 or 1.2**, through
 **Data & settings → JSON training-plan draft**. Convert a coach-provided Excel,
 CSV, PDF or other document using an external AI agent of your choosing before
 importing. Stride Plan does not parse spreadsheets or PDFs and does not integrate
 an AI provider or request AI credentials. The authoritative
-[JSON 1.1 schema and contract](schemas/training-plan/README.md) describe the
+[versioned JSON schemas and contract](schemas/training-plan/README.md) describe the
 accepted format. Stride Plan validates the result, preserves provenance and
 exact original JSON bytes, previews errors/warnings and saves a draft. Activation
 will require a later explicitly confirmed workflow.
 
-Select a JSON 1.1 file, review its validation preview, and choose **Save as draft**.
+Select a JSON 1.1 or 1.2 file, review its validation preview, and choose **Save as draft**.
 Use **Reopen saved draft** after restarting. This keeps one read-only draft and
 its exact original JSON bytes; it does not activate the plan or change workouts.
 Identical files reuse the draft, while different bytes produce a conflict.
@@ -146,3 +146,12 @@ T02 saved-state recovery and legacy restore compatibility, safety-copy locations
 verification and native-runtime limits are recorded in [DESIGN.md](DESIGN.md#t02-verification-and-recovery-record). This build supports snapshot versions 2–4;
 version-5/6 development profiles must use a compatible application and are never
 downgraded. Legacy JSON cannot replace newer native records.
+
+T08.1 adds independent weekly targets, scheduling/priority classifications and
+separate user-policy evidence to JSON 1.2, within read-only preview and drafts.
+The supplied conversion schema/example/instructions now target 1.2; existing 1.1
+files and recognized historical drafts retain their original validation identity.
+Saving/recovering a 1.2 draft can upgrade draft storage after a verified safety copy.
+Older builds may reject that database. See [T08.1 Windows acceptance and manual
+pre-migration recovery](docs/T08_1_WINDOWS_ACCEPTANCE.md), including the warning
+that restoring an older backup discards later changes from the restored profile.

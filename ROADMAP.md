@@ -2,7 +2,15 @@
 
 ## F1 shared visual foundation — November 17, 2026
 
-**Status: F1 implementation: Complete for approved scope; owner visual acceptance passed; PR #21 awaiting merge decision. Packaged installation and existing-profile compatibility remain deferred/unverified release requirements.** Scope: six primary destinations; Plan and Weekly Review under Training; system-following warm-light/dark-charcoal semantic tokens; shared shell, focus and responsive treatment; read-only Shoes landing. No backend, persistence, Garmin, FIT, or plan-contract changes. T08.1 PRs #18 and #20 remain separate open drafts. Prior `pnpm verify` passed 307 tests, and hosted frontend/Rust checks passed on `a176f95`; those automated results are distinct from visual acceptance. Browser and native development acceptance passed, including native light/dark switching and 100%/150%/200% scaling. A local NSIS build produced `Stride Plan_0.1.0_x64-setup.exe`, but it has not been installed or smoke-tested. Narrow 200% Training-table wrapping is deferred to F3. Do not merge PR #21 without separate explicit owner authorization.
+**Status: F1 implementation: Complete for approved scope; owner visual acceptance passed; PR #21 awaiting merge decision. Packaged installation and existing-profile compatibility remain deferred/unverified release requirements.** Scope: six primary destinations; Plan and Weekly Review under Training; system-following warm-light/dark-charcoal semantic tokens; shared shell, focus and responsive treatment; read-only Shoes landing. No backend, persistence, Garmin, FIT, or plan-contract changes. T08.1 PR #18 is merged into main; the separate Windows acceptance PR #20 remains an open draft. Prior `pnpm verify` passed 307 tests, and hosted frontend/Rust checks passed on `a176f95`; those automated results are distinct from visual acceptance. Browser and native development acceptance passed, including native light/dark switching and 100%/150%/200% scaling. A local NSIS build produced `Stride Plan_0.1.0_x64-setup.exe`, but it has not been installed or smoke-tested. Narrow 200% Training-table wrapping is deferred to F3. Do not merge PR #21 without separate explicit owner authorization.
+
+## T08.1 versioned plan contract
+
+**Testing**. Owner-approved JSON 1.2 contract, read-only review and narrow draft
+migration are implemented locally. Frontend/adapter and SQLite SQL checks are
+recorded in DESIGN.md; native compilation/execution is blocked by Windows
+Application Control. Packaged acceptance and user acceptance remain pending.
+Historical 1.1 preservation is covered; no active-plan changes or publication.
 
 ## Status key
 
@@ -38,6 +46,17 @@ Strengths:
 | P2       | Improve empty, loading, success, error, and disabled states across screens.                                                                                                                        | Clarity and confidence.                                                                    | Medium      | Messaging conventions                                  | Backlog     |
 | P2       | Rework Trends empty states and choose which signals genuinely help.                                                                                                                                | Avoids empty/noisy dashboards.                                                             | Low–medium  | Metrics trust                                          | Backlog     |
 | P3       | Split the global CSS and large Data screen into maintainable feature modules after behavior stabilizes.                                                                                            | Developer maintainability.                                                                 | Medium      | Approved design system                                 | Backlog     |
+
+## A3 integrity fix — November 17, 2026
+
+**Testing; review and isolated packaged Windows/owner acceptance pending** on
+`codex/a3-fit-import-state-safety`, based on `origin/main` `0f98fee`.
+Authorized scope: latest-state FIT batch commit, commit-time hash deduplication,
+dataset-generation invalidation and ordered snapshot publication. Synthetic
+React/context/controller/browser and real SQLite regression evidence is in
+[the A3 record](docs/A3_FIT_IMPORT_STATE_SAFETY.md). This is not approval of other
+backup/restore or UI redesign backlog items. Do not mark Complete or merge before
+review and explicit owner approval.
 
 ## Known technical findings
 

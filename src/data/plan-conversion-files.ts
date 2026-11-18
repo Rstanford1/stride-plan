@@ -1,12 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
-import schema from "../../schemas/training-plan/1.1.schema.json?raw";
-import example from "../domain/__fixtures__/training-plan/valid-workout.json?raw";
+import schema from "../../schemas/training-plan/1.2.schema.json?raw";
+import example from "../domain/__fixtures__/training-plan/valid-1.2-75plus.json?raw";
 import { nativeDraftsAvailable } from "./plan-draft-store";
 
 export const conversionFiles = {
   schema: {
-    name: "stride-plan-training-plan-1.1.schema.json",
+    name: "stride-plan-training-plan-1.2.schema.json",
     contents: schema,
   },
   example: { name: "stride-plan-example-plan.json", contents: example },

@@ -55,7 +55,7 @@ export function PlanConversionGuide({
               </p>
               <p>
                 PDF conversion guidance is pending provenance review. Direct PDF
-                source records are not supported by JSON 1.1.
+                source records are not supported by JSON 1.1 or 1.2.
               </p>
               <button
                 className="button secondary"
@@ -77,7 +77,7 @@ export function PlanConversionGuide({
           </p>
           <div className="plan-import-choices">
             <div className="plan-import-card">
-              <h4>Training Plan JSON Schema 1.1</h4>
+              <h4>Training Plan JSON Schema 1.2</h4>
               <p>The authoritative format Stride Plan validates.</p>
               <button
                 className="button secondary"

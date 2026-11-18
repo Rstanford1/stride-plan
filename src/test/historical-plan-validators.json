@@ -1,0 +1,14 @@
+[
+  {
+    "schemaVersion": "1.1",
+    "validatorVersion": "t01-1",
+    "validatorFingerprint": "316c146e89591f77fe0abd43f4df1ed74d845f09dd305d4078acf49ef0d028e9",
+    "sourceCommit": "f58ad59"
+  },
+  {
+    "schemaVersion": "1.1",
+    "validatorVersion": "t01-1",
+    "validatorFingerprint": "d4355feb48bc3b2df0443c9314011ef5ac05826fc3aaa7b53dc78c2bf79303ba",
+    "sourceCommit": "fb7ff13"
+  }
+]

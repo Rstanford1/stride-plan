@@ -23,12 +23,12 @@ impl Artifact {
     fn contents(&self) -> (&'static str, &'static [u8]) {
         match self {
             Self::Schema => (
-                "stride-plan-training-plan-1.1.schema.json",
-                include_bytes!("../../schemas/training-plan/1.1.schema.json"),
+                "stride-plan-training-plan-1.2.schema.json",
+                include_bytes!("../../schemas/training-plan/1.2.schema.json"),
             ),
             Self::Example => (
                 "stride-plan-example-plan.json",
-                include_bytes!("../../src/domain/__fixtures__/training-plan/valid-workout.json"),
+                include_bytes!("../../src/domain/__fixtures__/training-plan/valid-1.2-75plus.json"),
             ),
         }
     }
@@ -94,9 +94,9 @@ mod tests {
                     &value["schemaVersion"]
                 },
                 if kind == "schema" {
-                    "urn:stride-plan:training-plan:1.1"
+                    "urn:stride-plan:training-plan:1.2"
                 } else {
-                    "1.1"
+                    "1.2"
                 }
             );
             assert!(matches!(

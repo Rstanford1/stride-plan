@@ -1,0 +1,316 @@
+{
+  "schemaVersion": "1.2",
+  "requiredFeatures": [],
+  "manifest": {
+    "planId": "synthetic-plan",
+    "versionId": "synthetic-version-1",
+    "title": "Synthetic 75+ MPW contract scenario; not training advice",
+    "units": {
+      "distance": "mi",
+      "duration": "min",
+      "pace": "s/mi"
+    },
+    "generator": {
+      "name": "synthetic-contract-fixture",
+      "version": "1"
+    },
+    "coachText": [],
+    "mileageTier": "75+"
+  },
+  "sources": [
+    {
+      "id": "synthetic-source",
+      "kind": "authored"
+    }
+  ],
+  "provenance": [
+    {
+      "path": "",
+      "sourceId": "synthetic-source",
+      "location": {
+        "kind": "authored"
+      }
+    }
+  ],
+  "calendar": {
+    "startDate": "2026-11-16",
+    "endDate": "2026-11-22",
+    "weekStartsOn": 1
+  },
+  "phases": [],
+  "weeks": [
+    {
+      "id": "week-1",
+      "number": 1,
+      "startDate": "2026-11-16",
+      "endDate": "2026-11-22",
+      "coachText": [],
+      "days": [
+        {
+          "id": "day-1",
+          "date": "2026-11-16",
+          "kind": "training",
+          "coachText": [],
+          "sessions": [
+            {
+              "id": "session-1",
+              "title": "Prescribed easy mileage",
+              "runType": "easy",
+              "role": "independent",
+              "participation": "required",
+              "completionClass": "core",
+              "duration": {
+                "value": 30,
+                "unit": "min"
+              },
+              "coachText": [
+                "Synthetic source instruction for Prescribed easy mileage."
+              ],
+              "schedulingPolicy": "movable-within-week",
+              "priorityClass": "supporting"
+            }
+          ]
+        },
+        {
+          "id": "day-2",
+          "date": "2026-11-17",
+          "kind": "training",
+          "coachText": [],
+          "sessions": [
+            {
+              "id": "session-2",
+              "title": "Synthetic threshold session",
+              "runType": "workout",
+              "role": "main",
+              "participation": "required",
+              "completionClass": "core",
+              "duration": {
+                "value": 30,
+                "unit": "min"
+              },
+              "coachText": [
+                "Synthetic source instruction for Synthetic threshold session."
+              ],
+              "schedulingPolicy": "fixed-date",
+              "priorityClass": "priority"
+            },
+            {
+              "id": "optional-double",
+              "title": "Synthetic optional double",
+              "runType": "easy",
+              "role": "double",
+              "participation": "optional",
+              "completionClass": "flexible",
+              "duration": {
+                "value": 30,
+                "unit": "min"
+              },
+              "coachText": ["Synthetic: optional double."],
+              "primarySessionId": "session-2",
+              "schedulingPolicy": "movable-within-week",
+              "priorityClass": "supporting"
+            }
+          ]
+        },
+        {
+          "id": "day-3",
+          "date": "2026-11-18",
+          "kind": "training",
+          "coachText": [],
+          "sessions": [
+            {
+              "id": "session-3",
+              "title": "Prescribed easy mileage",
+              "runType": "easy",
+              "role": "independent",
+              "participation": "required",
+              "completionClass": "core",
+              "duration": {
+                "value": 30,
+                "unit": "min"
+              },
+              "coachText": [
+                "Synthetic source instruction for Prescribed easy mileage."
+              ],
+              "schedulingPolicy": "movable-within-week",
+              "priorityClass": "supporting"
+            }
+          ]
+        },
+        {
+          "id": "day-4",
+          "date": "2026-11-19",
+          "kind": "training",
+          "coachText": [],
+          "sessions": [
+            {
+              "id": "session-4",
+              "title": "Synthetic intervals",
+              "runType": "workout",
+              "role": "independent",
+              "participation": "required",
+              "completionClass": "core",
+              "duration": {
+                "value": 30,
+                "unit": "min"
+              },
+              "coachText": [
+                "Synthetic source instruction for Synthetic intervals."
+              ],
+              "schedulingPolicy": "fixed-date",
+              "priorityClass": "priority"
+            }
+          ]
+        },
+        {
+          "id": "day-5",
+          "date": "2026-11-20",
+          "kind": "rest",
+          "coachText": [],
+          "sessions": []
+        },
+        {
+          "id": "day-6",
+          "date": "2026-11-21",
+          "kind": "training",
+          "coachText": [],
+          "sessions": [
+            {
+              "id": "session-6",
+              "title": "Prescribed easy mileage",
+              "runType": "easy",
+              "role": "independent",
+              "participation": "required",
+              "completionClass": "core",
+              "duration": {
+                "value": 30,
+                "unit": "min"
+              },
+              "coachText": [
+                "Synthetic source instruction for Prescribed easy mileage."
+              ],
+              "schedulingPolicy": "movable-within-week",
+              "priorityClass": "supporting"
+            }
+          ]
+        },
+        {
+          "id": "day-7",
+          "date": "2026-11-22",
+          "kind": "training",
+          "coachText": [],
+          "sessions": [
+            {
+              "id": "session-7",
+              "title": "Designated long run",
+              "runType": "long",
+              "role": "independent",
+              "participation": "required",
+              "completionClass": "core",
+              "duration": {
+                "value": 30,
+                "unit": "min"
+              },
+              "coachText": [
+                "Synthetic source instruction for Designated long run."
+              ],
+              "schedulingPolicy": "fixed-date",
+              "priorityClass": "priority"
+            }
+          ]
+        }
+      ],
+      "totalMileageTarget": {
+        "min": 75,
+        "max": 85,
+        "unit": "mi"
+      }
+    }
+  ],
+  "paceReferences": [],
+  "progressions": [],
+  "reviewNotes": [],
+  "interpretationPolicies": [
+    {
+      "id": "option-b",
+      "statement": "Synthetic user approval: prescribed easy mileage may be redistributed within its original training week. Track weekly mileage and priority workouts separately. Optional doubles remain optional. Mileage cannot replace a priority workout.",
+      "approval": "user-approved"
+    }
+  ],
+  "interpretationEvidence": [
+    {
+      "path": "/weeks/0/totalMileageTarget",
+      "kind": "coach"
+    },
+    {
+      "path": "/weeks/0/days/0/sessions/0/schedulingPolicy",
+      "kind": "user-policy",
+      "policyId": "option-b"
+    },
+    {
+      "path": "/weeks/0/days/0/sessions/0/priorityClass",
+      "kind": "user-policy",
+      "policyId": "option-b"
+    },
+    {
+      "path": "/weeks/0/days/1/sessions/0/schedulingPolicy",
+      "kind": "user-policy",
+      "policyId": "option-b"
+    },
+    {
+      "path": "/weeks/0/days/1/sessions/0/priorityClass",
+      "kind": "user-policy",
+      "policyId": "option-b"
+    },
+    {
+      "path": "/weeks/0/days/1/sessions/1/schedulingPolicy",
+      "kind": "user-policy",
+      "policyId": "option-b"
+    },
+    {
+      "path": "/weeks/0/days/1/sessions/1/priorityClass",
+      "kind": "user-policy",
+      "policyId": "option-b"
+    },
+    {
+      "path": "/weeks/0/days/2/sessions/0/schedulingPolicy",
+      "kind": "user-policy",
+      "policyId": "option-b"
+    },
+    {
+      "path": "/weeks/0/days/2/sessions/0/priorityClass",
+      "kind": "user-policy",
+      "policyId": "option-b"
+    },
+    {
+      "path": "/weeks/0/days/3/sessions/0/schedulingPolicy",
+      "kind": "user-policy",
+      "policyId": "option-b"
+    },
+    {
+      "path": "/weeks/0/days/3/sessions/0/priorityClass",
+      "kind": "user-policy",
+      "policyId": "option-b"
+    },
+    {
+      "path": "/weeks/0/days/5/sessions/0/schedulingPolicy",
+      "kind": "user-policy",
+      "policyId": "option-b"
+    },
+    {
+      "path": "/weeks/0/days/5/sessions/0/priorityClass",
+      "kind": "user-policy",
+      "policyId": "option-b"
+    },
+    {
+      "path": "/weeks/0/days/6/sessions/0/schedulingPolicy",
+      "kind": "user-policy",
+      "policyId": "option-b"
+    },
+    {
+      "path": "/weeks/0/days/6/sessions/0/priorityClass",
+      "kind": "user-policy",
+      "policyId": "option-b"
+    }
+  ]
+}

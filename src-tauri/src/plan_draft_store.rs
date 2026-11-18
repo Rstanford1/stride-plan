@@ -1,4 +1,4 @@
-//! T05 only: additive schema, one immutable draft, no active-plan projection.
+//! T05/T08.1: versioned validation storage, one immutable draft, no active-plan projection.
 #[cfg(all(test, windows))]
 #[path = "plan_draft_tests.rs"]
 mod tests;
@@ -52,15 +52,44 @@ pub fn hash(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 pub fn fingerprint() -> String {
+    version_fingerprint("1.1", false)
+}
+fn version_fingerprint(version: &str, pre16: bool) -> String {
     hash(
         format!(
             "{}\n---\n{}",
-            include_str!("../../schemas/training-plan/1.1.schema.json"),
-            include_str!("../../src/domain/training-plan-validation.ts")
+            if version == "1.2" {
+                include_str!("../../schemas/training-plan/1.2.schema.json")
+            } else {
+                include_str!("../../schemas/training-plan/1.1.schema.json")
+            },
+            if version == "1.2" {
+                include_str!("../../src/domain/training-plan-validation-1.2.ts")
+            } else if pre16 {
+                include_str!("../../src/domain/training-plan-validation-pre16.ts")
+            } else {
+                include_str!("../../src/domain/training-plan-validation.ts")
+            }
         )
         .as_bytes(),
     )
 }
+
+fn recognized_validator(record: &Record) -> bool {
+    match (
+        record.schema_version.as_str(),
+        record.validator_version.as_str(),
+    ) {
+        ("1.1", "t01-1") => [
+            version_fingerprint("1.1", false),
+            version_fingerprint("1.1", true),
+        ]
+        .contains(&record.validator_fingerprint),
+        ("1.2", "t081-1") => record.validator_fingerprint == version_fingerprint("1.2", false),
+        _ => false,
+    }
+}
+const VERSION_DDL: &str = include_str!("../migrations/0004_plan_draft_versions.sql");
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -172,7 +201,8 @@ impl Store {
             draft,
         })
     }
-    async fn prepare(&self, expected: &str) -> Result<()> {
+    async fn prepare(&self, expected: &str, schema_version: &str) -> Result<()> {
+        let target = if schema_version == "1.2" { 4 } else { 3 };
         let _guards = guard(&self.database, false)?;
         // Opening a writable SQLite connection can recover/checkpoint journals.
         // Keep the source read-only until its safety copy has been verified.
@@ -188,17 +218,37 @@ impl Store {
         if value["schemaVersion"] != 4 {
             return Err(error("unsupported"));
         }
-        if version == 3 {
+        if version >= target {
             return Ok(());
         }
+        // Do not migrate an existing draft whose recognized identity or source
+        // integrity cannot be verified. This never reissues its stored report.
+        if let Some(record) = read_record(&mut db).await? {
+            let bytes = FitSourceStorage::plan(self.sources.clone())
+                .read(&record.source_hash)
+                .map_err(|_| error("source"))?;
+            verify_record(&record, &bytes)?;
+        }
         let before = inventory(&mut db).await?;
-        let directory = self
-            .database
-            .parent()
-            .ok_or_else(|| error("backup"))?
-            .join("t05-safety");
+        let directory =
+            self.database
+                .parent()
+                .ok_or_else(|| error("backup"))?
+                .join(if target == 4 {
+                    "t081-safety"
+                } else {
+                    "t05-safety"
+                });
         std::fs::create_dir_all(&directory).map_err(|_| error("backup"))?;
-        let copy = directory.join(format!("before-t05-{}.sqlite", uuid::Uuid::new_v4()));
+        let copy = directory.join(format!(
+            "{}-{}.sqlite",
+            if target == 4 {
+                "before-v4"
+            } else {
+                "before-t05"
+            },
+            uuid::Uuid::new_v4()
+        ));
         let _copy_guards = guard(&copy, true).map_err(|_| error("backup"))?;
         sqlx::query("VACUUM INTO ?")
             .bind(copy.to_str().ok_or_else(|| error("backup"))?)
@@ -231,26 +281,39 @@ impl Store {
             .execute(&mut db)
             .await?;
         let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
-        if check_schema(&mut tx).await? != 0 || inventory(&mut tx).await? != before {
+        if check_schema(&mut tx).await? != version || inventory(&mut tx).await? != before {
             return Err(error("conflict"));
         }
-        execute_ddl(&mut tx, DDL).await?;
-        sqlx::query("PRAGMA user_version=3")
-            .execute(&mut *tx)
-            .await?;
+        if version == 0 {
+            execute_ddl(&mut tx, DDL).await?;
+        }
+        if target == 4 {
+            execute_ddl(&mut tx, VERSION_DDL).await?;
+            #[cfg(test)]
+            if self.fault == Some("version_migration") {
+                return Err(error("storage"));
+            }
+        }
+        sqlx::query(if target == 4 {
+            "PRAGMA user_version=4"
+        } else {
+            "PRAGMA user_version=3"
+        })
+        .execute(&mut *tx)
+        .await?;
         #[cfg(test)]
         if self.fault == Some("migration") {
             return Err(error("storage"));
         }
         integrity(&mut tx).await?;
-        if legacy_inventory(&mut tx).await? != before {
+        if migration_inventory(&mut tx, version).await? != before {
             return Err(error("corrupt"));
         }
         tx.commit().await?;
         db.close().await?;
         let mut reopened = self.connect(true).await?;
         check_schema(&mut reopened).await?;
-        if legacy_inventory(&mut reopened).await? != before {
+        if migration_inventory(&mut reopened, version).await? != before {
             return Err(error("corrupt"));
         }
         Ok(())
@@ -281,7 +344,7 @@ impl Store {
         }
         let value = source_value(&request.bytes)?;
         if request.source_hash != hash(&request.bytes)
-            || request.validator_fingerprint != fingerprint()
+            || request.validator_fingerprint != version_fingerprint(&value.schema_version, false)
         {
             return Err(error("invalid"));
         }
@@ -299,14 +362,20 @@ impl Store {
             revision: 1,
             state: "draft".into(),
             created_at: String::new(),
-            schema_version: "1.1".into(),
-            validator_version: "t01-1".into(),
+            schema_version: value.schema_version.clone(),
+            validator_version: if value.schema_version == "1.2" {
+                "t081-1"
+            } else {
+                "t01-1"
+            }
+            .into(),
             validator_fingerprint: request.validator_fingerprint,
             diagnostics_hash: hash(request.diagnostics_json.as_bytes()),
             diagnostics_json: request.diagnostics_json,
         };
         record.draft_id = format!("plan-draft:{}", record.source_hash);
-        self.prepare(&request.expected_snapshot).await?;
+        self.prepare(&request.expected_snapshot, &record.schema_version)
+            .await?;
         let mut db = self.connect(false).await?;
         let now: String = sqlx::query_scalar("SELECT strftime('%Y-%m-%dT%H:%M:%fZ','now')")
             .fetch_one(&mut db)
@@ -401,8 +470,9 @@ impl Store {
             .bind(&record.created_at)
             .execute(&mut *tx)
             .await?;
-        sqlx::query("INSERT INTO plan_draft_validation VALUES(?,'1.1',?,?,?,?)")
+        sqlx::query("INSERT INTO plan_draft_validation VALUES(?,?,?,?,?,?)")
             .bind(&record.draft_id)
+            .bind(&record.schema_version)
             .bind(&record.validator_version)
             .bind(&record.validator_fingerprint)
             .bind(&record.diagnostics_json)
@@ -446,7 +516,8 @@ impl Store {
             .decode(envelope.source_base64)
             .map_err(|_| error("invalid"))?;
         verify_record(&envelope.record, &bytes)?;
-        self.prepare(expected_snapshot).await?;
+        self.prepare(expected_snapshot, &envelope.record.schema_version)
+            .await?;
         self.publish(envelope.record, bytes, None, None, true).await
     }
     // Only the legacy snapshot is replaceable. The native draft check and CAS
@@ -556,7 +627,7 @@ fn verify_record(record: &Record, bytes: &[u8]) -> Result<()> {
             .is_some_and(|id| !valid_id(id))
         || record.revision != 1
         || record.state != "draft"
-        || record.schema_version != "1.1"
+        || record.schema_version != value.schema_version
         || record.original_file_name.is_empty()
         || record.original_file_name.chars().count() > 255
         || record
@@ -565,8 +636,7 @@ fn verify_record(record: &Record, bytes: &[u8]) -> Result<()> {
             .any(|c| c.is_control() || "/\\:".contains(c))
         || !timestamp(&record.created_at)
         || !timestamp(&record.imported_at)
-        || record.validator_version != "t01-1"
-        || record.validator_fingerprint != fingerprint()
+        || !recognized_validator(record)
         || record.diagnostics_hash != hash(record.diagnostics_json.as_bytes())
     {
         return Err(error("corrupt"));
@@ -616,7 +686,7 @@ async fn check_schema(db: &mut SqliteConnection) -> Result<i64> {
     let version: i64 = sqlx::query_scalar("PRAGMA user_version")
         .fetch_one(&mut *db)
         .await?;
-    if ![0, 3].contains(&version) {
+    if ![0, 3, 4].contains(&version) {
         return Err(error("unsupported"));
     }
     let objects = schema(db).await?;
@@ -626,7 +696,7 @@ async fn check_schema(db: &mut SqliteConnection) -> Result<i64> {
     .fetch_all(&mut *db)
     .await?;
     for name in objects.keys() {
-        if !LEGACY.contains(&name.as_str()) && !(version == 3 && NEW.contains(&name.as_str())) {
+        if !LEGACY.contains(&name.as_str()) && !(version >= 3 && NEW.contains(&name.as_str())) {
             return Err(error("unsupported"));
         }
     }
@@ -725,13 +795,29 @@ async fn check_schema(db: &mut SqliteConnection) -> Result<i64> {
             return Err(error("unsupported"));
         }
     }
-    if version == 3 {
-        for statement in DDL.split(';').map(str::trim).filter(|s| !s.is_empty()) {
+    if version >= 3 {
+        let expected_ddl = if version == 4 {
+            DDL.replace("schema_version = '1.1'", "schema_version IN ('1.1','1.2')")
+                .replace("CHECK(validator_version = 't01-1')", "CHECK((schema_version = '1.1' AND validator_version = 't01-1') OR (schema_version = '1.2' AND validator_version = 't081-1'))")
+        } else {
+            DDL.to_string()
+        };
+        for statement in expected_ddl
+            .split(';')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
             let name = statement
                 .split_whitespace()
                 .nth(2)
                 .ok_or_else(|| error("corrupt"))?;
-            if objects.get(name).map(String::as_str) != Some(statement) {
+            if objects.get(name).is_none_or(|actual| {
+                if version == 3 {
+                    actual != statement
+                } else {
+                    canonical(actual).replace('"', "") != canonical(statement).replace('"', "")
+                }
+            }) {
                 return Err(error("unsupported"));
             }
         }
@@ -754,7 +840,7 @@ async fn inventory_inner(
         if legacy_only && NEW.contains(&name.as_str()) {
             continue;
         }
-        if !LEGACY.contains(&name.as_str()) {
+        if !LEGACY.contains(&name.as_str()) && !NEW.contains(&name.as_str()) {
             return Err(error("unsupported"));
         }
         let columns = sqlx::query(&format!("PRAGMA table_info(\"{name}\")"))
@@ -777,6 +863,25 @@ async fn inventory_inner(
         result.insert(name, rows);
     }
     Ok(result)
+}
+// Compare every old value while allowing only the approved validation-table DDL change.
+async fn migration_inventory(
+    db: &mut SqliteConnection,
+    previous: i64,
+) -> Result<BTreeMap<String, Vec<String>>> {
+    if previous == 0 {
+        return legacy_inventory(db).await;
+    }
+    let mut values = inventory(db).await?;
+    if let Some(rows) = values.get_mut("plan_draft_validation") {
+        let original = DDL
+            .split(';')
+            .map(str::trim)
+            .find(|s| s.starts_with("CREATE TABLE plan_draft_validation"))
+            .ok_or_else(|| error("corrupt"))?;
+        rows[0] = original.to_string();
+    }
+    Ok(values)
 }
 async fn read_record(db: &mut SqliteConnection) -> Result<Option<Record>> {
     let version: i64 = sqlx::query_scalar("PRAGMA user_version")
