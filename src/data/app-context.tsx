@@ -11,6 +11,7 @@ import type { PropsWithChildren } from "react";
 import {
   createRepository,
   RestoreInputError,
+  SerializedRepository,
   type AppRepository,
 } from "./repository";
 import { createInitialData } from "../domain/seed";
@@ -19,10 +20,14 @@ import {
   storageError,
 } from "../domain/snapshot-validation";
 import { reviseSession, type SessionUpdate } from "../domain/rules";
+import { mergeFitImportBatch } from "./fit-import-commit";
+import type { FitImportBatchResult } from "./fit-import-controller";
 import type {
   Activity,
   AppData,
   AppSettings,
+  FitImportBatch,
+  FitSourceRecord,
   JournalEntry,
   LapRole,
   PlannedSession,
@@ -52,6 +57,12 @@ interface AppContextValue {
   updateLapRole: (activityId: string, lapId: string, role: LapRole) => void;
   updateSettings: (update: Partial<AppSettings>) => void;
   replaceData: (data: AppData) => void;
+  beginFitImportBatch: () => {
+    existingSources: FitSourceRecord[];
+    commitFitImportBatch: (
+      result: FitImportBatchResult,
+    ) => FitImportBatch | null;
+  };
   resetDemo: () => Promise<void>;
 }
 
@@ -62,7 +73,10 @@ export function AppProvider({
   repository: suppliedRepository,
 }: PropsWithChildren<{ repository?: AppRepository }>) {
   const repository = useMemo(
-    () => suppliedRepository ?? createRepository(),
+    () =>
+      suppliedRepository
+        ? new SerializedRepository(suppliedRepository)
+        : createRepository(),
     [suppliedRepository],
   );
   const [data, publishData] = useState<AppData>({
@@ -86,17 +100,24 @@ export function AppProvider({
   const restoring = useRef(false);
   const persisted = useRef<AppData | null>(null);
   const currentData = useRef(data);
-  currentData.current = data;
+  const importEpoch = useRef(0);
   const setData = useCallback((update: React.SetStateAction<AppData>) => {
     if (!writable.current || restoring.current) return;
-    publishData(update);
+    // Resolve commands synchronously against the latest accepted snapshot.
+    // React receives only values; persistence stays in the effect below.
+    const next =
+      typeof update === "function" ? update(currentData.current) : update;
+    currentData.current = next;
+    publishData(next);
   }, []);
   const fail = useCallback((error: unknown) => {
+    importEpoch.current += 1;
     writable.current = false;
     setRecoveryError(storageError(error));
     setReady(false);
   }, []);
   const retryLoading = useCallback(() => {
+    importEpoch.current += 1;
     writable.current = false;
     setRecoveryError(null);
     setReady(false);
@@ -110,6 +131,7 @@ export function AppProvider({
       .then((loaded) => {
         if (!active) return;
         persisted.current = loaded;
+        currentData.current = loaded;
         publishData(loaded);
         writable.current = true;
         setRecoveryError(null);
@@ -120,6 +142,7 @@ export function AppProvider({
       });
     return () => {
       active = false;
+      importEpoch.current += 1;
       writable.current = false;
     };
   }, [repository, attempt, fail]);
@@ -128,6 +151,7 @@ export function AppProvider({
       !ready ||
       !writable.current ||
       restoring.current ||
+      currentData.current !== data ||
       persisted.current === data
     )
       return;
@@ -146,6 +170,7 @@ export function AppProvider({
           "Safe restore is unavailable while data is unresolved.",
         );
       restoring.current = true;
+      importEpoch.current += 1;
       try {
         // Flush edits before capturing the durable pre-restore snapshot.
         if (persisted.current !== currentData.current) {
@@ -153,6 +178,7 @@ export function AppProvider({
         }
         const restored = await repository.restore(raw);
         persisted.current = restored;
+        currentData.current = restored;
         publishData(restored);
       } catch (error) {
         if (!(error instanceof RestoreInputError)) fail(error);
@@ -162,6 +188,35 @@ export function AppProvider({
       }
     },
     [repository, fail],
+  );
+
+  const beginFitImportBatch = useCallback(() => {
+    const epoch = importEpoch.current;
+    const allowed = writable.current && !restoring.current;
+    return {
+      existingSources: currentData.current.fitSources,
+      commitFitImportBatch: (result: FitImportBatchResult) => {
+        if (
+          !allowed ||
+          !writable.current ||
+          restoring.current ||
+          epoch !== importEpoch.current
+        )
+          return null;
+        const merged = mergeFitImportBatch(currentData.current, result);
+        setData(merged.data);
+        return merged.batch;
+      },
+    };
+  }, [setData]);
+
+  const replaceData = useCallback(
+    (replacement: AppData) => {
+      if (!writable.current || restoring.current) return;
+      importEpoch.current += 1;
+      setData(replacement);
+    },
+    [setData],
   );
 
   const saveSession = useCallback(
@@ -282,7 +337,8 @@ export function AppProvider({
       updateActivity,
       updateLapRole,
       updateSettings,
-      replaceData: setData,
+      replaceData,
+      beginFitImportBatch,
       resetDemo: async () => {
         if (!writable.current || restoring.current) return;
         await restoreBackup(JSON.stringify(createInitialData()));
@@ -302,6 +358,8 @@ export function AppProvider({
       updateActivity,
       updateLapRole,
       updateSettings,
+      replaceData,
+      beginFitImportBatch,
     ],
   );
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

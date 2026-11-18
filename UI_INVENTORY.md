@@ -145,6 +145,16 @@ Source: `src/screens/DataScreen.tsx`, import/backup domain modules.
 | Personal reference values | Edits unit and three HR values immediately.                                                              | Four-column form in a panel.                                                                                         | Settings state                                                          | Unit selection does not change displayed values; no numeric ranges or save feedback.                                                                                                | Not reviewed |
 | Reset local demo data     | Resets state to seed plan.                                                                               | Red text button below settings.                                                                                      | `window.confirm`, `resetDemo`                                           | Label says demo even when it would replace real local data; browser confirm is visually inconsistent.                                                                               | Not reviewed |
 
+## A3 FIT state-integrity verification — November 17, 2026
+
+**Testing, not Complete.** The FIT card now commits through a generation-bound
+context operation against latest state and reports reconciled duplicates or an
+invalidated import. Existing progress, cancellation, picker and layout remain.
+Synthetic rendered React tests and SQLite tests are recorded in
+[the A3 record](docs/A3_FIT_IMPORT_STATE_SAFETY.md). Packaged Windows keyboard,
+focus, errors/cancellation and persistence acceptance remain pending. This record
+updates only A3 safety behavior, not the broader FIT workflow's acceptance status.
+
 ## 9. Shared primitives
 
 | Component     | Purpose / behavior                                                   | Source                           | Potential issues                                                                                 | Status       |

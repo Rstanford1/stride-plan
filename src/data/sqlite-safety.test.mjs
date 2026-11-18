@@ -5,6 +5,13 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SqliteRepository } from "./repository";
+import { StrictMode, createElement } from "react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { AppProvider, useAppData } from "./app-context";
+import { runFitImportBatch } from "./fit-import-controller";
+import { FitFileParserDecoder } from "../domain/fit-decoder";
+import { MemoryFitSourceStore } from "./fit-source-store";
+import { createFitFixture } from "../test/fit-fixture";
 import { createInitialData } from "../domain/seed";
 const fixtures = [];
 function fixture(raw) {
@@ -46,6 +53,7 @@ function fixture(raw) {
   return { db, path, adapter, repository, stored };
 }
 afterEach(() => {
+  cleanup();
   for (const { db, directory } of fixtures.splice(0)) {
     db.close();
     // Only fixture-owned mkdtemp children, never an application profile.
@@ -54,6 +62,133 @@ afterEach(() => {
     rmSync(directory, { recursive: true });
   }
 });
+
+it.each([true, false])(
+  "A3: overlapping imports preserve edits and reload through real SQLite (same bytes: %s)",
+  async (sameBytes) => {
+    const f = fixture(raw());
+    let app;
+    function Capture() {
+      app = useAppData();
+      return null;
+    }
+    render(
+      createElement(
+        StrictMode,
+        null,
+        createElement(
+          AppProvider,
+          { repository: f.repository },
+          createElement(Capture),
+        ),
+      ),
+    );
+    await waitFor(() => expect(app.ready).toBe(true));
+    const sources = new MemoryFitSourceStore();
+    const decoder = new FitFileParserDecoder();
+    function start() {
+      const pending = app.beginFitImportBatch();
+      let release;
+      const bytes = new Promise((resolve) => {
+        release = resolve;
+      });
+      const completion = runFitImportBatch({
+        files: [{ name: "synthetic.fit", loadBytes: () => bytes }],
+        existingSources: pending.existingSources,
+        decoder,
+        sourceStore: sources,
+        createdAt: "2026-11-17T12:00:00Z",
+      }).then(pending.commitFitImportBatch);
+      return { release, completion };
+    }
+    const first = start(),
+      second = start();
+    let edited;
+    act(() => {
+      app.saveSession(
+        app.data.sessions[0].id,
+        { title: "Concurrent synthetic edit" },
+        "Test",
+      );
+      app.saveJournal({
+        id: "synthetic-journal",
+        date: "2026-11-17",
+        note: "Keep",
+        updatedAt: "2026-11-17T12:00:00Z",
+      });
+      app.addShoe({
+        id: "synthetic-shoe",
+        name: "Keep",
+        mileageMiles: 7,
+        isDefault: false,
+      });
+      app.updateSettings({ easyHrHigh: 179 });
+    });
+    edited = app.data;
+    // Both imports started with no sources; finish the second first.
+    await act(async () => {
+      second.release(
+        createFitFixture({ distanceMeters: sameBytes ? 5000 : 6000 }),
+      );
+      await second.completion;
+    });
+    await act(async () => {
+      first.release(createFitFixture());
+      await first.completion;
+    });
+    const expected = app.data;
+    expect(expected.sessions).toEqual(edited.sessions);
+    expect(expected.journals).toEqual(edited.journals);
+    expect(expected.shoes).toEqual(edited.shoes);
+    expect(expected.settings).toEqual(edited.settings);
+    const count = sameBytes ? 1 : 2;
+    expect(expected.fitSources).toHaveLength(count);
+    expect(new Set(expected.fitSources.map((s) => s.sourceHash)).size).toBe(
+      count,
+    );
+    expect(expected.fitSourceActivities).toHaveLength(count);
+    expect(
+      expected.fitImportBatches.flatMap((b) =>
+        b.sourceResults.map((r) => r.status),
+      ),
+    ).toEqual(["decoded", sameBytes ? "exact-duplicate" : "decoded"]);
+    for (const batch of expected.fitImportBatches) {
+      for (const result of batch.sourceResults) {
+        expect(expected.fitSources.some((s) => s.id === result.sourceId)).toBe(
+          true,
+        );
+        expect(result.activityIds).toEqual(
+          result.status === "decoded"
+            ? expected.fitSourceActivities
+                .filter((a) => a.sourceId === result.sourceId)
+                .map((a) => a.id)
+            : [],
+        );
+      }
+    }
+    await waitFor(() =>
+      expect(JSON.parse(f.stored())).toEqual(
+        JSON.parse(JSON.stringify(expected)),
+      ),
+    );
+    // A separate SQLite connection reads the durable committed row.
+    const secondConnection = new DatabaseSync(f.path, { readOnly: true });
+    try {
+      expect(
+        JSON.parse(
+          secondConnection
+            .prepare("SELECT payload FROM app_state WHERE id=1")
+            .get().payload,
+        ),
+      ).toEqual(expected);
+    } finally {
+      secondConnection.close();
+    }
+    expect(
+      await new SqliteRepository(async () => f.adapter, sources).load(),
+    ).toEqual(expected);
+  },
+);
 const raw = () => JSON.stringify(createInitialData(), null, 2);
 const incoming = () => {
   const data = createInitialData();

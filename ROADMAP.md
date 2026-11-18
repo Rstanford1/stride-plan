@@ -43,6 +43,17 @@ Strengths:
 | P2       | Rework Trends empty states and choose which signals genuinely help.                                                                                                                                | Avoids empty/noisy dashboards.                                                             | Low–medium  | Metrics trust                                          | Backlog     |
 | P3       | Split the global CSS and large Data screen into maintainable feature modules after behavior stabilizes.                                                                                            | Developer maintainability.                                                                 | Medium      | Approved design system                                 | Backlog     |
 
+## A3 integrity fix — November 17, 2026
+
+**Testing; review and isolated packaged Windows/owner acceptance pending** on
+`codex/a3-fit-import-state-safety`, based on `origin/main` `0f98fee`.
+Authorized scope: latest-state FIT batch commit, commit-time hash deduplication,
+dataset-generation invalidation and ordered snapshot publication. Synthetic
+React/context/controller/browser and real SQLite regression evidence is in
+[the A3 record](docs/A3_FIT_IMPORT_STATE_SAFETY.md). This is not approval of other
+backup/restore or UI redesign backlog items. Do not mark Complete or merge before
+review and explicit owner approval.
+
 ## Known technical findings
 
 - Today, Next Up, and recent imports use fixed November 2026 dates.
