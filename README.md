@@ -66,7 +66,7 @@ GitHub access is optional for local development. Personal run records, FIT files
 
 ## Data and backups
 
-### Optional Garmin Personal API (T04)
+### Optional Garmin Personal API (B04; legacy T04)
 
 In the Windows desktop app, open **Data & settings → Integrations → Garmin
 Connect**. Create a key using the official link, paste it into the masked input,
@@ -77,7 +77,7 @@ only when you explicitly verify or request activities. Browser mode cannot conne
 
 Choose **List recent activities**, select one of up to five recent runs, then
 **Retrieve selected activity**. Rust accepts one bounded ZIP/FIT, validates
-framing/CRC, computes SHA-256 and preserves exact bytes using T03. A separate
+framing/CRC, computes SHA-256 and preserves exact bytes using B03. A separate
 immutable `.garmin-<activityId>.json` receipt beside the FIT stores provider ID
 and hash. These are source/provenance objects, not workouts. They do not affect
 training totals, the plan, shoes or the Activity Review queue. Repeating a retrieval
@@ -89,7 +89,7 @@ credentials, tokens, original FIT bytes and these native receipts.
 Personal API is not intended for commercial applications serving multiple users;
 public/commercial integration distribution requires authorization/licensing review.
 See [Garmin's Personal API FAQ](https://developer.garmin.com/gc-developer-program/personal/personal-faq/)
-and the T04 record in DESIGN.md. User-supplied keys do not waive this gate.
+and the B04 record in DESIGN.md. User-supplied keys do not waive this gate.
 
 - Packaged app database: the Tauri application-data folder for `com.strideplan.desktop`, normally `%APPDATA%\com.strideplan.desktop\stride-plan.db` on Windows.
 - Browser development data: local storage for the development origin.
@@ -131,10 +131,10 @@ not migrate or remove saved data.
 ## Current limitations
 
 - The FIT foundation decodes files, keeps immutable normalized samples and laps, detects byte-identical duplicates, and records partial-success import batches. The packaged app preserves a verified untouched source copy; browser development labels durable preservation unavailable. Activity Review confirmation is still being implemented.
-- T06 built Windows MSI and NSIS installers successfully. Packaged interactive acceptance remains pending; verification did not launch or migrate the real application profile.
+- B06 built Windows MSI and NSIS installers successfully. Packaged interactive acceptance remains pending; verification did not launch or migrate the real application profile.
 - The browser fallback stores the canonical state as one local snapshot; the packaged repository stores that snapshot in SQLite while the normalized tables are ready for incremental persistence.
 - The built-in plan is the 13-week November 2, 2026–January 31, 2027 block: Monday flexible recovery, Friday rest, cutbacks in weeks 4/8/12, threshold sessions from week 6, and a 50-mile peak.
-- Direct CSV/XLS/XLSX and PDF plan import are unsupported. Guided external-AI conversion (T07), representative coach-plan validation (T08), and broader JSON import/draft refinement (T11) remain future work.
+- Direct CSV/XLS/XLSX and PDF plan import are unsupported. Guided external-AI conversion (B07), representative coach-plan validation (B08), and broader JSON import/draft refinement (T11) remain future work.
 
 ## Next improvements
 
@@ -142,8 +142,8 @@ not migrate or remove saved data.
 2. Persist each domain aggregate through the normalized SQLite tables and add migration/restore integration tests.
 3. Add optional session drag-and-drop with a fully keyboard-equivalent move command and richer multi-activity bundle suggestions.
 
-T02 saved-state recovery and legacy restore compatibility, safety-copy locations,
-verification and native-runtime limits are recorded in [DESIGN.md](DESIGN.md#t02-verification-and-recovery-record). This build supports snapshot versions 2–4;
+B02 saved-state recovery and legacy restore compatibility, safety-copy locations,
+verification and native-runtime limits are recorded in [DESIGN.md](DESIGN.md#b02-verification-and-recovery-record-legacy-record-t02). This build supports snapshot versions 2–4;
 version-5/6 development profiles must use a compatible application and are never
 downgraded. Legacy JSON cannot replace newer native records.
 
