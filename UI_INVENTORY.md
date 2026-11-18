@@ -1,5 +1,13 @@
 # Stride Plan UI inventory
 
+## T08.1 contract and read-only draft preview
+
+**Testing**. Owner-approved JSON 1.2 contract, read-only review and narrow draft
+migration are implemented locally. Frontend/adapter and SQLite SQL checks are
+recorded in DESIGN.md; native compilation/execution is blocked by Windows
+Application Control. Packaged acceptance and user acceptance remain pending.
+Historical 1.1 preservation is covered; no active-plan changes or publication.
+
 Statuses: **Not reviewed**, **Under discussion**, **Design approved**, **Implementation in progress**, **Testing**, **Complete**.
 
 All entries start as **Not reviewed**. “Potential” findings are audit observations, not approved changes.

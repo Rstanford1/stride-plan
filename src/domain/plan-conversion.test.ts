@@ -10,7 +10,11 @@ import independent from "./__fixtures__/training-plan/valid-independent.json";
 
 describe("T07 conversion instructions", () => {
   it("retains the full original prompt and adds the specific approved preservation rules", () => {
-    expect(conversionPrompt.startsWith(originalConversionPrompt)).toBe(true);
+    expect(
+      conversionPrompt.startsWith(
+        originalConversionPrompt.replaceAll("1.1", "1.2"),
+      ),
+    ).toBe(true);
     expect(originalConversionPrompt.split("\n").length).toBeGreaterThan(100);
     for (const phrase of [
       "every relevant page, worksheet, date, training week, phase, legend, footnote, and coach instruction",

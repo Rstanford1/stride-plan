@@ -1,8 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
-import schemaText from "../../schemas/training-plan/1.1.schema.json?raw";
-import validatorText from "../domain/training-plan-validation.ts?raw";
-import { parseTrainingPlan } from "../domain/training-plan-validation";
+import { parseTrainingPlan } from "../domain/training-plan";
 import {
   parseSnapshotJson,
   validateCurrentSnapshot,
@@ -33,8 +31,8 @@ export const draftRecordSchema = z
     revision: z.literal(1),
     state: z.literal("draft"),
     createdAt: z.string().datetime(),
-    schemaVersion: z.literal("1.1"),
-    validatorVersion: z.literal("t01-1"),
+    schemaVersion: z.enum(["1.1", "1.2"]),
+    validatorVersion: z.enum(["t01-1", "t081-1"]),
     validatorFingerprint: hashSchema,
     diagnosticsJson: z.string().max(1024 * 1024),
     diagnosticsHash: hashSchema,
@@ -122,8 +120,11 @@ function failure(value: unknown): PlanDraftError {
   return new PlanDraftError("storage");
 }
 export const nativeDraftsAvailable = () => "__TAURI_INTERNALS__" in globalThis;
-export const validatorFingerprint = () =>
-  sha256Hex(new TextEncoder().encode(`${schemaText}\n---\n${validatorText}`));
+export { validatorFingerprint } from "./plan-validator-registry";
+import {
+  validatorFingerprint,
+  recognizedValidator,
+} from "./plan-validator-registry";
 
 export async function previewPlan(
   bytes: Uint8Array,
@@ -164,13 +165,18 @@ async function verifySaved(value: unknown): Promise<SavedDraft> {
     Uint8Array.from(wire.data.bytes),
     record.originalFileName,
   );
+  const validator = await recognizedValidator(record);
+  if (!validator) throw new PlanDraftError("corrupt");
+  preview.validation = validator.parse(
+    new TextDecoder("utf-8", { fatal: true }).decode(preview.bytes),
+  );
   if (
     !preview.validation.ok ||
+    preview.validation.plan.schemaVersion !== record.schemaVersion ||
     record.sourceHash !== preview.sourceHash ||
     record.byteLength !== preview.bytes.length ||
     record.sourceId !== `plan-source:${preview.sourceHash}` ||
     record.draftId !== `plan-draft:${preview.sourceHash}` ||
-    record.validatorFingerprint !== (await validatorFingerprint()) ||
     record.diagnosticsHash !==
       (await sha256Hex(new TextEncoder().encode(record.diagnosticsJson))) ||
     record.diagnosticsJson !== JSON.stringify(preview.validation.diagnostics)
@@ -272,7 +278,9 @@ export class NativeDraftStore implements DraftStore {
         originalFileName: preview.fileName,
         sourceHash: preview.sourceHash,
         diagnosticsJson: JSON.stringify(preview.validation.diagnostics),
-        validatorFingerprint: await validatorFingerprint(),
+        validatorFingerprint: await validatorFingerprint(
+          preview.validation.plan.schemaVersion,
+        ),
         expectedDraftId: expected?.draftId ?? null,
         expectedRevision: expected?.revision ?? null,
         expectedSnapshot: current.snapshot,

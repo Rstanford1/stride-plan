@@ -1,4 +1,70 @@
-# Training-plan JSON 1.1
+# Training-plan JSON 1.1 and 1.2
+
+## T08.1 contract extension — November 17, 2026
+
+Status: **Testing; owner acceptance pending**. The owner approved Option B and the
+versioned extension, evidence separation and narrow draft migration. The 1.1
+schema and its current validator are unchanged. The historical T01 record below
+remains a record of 1.1, not a restriction on the added 1.2 intake path.
+
+Machine authority: [1.2.schema.json](1.2.schema.json), ID
+`urn:stride-plan:training-plan:1.2`. Root `schemaVersion` selects validation.
+Both versions use strict noncoercing validation. A 1.1 file is never upgraded or
+interpreted as 1.2, even if it contains similarly named optional metadata.
+Unsupported versions and required features still fail closed.
+
+| Location | New field                | Meaning                                                                                                                                                |
+| -------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Week     | `totalMileageTarget`     | Independently supplied total, using `{value, unit}` or `{min, max, unit}`. Distance only: `m`, `km`, `mi`.                                             |
+| Session  | `schedulingPolicy`       | `fixed-date`, `movable-within-week`, or `unspecified`. Movement is bounded by the original containing week; date and week remain original facts.       |
+| Session  | `priorityClass`          | `priority`, `supporting`, or `unspecified`, independently of participation, completion class, run type and role.                                       |
+| Root     | `interpretationPolicies` | Optional records `{id, statement, approval: "user-approved"}`. Statement preserves the exact user-approved interpretation, separately from coach text. |
+| Root     | `interpretationEvidence` | Optional records identifying each supplied known new field by exact RFC 6901 `path`, with `kind: "coach"`, or `kind: "user-policy"` plus `policyId`.   |
+
+Every supplied known target/classification needs exactly one evidence record.
+Coach evidence needs a covering standard provenance mapping. Policy evidence
+must reference an existing policy identity. Evidence cannot point to arbitrary
+metadata or existing participation/completion fields. Policies have document-wide
+unique IDs. Approval is an assertion by the document producer; neither validation
+nor Save as draft proves or grants user approval. Conflicting evidence is rejected;
+unknown optional metadata remains preserved with warnings.
+
+Example: a session may remain `participation: "required"` and
+`completionClass: "core"` while explicitly classified `priorityClass: "supporting"`
+and `schedulingPolicy: "movable-within-week"` under an approved policy. A priority
+session can be fixed-date. These fields never themselves change an original
+prescription or calculate a completion result. Optional doubles keep their
+optional/flexible labels. Priority does not implicitly mean required.
+
+Omit unknown weekly targets. Missing or explicit unspecified classifications
+remain unknown with nonblocking review warnings. No null/false/zero defaults,
+quantity conversions, inferred weekly sums, priority inference from titles, or
+75+ tier-to-range conversion occurs. Explicit zero and exact/range units survive.
+The example's 75–85 mi range is synthetic supplied evidence, not a rule for 75+.
+Weekly mileage achievement and priority-workout completion are separate. Moving
+easy mileage must not create a missed-priority penalty; reaching mileage must
+not conceal a missing priority workout. Completion calculation remains deferred.
+
+Generated 1.1 declarations retain their existing filename; 1.2 declarations use
+`.generated/training-plan-1.2.d.ts`. Both are generated, hash-linked and ignored.
+`src/domain/training-plan.ts` is the version-dispatch entry point. The existing
+1.1 validator and the frozen pre-PR16 validator retain exact source bytes for
+closed fingerprint matching and historical report replay. New 1.1 intake uses
+PR16 behavior. Only the recognized 1.1/t01-1 fingerprints from `f58ad59` and
+`fb7ff13`, and current 1.2/t081-1 identity are supported. Unknown identities or
+recomputed but incorrect reports are rejected, never rewritten.
+
+The four committed 1.2 fixtures are synthetic 40, 55, 65 and 75+ scenarios, not
+coach-plan parity evidence. No workbook or private converted plan is included.
+The 18 incorrectly structured converted workouts remain a separate fidelity
+issue: this work changes no workout parsing or prescription semantics. PDF source
+provenance remains unsupported in both versions.
+
+Draft migration, rollback and older-version recovery steps:
+[Windows acceptance and recovery](../../docs/T08_1_WINDOWS_ACCEPTANCE.md).
+No active-plan, snapshot, Garmin, completion-metric or backup-format change.
+
+## Historical 1.1 specification and verification
 
 Status: **Testing; owner acceptance pending.** The owner approved T01 and the
 contract architecture on November 13, 2026, with the refinements below. The

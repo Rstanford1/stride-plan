@@ -27,7 +27,7 @@ pub(crate) fn plan_source_header(bytes: &[u8]) -> Result<PlanSourceHeader> {
     let text = std::str::from_utf8(bytes).map_err(|_| SourceError::new(ErrorCode::Corrupt))?;
     let header: PlanSourceHeader = serde_json::from_str(text.trim_start_matches('\u{feff}'))
         .map_err(|_| SourceError::new(ErrorCode::Corrupt))?;
-    if header.schema_version != "1.1" {
+    if !["1.1", "1.2"].contains(&header.schema_version.as_str()) {
         return Err(SourceError::new(ErrorCode::UnsupportedVersion));
     }
     Ok(header)

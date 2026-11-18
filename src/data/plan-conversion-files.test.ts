@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { conversionFiles, saveConversionFile } from "./plan-conversion-files";
-import schemaText from "../../schemas/training-plan/1.1.schema.json?raw";
-import exampleText from "../domain/__fixtures__/training-plan/valid-workout.json?raw";
-import { parseTrainingPlan } from "../domain/training-plan-validation";
+import schemaText from "../../schemas/training-plan/1.2.schema.json?raw";
+import exampleText from "../domain/__fixtures__/training-plan/valid-1.2-75plus.json?raw";
+import { parseTrainingPlan } from "../domain/training-plan";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 afterEach(() => {
   vi.restoreAllMocks();
