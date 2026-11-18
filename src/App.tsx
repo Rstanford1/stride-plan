@@ -2,10 +2,10 @@ import {
   Activity,
   CalendarRange,
   ChartNoAxesCombined,
-  Database,
   Footprints,
   PanelLeftClose,
   PanelLeftOpen,
+  Settings,
   Sun,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -15,27 +15,33 @@ import { ActivityReviewScreen } from "./screens/ActivityReviewScreen";
 import { WeeklyReviewScreen } from "./screens/WeeklyReviewScreen";
 import { TrendsScreen } from "./screens/TrendsScreen";
 import { DataScreen } from "./screens/DataScreen";
+import { ShoesScreen } from "./screens/ShoesScreen";
 import { useAppData } from "./data/app-context";
 
-type Screen = "today" | "plan" | "activities" | "review" | "trends" | "data";
+type Screen =
+  "today" | "training" | "activities" | "analytics" | "shoes" | "settings";
+type TrainingView = "plan" | "review";
 
 const nav = [
   { id: "today", label: "Today", icon: Sun },
-  { id: "plan", label: "Plan", icon: CalendarRange },
+  { id: "training", label: "Training", icon: CalendarRange },
   { id: "activities", label: "Activities", icon: Activity },
-  { id: "review", label: "Weekly review", icon: Footprints },
-  { id: "trends", label: "Trends", icon: ChartNoAxesCombined },
-  { id: "data", label: "Data & settings", icon: Database },
+  { id: "analytics", label: "Analytics", icon: ChartNoAxesCombined },
+  { id: "shoes", label: "Shoes", icon: Footprints },
+  { id: "settings", label: "Settings", icon: Settings },
 ] as const;
 
 export default function App() {
   const { ready, recoveryError, retryLoading } = useAppData();
   const [screen, setScreen] = useState<Screen>("today");
+  const [trainingView, setTrainingView] = useState<TrainingView>("plan");
   const [collapsed, setCollapsed] = useState(false);
   useEffect(() => {
     const listener = (event: KeyboardEvent) => {
-      if (event.altKey && /^[1-6]$/.test(event.key))
+      if (event.altKey && /^[1-6]$/.test(event.key)) {
         setScreen(nav[Number(event.key) - 1].id);
+        document.getElementById("main-content")?.focus();
+      }
     };
     window.addEventListener("keydown", listener);
     return () => window.removeEventListener("keydown", listener);
@@ -82,7 +88,7 @@ export default function App() {
     <div className={collapsed ? "app-shell sidebar-collapsed" : "app-shell"}>
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark">
+          <span className="brand-mark" aria-hidden="true">
             <Footprints size={21} />
           </span>
           <div>
@@ -100,10 +106,11 @@ export default function App() {
                 onClick={() => setScreen(item.id)}
                 aria-current={screen === item.id ? "page" : undefined}
                 title={`${item.label} (Alt+${index + 1})`}
+                aria-label={`${item.label}, Alt+${index + 1}`}
               >
-                <Icon size={19} />
+                <Icon size={19} aria-hidden="true" />
                 <span>{item.label}</span>
-                <kbd>Alt {index + 1}</kbd>
+                <kbd aria-hidden="true">Alt {index + 1}</kbd>
               </button>
             );
           })}
@@ -117,6 +124,7 @@ export default function App() {
             className="collapse-button"
             onClick={() => setCollapsed((value) => !value)}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!collapsed}
           >
             {collapsed ? (
               <PanelLeftOpen size={18} />
@@ -131,14 +139,43 @@ export default function App() {
         {screen === "today" && (
           <TodayDashboard
             openActivityReview={() => setScreen("activities")}
-            openPlan={() => setScreen("plan")}
+            openPlan={() => {
+              setTrainingView("plan");
+              setScreen("training");
+            }}
           />
         )}
-        {screen === "plan" && <PlanScreen />}
+        {screen === "training" && (
+          <div className="training-content">
+            <div className="training-nav screen">
+              <div>
+                <p className="eyebrow">Plan and progress</p>
+                <h1>Training</h1>
+              </div>
+              <nav aria-label="Training views">
+                <button
+                  className={trainingView === "plan" ? "active" : ""}
+                  aria-current={trainingView === "plan" ? "page" : undefined}
+                  onClick={() => setTrainingView("plan")}
+                >
+                  Plan
+                </button>
+                <button
+                  className={trainingView === "review" ? "active" : ""}
+                  aria-current={trainingView === "review" ? "page" : undefined}
+                  onClick={() => setTrainingView("review")}
+                >
+                  Weekly Review
+                </button>
+              </nav>
+            </div>
+            {trainingView === "plan" ? <PlanScreen /> : <WeeklyReviewScreen />}
+          </div>
+        )}
         {screen === "activities" && <ActivityReviewScreen />}
-        {screen === "review" && <WeeklyReviewScreen />}
-        {screen === "trends" && <TrendsScreen />}
-        {screen === "data" && <DataScreen />}
+        {screen === "analytics" && <TrendsScreen />}
+        {screen === "shoes" && <ShoesScreen />}
+        {screen === "settings" && <DataScreen />}
       </main>
     </div>
   );

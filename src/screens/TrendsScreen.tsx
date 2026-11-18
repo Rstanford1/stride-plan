@@ -51,7 +51,7 @@ export function TrendsScreen() {
       <header className="page-header">
         <div>
           <p className="eyebrow">Only useful signals</p>
-          <h1>Trends</h1>
+          <h1>Analytics</h1>
           <p>
             Weekly mileage and recorded effort, with matching tables for
             accessibility.

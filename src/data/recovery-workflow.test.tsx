@@ -120,7 +120,7 @@ describe("legacy restore confirmation", () => {
         <DataHarness />
       </AppProvider>,
     );
-    return screen.findByRole("heading", { name: "Data & settings" });
+    return screen.findByRole("heading", { name: "Settings" });
   }
   it("previews counts and incomplete-backup warning; cancellation changes nothing", async () => {
     await mount();
@@ -230,7 +230,7 @@ it("confirmation preserves exact already-durable bytes without a redundant pre-r
       <DataHarness />
     </AppProvider>,
   );
-  await screen.findByRole("heading", { name: "Data & settings" });
+  await screen.findByRole("heading", { name: "Settings" });
   const dialog = await preview();
   fireEvent.click(
     within(dialog).getByRole("button", { name: "Replace local data" }),
@@ -259,7 +259,7 @@ it.each(["{bad", JSON.stringify({ ...createInitialData(), schemaVersion: 6 })])(
         <Capture />
       </AppProvider>,
     );
-    await screen.findByRole("heading", { name: "Data & settings" });
+    await screen.findByRole("heading", { name: "Settings" });
     await act(async () => {
       await expect(actions.restoreBackup(raw)).rejects.toThrow();
     });
@@ -304,7 +304,7 @@ it("reports FIT files lost after preview without disabling the active app", asyn
       <DataHarness />
     </AppProvider>,
   );
-  await screen.findByRole("heading", { name: "Data & settings" });
+  await screen.findByRole("heading", { name: "Settings" });
   const dialog = await preview(JSON.stringify(data));
   vi.spyOn(sources, "read").mockRejectedValue(
     new Error("Source file access denied"),
@@ -316,9 +316,7 @@ it("reports FIT files lost after preview without disabling the active app", asyn
     await screen.findByText(/Restore blocked: original FIT files/),
   ).toBeVisible();
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  expect(
-    screen.getByRole("heading", { name: "Data & settings" }),
-  ).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Settings" })).toBeVisible();
   expect(localStorage.getItem(STORAGE_KEY)).toBe(old());
   fireEvent.change(screen.getByLabelText("Easy HR high"), {
     target: { value: "170" },
