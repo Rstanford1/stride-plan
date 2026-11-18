@@ -9,8 +9,9 @@ is supported; there is no user-facing theme selector.
 Playwright launches its own ephemeral Chromium context per test, never an
 installed browser profile. The server uses a dedicated loopback port, refuses
 an existing server, and the test guard checks the origin, fresh storage, and
-absence of Tauri. Every browser request outside that origin is blocked,
-including Garmin. The application selects browser localStorage in this mode;
+absence of Tauri. HTTP requests outside that origin are blocked; service workers
+are disabled, and WebSockets are blocked except for the local Vite server. A
+synthetic outbound HTTP and WebSocket probe verifies the guard. The application selects browser localStorage in this mode;
 native SQLite and credentials are not accessed. Failure artifacts contain only
 the seeded demonstration state and synthetic fixture data. Do not add real
 files, credentials, or personal data to this suite. Console contents are not
@@ -24,6 +25,13 @@ The workflow summary records tested commit and OS; the runner provides the
 actual job duration and Playwright reports the browser version. Failure
 artifacts expire after seven days. The workflow is independent of existing
 checks; branch protection is unchanged.
+
+Review follow-up: Vitest retains its default exclusions and excludes the E2E
+suite and nested `work/` directories. On Windows, `pnpm verify` passed all 366
+Vitest tests, type checking, formatting and build. The 12 Chromium tests passed
+in 16.7 seconds; two repetitions passed all 24 runs in 20.8 seconds. An initial
+WebSocket handler error and an incorrect service-worker assertion were fixed
+before these runs. Hosted checks on the follow-up commit are separate evidence.
 
 Future native QA needs a distinct application identifier, data directory,
 database, credential namespace, and source-file store, with explicit startup

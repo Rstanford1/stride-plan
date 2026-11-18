@@ -9,6 +9,14 @@ test.beforeEach(async ({ page, context }) => {
     if (url.origin !== origin) return route.abort();
     await route.continue();
   });
+  await context.routeWebSocket("**/*", (socket) => {
+    const url = new URL(socket.url());
+    if (url.protocol === "ws:" && url.host === "127.0.0.1:41739") {
+      socket.connectToServer();
+    } else {
+      socket.close({ code: 1008, reason: "External network blocked" });
+    }
+  });
   await page.addInitScript(() => {
     if (
       location.origin !== "http://127.0.0.1:41739" ||
@@ -26,6 +34,41 @@ test.beforeEach(async ({ page, context }) => {
   await expect(
     page.getByRole("navigation", { name: "Main navigation" }),
   ).toBeVisible();
+});
+
+test("blocks external HTTP and WebSocket traffic and service workers", async ({
+  page,
+  context,
+}) => {
+  const failedRequest = page.waitForEvent("requestfailed", {
+    predicate: (request) =>
+      request.url() === "https://example.invalid/i13-network-probe",
+  });
+  const result = await page.evaluate(async () => {
+    const http = await fetch("https://example.invalid/i13-network-probe").then(
+      () => "allowed",
+      () => "blocked",
+    );
+    const websocket = await new Promise<{ code: number; reason: string }>(
+      (resolve) => {
+        const socket = new WebSocket("wss://example.invalid/i13-network-probe");
+        socket.addEventListener("close", (event) =>
+          resolve({ code: event.code, reason: event.reason }),
+        );
+      },
+    );
+    await navigator.serviceWorker.register("/i13-nonexistent-worker.js");
+    const serviceWorker = (await navigator.serviceWorker.getRegistrations())
+      .length;
+    return { http, websocket, serviceWorker };
+  });
+  expect(result).toEqual({
+    http: "blocked",
+    websocket: { code: 1008, reason: "External network blocked" },
+    serviceWorker: 0,
+  });
+  expect((await failedRequest).failure()?.errorText).toBe("net::ERR_FAILED");
+  expect(context.serviceWorkers()).toHaveLength(0);
 });
 
 test("launches without runtime errors", async ({ page }) => {
