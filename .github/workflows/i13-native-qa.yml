@@ -48,12 +48,40 @@ jobs:
           pnpm exec wdio --version
           tauri-driver --version
           git rev-parse HEAD
+      - name: Install matching Microsoft Edge WebDriver
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path 'native-qa-results' | Out-Null
+          $paths = @(
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
+            'HKCU:\Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          )
+          $runtime = $null
+          foreach ($entry in $paths) {
+            $version = (Get-ItemProperty -LiteralPath $entry -Name pv -ErrorAction SilentlyContinue).pv
+            if ($version -match '^\d+\.\d+\.\d+\.\d+$' -and $version -ne '0.0.0.0') { $runtime = $version; break }
+          }
+          if (-not $runtime) { throw 'WebView2 runtime version unavailable; refusing to launch.' }
+          $driverDir = Join-Path $env:RUNNER_TEMP 'i13-microsoft-edgedriver'
+          if (Test-Path -LiteralPath $driverDir) { throw 'Driver directory already exists.' }
+          New-Item -ItemType Directory -Path $driverDir | Out-Null
+          $archive = Join-Path $driverDir 'driver.zip'
+          Invoke-WebRequest -Uri "https://msedgedriver.microsoft.com/$runtime/edgedriver_win64.zip" -OutFile $archive
+          Expand-Archive -LiteralPath $archive -DestinationPath $driverDir
+          $driver = Join-Path $driverDir 'msedgedriver.exe'
+          if (-not (Test-Path -LiteralPath $driver)) { throw 'Microsoft Edge WebDriver missing.' }
+          $signature = Get-AuthenticodeSignature -LiteralPath $driver
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Microsoft Corporation') { throw 'Microsoft Edge WebDriver signature invalid.' }
+          $driverVersion = (& $driver --version | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $driverVersion.Contains($runtime)) { throw 'WebDriver does not match WebView2 runtime.' }
+          "WebView2 runtime: $runtime`n$driverVersion`nTested commit: $(git rev-parse HEAD)" | Tee-Object -FilePath 'native-qa-results/environment.txt'
+          $driverDir | Out-File -FilePath $env:GITHUB_PATH -Append
       - name: Prepare disposable profile and validate before launch
         shell: pwsh
         run: |
           $qaRoot = Join-Path $env:RUNNER_TEMP "stride-i13-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
           if (Test-Path -LiteralPath $qaRoot) { throw 'QA profile already exists' }
-          New-Item -ItemType Directory -Path $qaRoot, 'native-qa-results' | Out-Null
+          New-Item -ItemType Directory -Path $qaRoot | Out-Null
           "STRIDE_QA_ROOT=$qaRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
           "STRIDE_QA_CONFIG_BASE=$([Environment]::GetFolderPath('ApplicationData'))" | Out-File -FilePath $env:GITHUB_ENV -Append
           "STRIDE_QA_LOCAL_BASE=$([Environment]::GetFolderPath('LocalApplicationData'))" | Out-File -FilePath $env:GITHUB_ENV -Append

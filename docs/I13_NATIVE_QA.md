@@ -19,7 +19,8 @@ These checks must all pass; compilation alone is insufficient. No real Garmin
 credentials or FIT files are used. Disposable profiles are left
 to the runner's lifecycle; no user directory is deleted.
 
-The workflow uses the external official tauri-driver and Edge WebDriver. It
+The workflow uses the external official tauri-driver and a Microsoft-signed
+Edge WebDriver matching the hosted WebView2 runtime. It
 tests navigation, disabled Garmin, SQLite-backed synthetic setting persistence
 across a WebDriver session restart, and rejection of a Garmin command. It runs
 twice within the same disposable hosted-runner profile. Logs and screenshots contain only

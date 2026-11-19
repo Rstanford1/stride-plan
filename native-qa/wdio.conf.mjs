@@ -16,7 +16,7 @@ export const config = {
         driverProvider: "official",
         appBinaryPath: binary,
         autoInstallTauriDriver: false,
-        autoDownloadEdgeDriver: true,
+        autoDownloadEdgeDriver: false,
       },
     ],
   ],
