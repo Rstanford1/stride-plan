@@ -21,6 +21,8 @@ to the runner's lifecycle; no user directory is deleted.
 
 The workflow uses the external official tauri-driver and a Microsoft-signed
 Edge WebDriver matching the hosted WebView2 runtime. It
+uses a pinned, locally tested WebdriverIO service patch to recognize both
+current and older Microsoft driver version strings; version checks remain enabled. It
 tests navigation, disabled Garmin, SQLite-backed synthetic setting persistence
 across a WebDriver session restart, and rejection of a Garmin command. It runs
 twice within the same disposable hosted-runner profile. Logs and screenshots contain only

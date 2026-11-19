@@ -27,6 +27,7 @@ jobs:
           workspaces: src-tauri
           cache-on-failure: true
       - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: node native-qa/check-driver-parser.mjs
       - run: pnpm verify
       - name: Verify production Rust configuration
         working-directory: src-tauri

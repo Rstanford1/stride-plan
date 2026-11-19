@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  "@wdio/tauri-service@1.5.1": 0ea8bd1e99a1f0343dcbbdb0e9a9522b160d9ca6bbfbecbf5605fd64ee3cae14
+
 importers:
   .:
     dependencies:
@@ -76,7 +79,7 @@ importers:
         version: 10.2.0
       "@wdio/tauri-service":
         specifier: ^1.5.1
-        version: 1.5.1(expect-webdriverio@8.1.0(@wdio/types@10.2.0)(webdriverio@10.2.0(bare-buffer@3.7.3)(supports-color@8.1.1)))(supports-color@8.1.1)(tsx@4.23.15)(webdriverio@10.2.0(bare-buffer@3.7.3)(supports-color@8.1.1))
+        version: 1.5.1(patch_hash=0ea8bd1e99a1f0343dcbbdb0e9a9522b160d9ca6bbfbecbf5605fd64ee3cae14)(expect-webdriverio@8.1.0(@wdio/types@10.2.0)(webdriverio@10.2.0(bare-buffer@3.7.3)(supports-color@8.1.1)))(supports-color@8.1.1)(tsx@4.23.15)(webdriverio@10.2.0(bare-buffer@3.7.3)(supports-color@8.1.1))
       jsdom:
         specifier: ^25.0.0
         version: 25.0.1(supports-color@8.1.1)
@@ -6289,7 +6292,7 @@ snapshots:
       easy-table: 1.2.0
       pretty-ms: 9.3.1
 
-  "@wdio/tauri-service@1.5.1(expect-webdriverio@8.1.0(@wdio/types@10.2.0)(webdriverio@10.2.0(bare-buffer@3.7.3)(supports-color@8.1.1)))(supports-color@8.1.1)(tsx@4.23.15)(webdriverio@10.2.0(bare-buffer@3.7.3)(supports-color@8.1.1))":
+  "@wdio/tauri-service@1.5.1(patch_hash=0ea8bd1e99a1f0343dcbbdb0e9a9522b160d9ca6bbfbecbf5605fd64ee3cae14)(expect-webdriverio@8.1.0(@wdio/types@10.2.0)(webdriverio@10.2.0(bare-buffer@3.7.3)(supports-color@8.1.1)))(supports-color@8.1.1)(tsx@4.23.15)(webdriverio@10.2.0(bare-buffer@3.7.3)(supports-color@8.1.1))":
     dependencies:
       "@wdio/globals": 9.31.3(expect-webdriverio@8.1.0(@wdio/types@10.2.0)(webdriverio@10.2.0(bare-buffer@3.7.3)(supports-color@8.1.1)))(webdriverio@10.2.0(bare-buffer@3.7.3)(supports-color@8.1.1))
       "@wdio/logger": 9.29.1
