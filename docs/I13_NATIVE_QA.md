@@ -46,6 +46,19 @@ processes can escape sampling; the report identifies missing evidence rather
 than inferring a cause. These diagnostics do not by themselves prove that
 application launch or persistence succeeded.
 
+WebView2 150 and later may suppress the WebDriver debugging port for an
+elevated host ([wry #1782](https://github.com/tauri-apps/wry/issues/1782),
+[desktop-mobile #542](https://github.com/webdriverio/desktop-mobile/issues/542)).
+To test this hypothesis the disposable runner records its token integrity and
+uses portable gsudo 2.6.1, checked against a pinned SHA-256, to start the test
+chain at medium integrity. The launcher verifies its own non-elevated token and
+repeats the isolation preflight before seeding or launching. Sampled driver,
+application, and WebView2 process tokens are recorded; a successful test also
+requires medium, non-elevated samples for the drivers and application. No
+workspace ACL or system security settings are changed. Insufficient permissions
+or missing integrity evidence fail the run. This is an investigation, not
+evidence that the upstream issue caused the observed timeout.
+
 The branch-scoped PR trigger is temporary and remains available through code
 review. After this foundation is merged, remove that trigger in a separate
 follow-up PR and retain `workflow_dispatch`. The workflow does not change

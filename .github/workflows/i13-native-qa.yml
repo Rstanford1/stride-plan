@@ -73,6 +73,22 @@ jobs:
         run: node native-qa/check-driver-parser.mjs --verify-discovery
       - name: Driver-only status check
         run: node native-qa/driver-smoke.mjs
+      - name: Record runner integrity and prepare medium-integrity launcher
+        shell: pwsh
+        run: |
+          . ./native-qa/integrity.ps1
+          "runner-shell pid=$PID $([StrideQaToken]::Describe($PID))" | Set-Content -LiteralPath 'native-qa-results/parent-integrity.log'
+          $dir = Join-Path $env:RUNNER_TEMP 'i13-gsudo-2.6.1'
+          if (Test-Path -LiteralPath $dir) { throw 'Launcher directory already exists.' }
+          New-Item -ItemType Directory -Path $dir | Out-Null
+          $zip = Join-Path $dir 'gsudo.zip'
+          Invoke-WebRequest -Uri 'https://github.com/gerardog/gsudo/releases/download/v2.6.1/gsudo.portable.zip' -OutFile $zip
+          if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -ne '21130bf178d7b9891207f00bff56f05b6b363ce9cec7b2d084e45fb12ee51f44') { throw 'Launcher archive hash mismatch.' }
+          Expand-Archive -LiteralPath $zip -DestinationPath $dir
+          $launchers = @(Get-ChildItem -LiteralPath $dir -Filter 'gsudo.exe' -File -Recurse)
+          if ($launchers.Count -ne 1) { throw 'Expected exactly one portable launcher.' }
+          "STRIDE_QA_GSUDO=$($launchers[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          'Portable gsudo: 2.6.1 (SHA256 verified)' | Add-Content -LiteralPath 'native-qa-results/environment.txt'
       - run: pnpm verify
       - name: Verify production Rust configuration
         working-directory: src-tauri
@@ -113,9 +129,7 @@ jobs:
         env:
           STRIDE_QA_STAGE: launch
         run: |
-          node native-qa/seed.mjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ./native-qa/run-wdio.ps1
+          & $env:STRIDE_QA_GSUDO --integrity Medium --chdir $env:GITHUB_WORKSPACE pwsh -NoProfile -File ./native-qa/medium-launch.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Summarize native startup evidence
         if: always()

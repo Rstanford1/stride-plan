@@ -17,6 +17,18 @@ const processes = read("processes-launch.log");
 const startup = read("startup-launch.log");
 const session = read("session-established.txt");
 const environment = read("environment.txt");
+const parentIntegrity = read("parent-integrity.log");
+const mediumIntegrity = read("medium-integrity.log");
+const integrityLines = processes.split(/\r?\n/);
+const integritySamples = [
+  "tauri-driver.exe",
+  "msedgedriver.exe",
+  "stride-plan-qa-i13.exe",
+  "msedgewebview2.exe",
+].flatMap((name) => {
+  const line = integrityLines.find((item) => item.includes(`${name}:`));
+  return line ? [line] : [];
+});
 const observed =
   /stride-plan-qa-i13\.exe:\d+/.test(processes) ||
   startup.includes("process-started");
@@ -46,6 +58,12 @@ const report = [
   "",
   "Runtime versions:",
   environment || "Not recorded.",
+  "Process integrity (8192 is medium):",
+  parentIntegrity || "Runner integrity not recorded.",
+  mediumIntegrity || "Medium launcher not reached.",
+  ...(integritySamples.length
+    ? integritySamples
+    : ["No process integrity samples recorded."]),
   "Observed QA exits (sampling may miss short-lived processes):",
   ...(exitLines.length ? exitLines : ["None recorded; exit code unavailable."]),
   "",

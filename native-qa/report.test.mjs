@@ -50,4 +50,12 @@ test("distinguishes driver, process, isolation, window and session boundaries", 
     }),
     /session was established/,
   );
+  assert.match(
+    classify({
+      smoke: ready,
+      processes: `${running}\nstamp qa-exit:42 code=unavailable`,
+      startup: "process-started\nsetup-entered\npaths-verified\nwindow-created",
+    }),
+    /may have occurred during timeout cleanup/,
+  );
 });

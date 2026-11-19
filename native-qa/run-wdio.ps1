@@ -1,8 +1,10 @@
 $ErrorActionPreference = 'Stop'
 $stage = if ($env:STRIDE_QA_STAGE -eq 'launch') { 'launch' } elseif ($env:STRIDE_QA_VALUE -eq '132') { 'repeat' } else { 'full' }
 $logPath = Join-Path (Resolve-Path 'native-qa-results').Path "processes-$stage.log"
-$watch = Start-Job -ArgumentList $logPath -ScriptBlock {
-  param($destination)
+$inspector = Join-Path $PSScriptRoot 'integrity.ps1'
+$watch = Start-Job -ArgumentList $logPath, $inspector -ScriptBlock {
+  param($destination, $inspector)
+  . $inspector
   # Record only known process names and IDs; omit command lines and environment.
   $seen = @{}
   for ($index = 0; $index -lt 240; $index++) {
@@ -10,7 +12,7 @@ $watch = Start-Job -ArgumentList $logPath -ScriptBlock {
     $items = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
       $_.Name -in @('tauri-driver.exe', 'msedgedriver.exe', 'stride-plan-qa-i13.exe', 'msedgewebview2.exe')
     }
-    $summary = @($items | ForEach-Object { "$($_.Name):$($_.ProcessId):parent=$($_.ParentProcessId)" }) -join ' '
+    $summary = @($items | ForEach-Object { "$($_.Name):$($_.ProcessId):parent=$($_.ParentProcessId):$([StrideQaToken]::Describe([int]$_.ProcessId))" }) -join ' '
     "$stamp $summary" | Add-Content -LiteralPath $destination
     foreach ($item in $items | Where-Object { $_.Name -eq 'stride-plan-qa-i13.exe' }) {
       if (-not $seen.ContainsKey($item.ProcessId)) {
@@ -53,6 +55,15 @@ try {
           $line.Substring(0, [Math]::Min($line.Length, 2048))
         } | Add-Content -LiteralPath $backendPath
       }
+  }
+}
+if ($result -eq 0) {
+  $samples = Get-Content -Raw -LiteralPath $logPath -ErrorAction SilentlyContinue
+  foreach ($name in @('tauri-driver.exe', 'msedgedriver.exe', 'stride-plan-qa-i13.exe')) {
+    $pattern = [regex]::Escape($name) + ':\d+:parent=\d+:integrity=8192 elevated=0'
+    if ($samples -notmatch $pattern) { Write-Error "Medium integrity was not observed for $name" -ErrorAction Continue; $result = 1 }
+    $unsafe = [regex]::Escape($name) + ':\d+:parent=\d+:integrity=(?!(?:8192|unavailable)\b)\d+ elevated=\d+|' + [regex]::Escape($name) + ':\d+:parent=\d+:integrity=\d+ elevated=1'
+    if ($samples -match $unsafe) { Write-Error "Unexpected integrity or elevation observed for $name" -ErrorAction Continue; $result = 1 }
   }
 }
 exit $result

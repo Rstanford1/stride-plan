@@ -34,7 +34,7 @@ export function classify({
       : "QA isolation passed; window creation did not complete. Inspect process exit evidence.";
   if (startup.includes("window-created") && !session)
     return exited
-      ? "QA window was created, but the process exited before a WebDriver session was established."
+      ? "QA window was created; no WebDriver session was established. The observed exit may have occurred during timeout cleanup."
       : running
         ? "QA window was created and the process was observed running, but no WebDriver session was established."
         : "QA window creation completed, but no WebDriver session was established; process state is unavailable.";
