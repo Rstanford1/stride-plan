@@ -17,37 +17,28 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 22.23.4
           cache: pnpm
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.100.0
         with:
           components: rustfmt
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          prefix-key: i13-qa-${{ github.event.pull_request.head.sha || github.sha }}
           cache-on-failure: true
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: node native-qa/check-driver-parser.mjs
-      - run: pnpm verify
-      - name: Verify production Rust configuration
-        working-directory: src-tauri
-        run: |
-          cargo fmt --all -- --check
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cargo test --locked
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Build isolated QA executable
-        env:
-          VITE_STRIDE_QA: "1"
-        run: pnpm tauri build --no-bundle --features qa-isolated --config src-tauri/tauri.qa.conf.json
+      - run: node --test native-qa/report.test.mjs native-qa/config.test.mjs
       - name: Install official driver
         run: |
-          cargo install tauri-driver --locked
+          cargo install tauri-driver --version 2.1.0 --locked
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $installed = (cargo install --list | Out-String)
+          if ($LASTEXITCODE -ne 0 -or $installed -notmatch '(?m)^tauri-driver v2\.1\.0:') { throw 'Pinned tauri-driver installation not verified.' }
           rustc --version
           node --version
           pnpm exec wdio --version
-          tauri-driver --version
           git rev-parse HEAD
       - name: Install matching Microsoft Edge WebDriver
         shell: pwsh
@@ -75,11 +66,25 @@ jobs:
           if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Microsoft Corporation') { throw 'Microsoft Edge WebDriver signature invalid.' }
           $driverVersion = (& $driver --version | Out-String).Trim()
           if ($LASTEXITCODE -ne 0 -or -not $driverVersion.Contains($runtime)) { throw 'WebDriver does not match WebView2 runtime.' }
-          "WebView2 runtime: $runtime`n$driverVersion`nTested commit: $(git rev-parse HEAD)" | Tee-Object -FilePath 'native-qa-results/environment.txt'
+          @("Tested commit: $(git rev-parse HEAD)", "Rust: $(rustc --version)", "Node: $(node --version)", "WebdriverIO: $(pnpm exec wdio --version)", 'tauri-driver: 2.1.0 (cargo install --list)', "WebView2 runtime: $runtime", $driverVersion) | Tee-Object -FilePath 'native-qa-results/environment.txt'
           $driverDir | Out-File -FilePath $env:GITHUB_PATH -Append
           "STRIDE_QA_DRIVER_VERSION=$runtime" | Out-File -FilePath $env:GITHUB_ENV -Append
       - name: Verify WebdriverIO driver discovery
         run: node native-qa/check-driver-parser.mjs --verify-discovery
+      - name: Driver-only status check
+        run: node native-qa/driver-smoke.mjs
+      - run: pnpm verify
+      - name: Verify production Rust configuration
+        working-directory: src-tauri
+        run: |
+          cargo fmt --all -- --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build isolated QA executable
+        env:
+          VITE_STRIDE_QA: "1"
+        run: pnpm tauri build --no-bundle --features qa-isolated --config src-tauri/tauri.qa.conf.json
       - name: Prepare disposable profile and validate before launch
         shell: pwsh
         run: |
@@ -104,21 +109,17 @@ jobs:
           $env:STRIDE_QA_ROOT = $savedRoot
           Write-Host "Negative isolation checks passed"
           exit 0
-      - name: Native proof of concept
+      - name: Native launch-only check
+        env:
+          STRIDE_QA_STAGE: launch
         run: |
           node native-qa/seed.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          pnpm exec wdio run native-qa/wdio.conf.mjs
+          ./native-qa/run-wdio.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Recheck isolation and repeat native proof
-        env:
-          STRIDE_QA_REPEAT: "1"
-          STRIDE_QA_VALUE: "132"
-        run: |
-          node native-qa/preflight.mjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          pnpm exec wdio run native-qa/wdio.conf.mjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Summarize native startup evidence
+        if: always()
+        run: node native-qa/report.mjs
       - name: Capture failure evidence
         if: failure()
         uses: actions/upload-artifact@v4

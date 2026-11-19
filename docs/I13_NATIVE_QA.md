@@ -23,14 +23,28 @@ The workflow uses the external official tauri-driver and a Microsoft-signed
 Edge WebDriver matching the hosted WebView2 runtime. It
 uses a pinned, locally tested WebdriverIO service patch to recognize both
 current and older Microsoft driver version strings and Windows multi-path
-output; version checks remain enabled. The hosted run checks that the verified
-driver is discoverable before starting WebDriver. It
-tests navigation, disabled Garmin, SQLite-backed synthetic setting persistence
-across a WebDriver session restart, and rejection of a Garmin command. It runs
-twice within the same disposable hosted-runner profile. Logs and screenshots contain only
-synthetic state; failure artifacts have seven-day retention. Hosted results are
+output; version checks remain enabled. This patch depends on service internals
+and must be reviewed on upgrade and removed when a verified upstream fix is
+available. The hosted run checks that the verified driver is discoverable before
+starting WebDriver. The current workflow runs only
+the launch and main-window check. Navigation, Garmin command rejection, and
+SQLite-backed restart tests are retained separately and deferred until launch
+has passed. Logs and screenshots contain only synthetic state; failure artifacts have seven-day retention. Hosted results are
 the evidence for the exact commit; no local or packaged Windows acceptance is
 inferred from frontend tests.
+
+The pinned tauri-driver version is 2.1.0; WebdriverIO packages are pinned in
+the manifest and lockfile. The hosted runner's actual WebView2 version is
+recorded and the matching signed driver is verified on each run. A driver-only
+status check runs before compilation, without launching the application. After
+the isolation gate, only a launch-only spec runs. The QA build writes fixed
+startup-stage markers only inside the verified per-run temporary directory.
+The runner records bounded process-name, PID, parent-PID and observed exit-code
+snapshots without command lines or environment data, plus driver-only output
+and a redacted, bounded tail of synthetic-only backend logs. Short-lived
+processes can escape sampling; the report identifies missing evidence rather
+than inferring a cause. These diagnostics do not by themselves prove that
+application launch or persistence succeeded.
 
 The branch-scoped PR trigger is temporary and remains available through code
 review. After this foundation is merged, remove that trigger in a separate

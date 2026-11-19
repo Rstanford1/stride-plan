@@ -18,6 +18,10 @@ const temp = realpathSync(process.env.RUNNER_TEMP);
 const root = realpathSync(process.env.STRIDE_QA_ROOT);
 assert.equal(path.dirname(root).toLowerCase(), temp.toLowerCase());
 assert.match(path.basename(root), /^stride-i13-[0-9]+-[0-9]+$/);
+assert.equal(
+  path.basename(root),
+  `stride-i13-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}`,
+);
 for (const [variable, folder] of [
   ["STRIDE_QA_CONFIG_BASE", "ApplicationData"],
   ["STRIDE_QA_LOCAL_BASE", "LocalApplicationData"],

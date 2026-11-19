@@ -66,19 +66,19 @@ importers:
         specifier: ^4.3.0
         version: 4.7.0(supports-color@8.1.1)(vite@6.4.5(@types/node@22.20.5)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
       "@wdio/cli":
-        specifier: ^10.2.0
+        specifier: 10.2.0
         version: 10.2.0(@types/node@22.20.5)(bare-buffer@3.7.3)(expect-webdriverio@8.1.0(@wdio/types@10.2.0)(webdriverio@10.2.0(bare-buffer@3.7.3)(supports-color@8.1.1)))(supports-color@8.1.1)
       "@wdio/local-runner":
-        specifier: ^10.2.0
+        specifier: 10.2.0
         version: 10.2.0(supports-color@8.1.1)(tsx@4.23.15)(webdriverio@10.2.0(bare-buffer@3.7.3)(supports-color@8.1.1))
       "@wdio/mocha-framework":
-        specifier: ^10.2.0
+        specifier: 10.2.0
         version: 10.2.0(supports-color@8.1.1)
       "@wdio/spec-reporter":
-        specifier: ^10.2.0
+        specifier: 10.2.0
         version: 10.2.0
       "@wdio/tauri-service":
-        specifier: ^1.5.1
+        specifier: 1.5.1
         version: 1.5.1(patch_hash=aeecea8d9ca873da57ada86f180ae0599dc5e8f130bb430c3827d0e97ff3e9fa)(expect-webdriverio@8.1.0(@wdio/types@10.2.0)(webdriverio@10.2.0(bare-buffer@3.7.3)(supports-color@8.1.1)))(supports-color@8.1.1)(tsx@4.23.15)(webdriverio@10.2.0(bare-buffer@3.7.3)(supports-color@8.1.1))
       jsdom:
         specifier: ^25.0.0
