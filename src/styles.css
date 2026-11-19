@@ -1961,3 +1961,45 @@ label textarea {
     flex-wrap: wrap;
   }
 }
+
+.f2-week-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.f2-date-picker {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+.f2-date-picker button {
+  min-width: 0;
+  padding: 8px 2px;
+  overflow-wrap: anywhere;
+}
+.f2-cards {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+}
+.f2-card {
+  padding: 20px;
+  min-width: 0;
+}
+.f2-card p {
+  margin: 10px 0;
+}
+.f2-next {
+  margin-top: 20px;
+}
+@media (max-width: 520px) {
+  .f2-date-picker {
+    gap: 3px;
+  }
+  .f2-date-picker button {
+    font-size: 11px;
+  }
+  .f2-card {
+    padding: 14px;
+  }
+}
