@@ -85,10 +85,11 @@ jobs:
           Invoke-WebRequest -Uri 'https://github.com/gerardog/gsudo/releases/download/v2.6.1/gsudo.portable.zip' -OutFile $zip
           if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -ne '21130bf178d7b9891207f00bff56f05b6b363ce9cec7b2d084e45fb12ee51f44') { throw 'Launcher archive hash mismatch.' }
           Expand-Archive -LiteralPath $zip -DestinationPath $dir
-          $launchers = @(Get-ChildItem -LiteralPath $dir -Filter 'gsudo.exe' -File -Recurse)
-          if ($launchers.Count -ne 1) { throw 'Expected exactly one portable launcher.' }
-          "STRIDE_QA_GSUDO=$($launchers[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
-          'Portable gsudo: 2.6.1 (SHA256 verified)' | Add-Content -LiteralPath 'native-qa-results/environment.txt'
+          $launcher = Join-Path $dir 'x64/gsudo.exe'
+          if (-not (Test-Path -LiteralPath $launcher -PathType Leaf)) { throw 'Pinned x64 launcher missing.' }
+          if ((Get-FileHash -LiteralPath $launcher -Algorithm SHA256).Hash -ne '80429DBAF959263030C87FC610C2F1052B08C63575E1DAD56CAC5E502EECB414') { throw 'Pinned x64 launcher hash mismatch.' }
+          "STRIDE_QA_GSUDO=$launcher" | Out-File -FilePath $env:GITHUB_ENV -Append
+          'Portable gsudo: 2.6.1 x64 (archive and executable SHA256 verified)' | Add-Content -LiteralPath 'native-qa-results/environment.txt'
       - run: pnpm verify
       - name: Verify production Rust configuration
         working-directory: src-tauri
