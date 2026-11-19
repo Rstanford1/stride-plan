@@ -225,6 +225,7 @@ impl FitSourceStorage {
 
     // Internal T04-only provenance receipt. Caller cannot choose a filesystem
     // path or arbitrary contents. Provider identity remains separate from hash.
+    #[cfg(not(feature = "qa-isolated"))]
     pub fn store_garmin_receipt(&self, activity_id: &str, source_hash: &str) -> Result<()> {
         validate_request(CONTRACT_VERSION, source_hash)?;
         if !crate::garmin::valid_id(activity_id) {

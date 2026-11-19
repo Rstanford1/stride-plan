@@ -1,0 +1,42 @@
+diff --git a/dist/esm/index.js b/dist/esm/index.js
+--- a/dist/esm/index.js
++++ b/dist/esm/index.js
+@@ -1656,7 +1656,7 @@
+         const { stdout: pathResult } = await execAsync('where msedgedriver.exe 2>nul', {
+             encoding: 'utf8',
+         });
+-        const driverPath = pathResult.trim().split('\n')[0];
++        const driverPath = pathResult.trim().split(/\r?\n/)[0].trim();
+         if (driverPath && existsSync(driverPath)) {
+             // Get version
+             try {
+@@ -1664,7 +1664,7 @@
+                     encoding: 'utf8',
+                     timeout: 5000,
+                 });
+-                const match = versionOutput.match(/MSEdgeDriver ([\d.]+)/);
++                const match = versionOutput.match(/(?:MSEdgeDriver|Microsoft Edge WebDriver) ([\d.]+)/);
+                 if (match) {
+                     log$7.debug(`Found msedgedriver ${match[1]} at ${driverPath}`);
+                     return { path: driverPath, version: match[1] };
+diff --git a/dist/cjs/index.js b/dist/cjs/index.js
+--- a/dist/cjs/index.js
++++ b/dist/cjs/index.js
+@@ -1660,7 +1660,7 @@
+         const { stdout: pathResult } = await execAsync('where msedgedriver.exe 2>nul', {
+             encoding: 'utf8',
+         });
+-        const driverPath = pathResult.trim().split('\n')[0];
++        const driverPath = pathResult.trim().split(/\r?\n/)[0].trim();
+         if (driverPath && node_fs.existsSync(driverPath)) {
+             // Get version
+             try {
+@@ -1668,7 +1668,7 @@
+                     encoding: 'utf8',
+                     timeout: 5000,
+                 });
+-                const match = versionOutput.match(/MSEdgeDriver ([\d.]+)/);
++                const match = versionOutput.match(/(?:MSEdgeDriver|Microsoft Edge WebDriver) ([\d.]+)/);
+                 if (match) {
+                     log$7.debug(`Found msedgedriver ${match[1]} at ${driverPath}`);
+                     return { path: driverPath, version: match[1] };

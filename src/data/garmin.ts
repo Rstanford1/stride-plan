@@ -66,7 +66,8 @@ export function garminError(error: unknown): string {
 }
 export const garmin = {
   openKeyPage: () => invoke<void>("garmin_open_key_page"),
-  available: () => "__TAURI_INTERNALS__" in globalThis,
+  available: () =>
+    !import.meta.env.VITE_STRIDE_QA && "__TAURI_INTERNALS__" in globalThis,
   status: () => invoke<GarminStatus>("garmin_status"),
   connect: (apiKey: string) =>
     invoke<GarminStatus>("garmin_connect", { apiKey }),
