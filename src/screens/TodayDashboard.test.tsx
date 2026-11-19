@@ -120,3 +120,55 @@ describe("Today states", () => {
     expect(screen.queryByText(/skipped/i)).not.toBeInTheDocument();
   });
 });
+
+it("browses the previous week without changing the selected session", () => {
+  render(<TodayDashboard openPlan={vi.fn()} openActivityReview={vi.fn()} />);
+  const title = screen.getByRole("heading", { level: 2 }).textContent;
+  fireEvent.click(screen.getByRole("button", { name: "Previous week" }));
+  expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent(title!);
+  expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Today");
+  expect(
+    screen.getByRole("button", { name: /October 28, 2026/ }),
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Today" }));
+  expect(
+    screen.getByRole("button", { name: /November 4, 2026, today/ }),
+  ).toHaveAttribute("aria-current", "date");
+});
+
+it("preserves original instructions when a session was revised", () => {
+  const easy = createSeedSessions().find((session) => session.kind === "easy")!;
+  state.data.sessions = [
+    {
+      ...easy,
+      scheduledDate: "2026-11-04",
+      instructions: "Revised instructions",
+      revisions: [
+        {
+          id: "revision-1",
+          changedAt: "2026-11-04T12:00:00Z",
+          field: "instructions",
+          from: "Original coach instructions",
+          to: "Revised instructions",
+          reason: "Edit",
+        },
+      ],
+    },
+  ];
+  render(<TodayDashboard openPlan={vi.fn()} openActivityReview={vi.fn()} />);
+  fireEvent.click(screen.getByRole("button", { name: /^Expand / }));
+  expect(
+    screen.getByText("Original instructions: Original coach instructions"),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText("Revised instructions: Revised instructions"),
+  ).toBeInTheDocument();
+});
+
+it("uses local calendar dates across daylight-saving and year boundaries", () => {
+  expect(addDays("2026-03-07", 1)).toBe("2026-03-08");
+  expect(addDays("2026-03-08", -1)).toBe("2026-03-07");
+  expect(addDays("2026-11-01", 1)).toBe("2026-11-02");
+  expect(addDays("2027-01-01", -1)).toBe("2026-12-31");
+  expect(addDays("2024-03-01", -1)).toBe("2024-02-29");
+});

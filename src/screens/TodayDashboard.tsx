@@ -34,11 +34,22 @@ function WorkoutCard({
   onLog: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const instructionRevision = session.revisions.find(
+    (revision) => revision.field === "instructions",
+  );
+  const originalInstructions = instructionRevision
+    ? typeof instructionRevision.from === "string"
+      ? instructionRevision.from
+      : undefined
+    : session.instructions;
   if (session.kind === "rest")
     return (
       <section className="primary-panel f2-card">
         <h2>Rest day</h2>
-        <p>{session.instructions || "Rest is planned for this day."}</p>
+        <p>{originalInstructions || "Rest is planned for this day."}</p>
+        {instructionRevision && session.instructions && (
+          <p>Revised instructions: {session.instructions}</p>
+        )}
       </section>
     );
   return (
@@ -90,7 +101,14 @@ function WorkoutCard({
       </div>
       {expanded && (
         <div className="instruction">
-          <p>{session.instructions || "No instructions available."}</p>
+          <p>
+            Original instructions: {originalInstructions || "Not available."}
+          </p>
+          {instructionRevision && (
+            <p>
+              Revised instructions: {session.instructions || "Not available."}
+            </p>
+          )}
           <p>
             Original prescription: {formatMiles(session.originalDistanceMiles)}{" "}
             on {formatDate(session.originalDate)}
@@ -179,6 +197,9 @@ export function TodayDashboard({
           const daySessions = data.sessions.filter(
             (item) => item.scheduledDate === date,
           );
+          const recorded = daySessions.some((session) =>
+            data.journals.some((entry) => entry.sessionId === session.id),
+          );
           return (
             <button
               key={date}
@@ -199,9 +220,11 @@ export function TodayDashboard({
                   ? "—"
                   : daySessions.every((s) => s.kind === "rest")
                     ? "Rest"
-                    : daySessions.length > 1
-                      ? `${daySessions.length} sessions`
-                      : `${daySessions[0].plannedDistanceMiles} mi`}
+                    : recorded
+                      ? "Recorded"
+                      : daySessions.length > 1
+                        ? `${daySessions.length} sessions`
+                        : `${daySessions[0].plannedDistanceMiles} mi`}
               </small>
             </button>
           );
