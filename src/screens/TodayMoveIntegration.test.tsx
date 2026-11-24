@@ -7,7 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { AppProvider } from "../data/app-context";
+import { AppProvider, useAppData } from "../data/app-context";
 import type { AppRepository } from "../data/repository";
 import { createInitialData } from "../domain/seed";
 import { activationCandidate } from "../domain/active-plan";
@@ -19,6 +19,23 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
 });
+
+function ScheduleProbe() {
+  const { data, activeProjection } = useAppData();
+  const session = data.sessions.find(
+    (item) => item.sourceSessionId === "session-3",
+  );
+  const projected = activeProjection.days
+    .flatMap((day) => day.sessions)
+    .find((item) => item.id === session?.id);
+  return (
+    <output data-testid="schedule-dates">
+      {session?.scheduledDate ?? "loading"}|
+      {projected?.scheduledDate ?? "loading"}
+    </output>
+  );
+}
+
 it("enforces fixed-date restrictions and moves a permitted session through the real app context", async () => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date(2026, 10, 17, 12));
@@ -42,14 +59,19 @@ it("enforces fixed-date restrictions and moves a permitted session through the r
       sourceBytes: new TextEncoder().encode(JSON.stringify(source)),
     }),
   };
-  render(
+  const view = render(
     <AppProvider repository={repository}>
       <TodayDashboard openPlan={vi.fn()} openActivityReview={vi.fn()} />
+      <ScheduleProbe />
     </AppProvider>,
   );
   const title = await screen.findByRole("heading", {
     name: "Synthetic threshold session",
   });
+  expect(screen.getByTestId("schedule-dates")).toHaveTextContent(
+    "2026-11-18|2026-11-18",
+  );
+  expect(screen.getByText(/Next scheduled/)).toHaveTextContent("Nov 18");
   const card = title.closest("section")!;
   fireEvent.click(within(card).getByRole("button", { name: /Expand/ }));
   fireEvent.change(
@@ -68,6 +90,20 @@ it("enforces fixed-date restrictions and moves a permitted session through the r
     { target: { value: "2026-11-19" } },
   );
   fireEvent.click(within(easy).getByRole("button", { name: "Move session" }));
+  expect(screen.getByTestId("schedule-dates")).toHaveTextContent(
+    "2026-11-19|2026-11-19",
+  );
+  const dates = screen.getByRole("navigation", { name: "Week dates" });
+  expect(
+    within(dates).getByRole("button", { name: /November 18, 2026/ }),
+  ).toHaveTextContent("—");
+  expect(
+    within(dates).getByRole("button", { name: /November 19, 2026/ }),
+  ).toHaveTextContent("2 sessions");
+  fireEvent.click(
+    within(dates).getByRole("button", { name: /November 17, 2026/ }),
+  );
+  expect(screen.getByText(/Next scheduled/)).toHaveTextContent("Nov 19");
   fireEvent.click(screen.getByRole("button", { name: /November 19, 2026/ }));
   expect(
     screen.getByRole("heading", { name: "Prescribed easy mileage" }),
@@ -78,4 +114,17 @@ it("enforces fixed-date restrictions and moves a permitted session through the r
         ?.scheduledDate,
     ).toBe("2026-11-19"),
   );
+  view.unmount();
+  render(
+    <AppProvider repository={repository}>
+      <TodayDashboard openPlan={vi.fn()} openActivityReview={vi.fn()} />
+      <ScheduleProbe />
+    </AppProvider>,
+  );
+  await waitFor(() =>
+    expect(screen.getByTestId("schedule-dates")).toHaveTextContent(
+      "2026-11-19|2026-11-19",
+    ),
+  );
+  expect(screen.getByText(/Next scheduled/)).toHaveTextContent("Nov 19");
 });
