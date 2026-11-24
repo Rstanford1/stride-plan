@@ -16,10 +16,11 @@ against the verified commit; inspect the current revision before relying on them
 - Coordination and task boundaries: [AGENTS.md](../AGENTS.md) and
   [parallel development](PARALLEL_DEVELOPMENT.md). Existing task evidence is
   indexed in [TASK_HISTORY.md](TASK_HISTORY.md).
-- The supplied session instructions state JSON 1.1 only; the verified repository
-  instructions and [contract documentation](../schemas/training-plan/README.md)
-  record the owner-approved 1.2 extension. This policy discrepancy is unresolved
-  here; do not infer permission to change intake behavior from this map.
+- The implemented, owner-approved contract supports JSON 1.2 alongside 1.1.
+  Earlier 1.1-only instructions predate the extension; the
+  [contract documentation](../schemas/training-plan/README.md) records its
+  approval and acceptance status. Version-specific validation does not upgrade
+  1.1 documents to 1.2.
 
 ## Entry points and UI
 
