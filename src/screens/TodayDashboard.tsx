@@ -77,6 +77,14 @@ function WorkoutCard({
         <div>
           <span className="session-kind">
             {session.kind} · {session.flexible ? "Flexible" : "Core"}
+            {projected?.source?.priorityClass === "supporting"
+              ? " · Supporting"
+              : projected?.source?.priorityClass === "priority"
+                ? " · Priority"
+                : ""}
+            {projected?.source?.participation === "optional"
+              ? " · Optional"
+              : ""}
             {projected?.role === "double"
               ? " · Linked double"
               : projected?.role === "independent"

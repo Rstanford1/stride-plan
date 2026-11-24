@@ -62,7 +62,10 @@ it("renders the authoritative linked sessions and supplied duration, and delegat
     .getByRole("heading", { name: "Synthetic threshold session" })
     .closest("section")!;
   expect(within(main).getByText(/30 min duration/)).toBeInTheDocument();
-  expect(screen.getByText(/Linked double/)).toBeInTheDocument();
+  expect(screen.getByText(/Linked double/)).toHaveTextContent(
+    "Supporting · Optional",
+  );
+  expect(within(main).getByText(/Priority/)).toBeInTheDocument();
   fireEvent.click(within(main).getByRole("button", { name: /Expand/ }));
   fireEvent.change(
     within(main).getByLabelText("Move Synthetic threshold session"),
