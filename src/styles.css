@@ -2003,3 +2003,15 @@ label textarea {
     padding: 14px;
   }
 }
+.f2-repetitions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+.f2-repetitions span {
+  border: 1px solid var(--line);
+  border-radius: 0.35rem;
+  padding: 0.35rem 0.5rem;
+  overflow-wrap: anywhere;
+}

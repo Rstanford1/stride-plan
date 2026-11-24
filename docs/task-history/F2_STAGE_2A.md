@@ -1,0 +1,7 @@
+# F2 Stage 2A: Today active schedule integration
+
+Baseline: `1d9a9a298b4024de9c4c0ae7afad9f7b224fd1a1` (D1 PR #30 merged). Stage 2A follows the owner-approved F2 v1.1 Today specification and preserves Stage 1 navigation and visual foundation. Full F2 remains in progress and awaits separate acceptance.
+
+Today consumes `activeProjection.days`, `legacySessions`, and `historicalSessions` and delegates movement to the existing `moveSession` command. It presents supplied distances, duration, structured repetitions, inherited and overridden targets, explicit recovery, progression text, coach instructions, source plan and legacy/historical status. Source-linked doubles remain grouped; historical sessions do not receive logging or move controls. Tests use only synthetic fixtures and isolated browser storage.
+
+Deliberate limits: count ranges not represented by the contract are not invented; progression targets are not calculated; consecutive identical rounds are compressed only when all represented details agree; differing rounds remain separate. Existing D1 projection exposes source data for the current activation only, so retired source-specific structure may be unavailable. Confirmed-activity presentation, unplanned logging, GPS, Garmin review, durable save feedback, one-hour focus and authoritative weekly metrics remain separately dependent work. The result of `moveSession` is an accepted request, not a durable-save confirmation. This slice does not change persistence, schemas, native code, or the paused I13 Phase 2.
