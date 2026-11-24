@@ -19,6 +19,7 @@ export interface ProjectedSession {
   originalDuration: PlanQuantity | null;
   plannedDuration: PlanQuantity | null;
   status: PlannedSession["status"];
+  retiredAt: string | null;
   revisions: SessionRevision[];
   role: string | null;
   primarySessionId: string | null;
@@ -80,6 +81,7 @@ function projectedWithoutSource(session: PlannedSession): ProjectedSession {
       ? structuredClone(session.plannedDuration)
       : null,
     status: session.status,
+    retiredAt: session.retiredAt ?? null,
     revisions: structuredClone(session.revisions),
     role: null,
     primarySessionId: null,
@@ -97,16 +99,18 @@ export function projectActivePlan(
   const current = data.sessions.filter((session) => !session.retiredAt);
   const legacy = current.filter((session) => !session.sourceSessionId);
   const projectedLegacy = legacy.map(projectedWithoutSource);
-  const historicalSessions = current
+  const historicalSessions = data.sessions
     .filter(
       (session) =>
-        session.sourceSessionId &&
-        (activationId
-          ? !session.id.startsWith(`active:${activationId}:session:`)
-          : !activeSource ||
-            session.sourcePlanId !== activeSource.manifest.planId ||
-            session.sourceVersionId !== activeSource.manifest.versionId ||
-            (effectiveDate !== null && session.originalDate < effectiveDate)),
+        session.retiredAt ||
+        (session.sourceSessionId &&
+          (activationId
+            ? !session.id.startsWith(`active:${activationId}:session:`)
+            : !activeSource ||
+              session.sourcePlanId !== activeSource.manifest.planId ||
+              session.sourceVersionId !== activeSource.manifest.versionId ||
+              (effectiveDate !== null &&
+                session.originalDate < effectiveDate))),
     )
     .map(projectedWithoutSource);
   if (!activeSource)
@@ -175,6 +179,7 @@ export function projectActivePlan(
             ? structuredClone(mappedSession.plannedDuration)
             : null,
           status: mappedSession.status,
+          retiredAt: null,
           revisions: structuredClone(mappedSession.revisions),
           role: sourceSession.role,
           primarySessionId: sourceSession.primarySessionId ?? null,

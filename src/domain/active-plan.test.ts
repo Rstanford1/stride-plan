@@ -249,4 +249,32 @@ describe("active plan candidate", () => {
       after.sessions.find((item) => item.sourceSessionId === "session-1"),
     ).not.toHaveProperty("workout");
   });
+
+  it("exposes retired sessions from a previous activation in D1 history", () => {
+    const plan = validated(independent);
+    const first = activationCandidate(
+      plan,
+      createInitialData(),
+      "first",
+      "2026-11-16",
+      "2026-11-16T12:00:00Z",
+    );
+    const second = activationCandidate(
+      plan,
+      first,
+      "second",
+      "2026-11-16",
+      "2026-11-16T13:00:00Z",
+    );
+    const projection = projectActivePlan(second, plan, "2026-11-16", "second");
+    expect(projection.days[0].sessions[0].id).toBe(
+      "active:second:session:session-1",
+    );
+    expect(projection.historicalSessions).toContainEqual(
+      expect.objectContaining({
+        id: "active:first:session:session-1",
+        retiredAt: "2026-11-16T13:00:00Z",
+      }),
+    );
+  });
 });
