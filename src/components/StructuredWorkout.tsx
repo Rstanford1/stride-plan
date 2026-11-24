@@ -42,6 +42,89 @@ function recovery(value: Recovery): string {
     .join(" then ");
 }
 
+function recoveryNotes(value: Recovery, references: PaceReferences): string[] {
+  const sequence = "components" in value && Array.isArray(value.components);
+  const intervals =
+    "components" in value && Array.isArray(value.components)
+      ? value.components
+      : [value as Exclude<Recovery, { components: unknown }>];
+  return [
+    ...(sequence ? value.coachText : []),
+    ...intervals.flatMap((interval) => [
+      ...(targets(interval.targets, references)
+        ? [`Recovery target: ${targets(interval.targets, references)}`]
+        : []),
+      ...interval.coachText,
+    ]),
+  ];
+}
+
+function RecoveryNotes({
+  value,
+  references,
+}: {
+  value: Recovery;
+  references: PaceReferences;
+}) {
+  return (
+    <>
+      {recoveryNotes(value, references).map((note, index) => (
+        <p key={index}>{note}</p>
+      ))}
+    </>
+  );
+}
+
+function recoveryAnchor(workout: Workout, id: string): string {
+  for (const block of workout.blocks) {
+    if (block.id === id) return `${block.role} block`;
+    if (block.role === "recovery") continue;
+    for (const set of block.sets) {
+      if (set.id === id) return `${block.role} set ${set.index}`;
+      const repetition = set.repetitions.find((item) => item.id === id);
+      if (repetition)
+        return `${block.role} set ${set.index} repetition ${repetition.index}`;
+    }
+  }
+  return "the specified workout component";
+}
+
+function recoverySummary(workout: Workout): string[] {
+  const result: string[] = [];
+  for (const block of workout.blocks) {
+    if (block.role === "recovery") {
+      result.push(
+        `After ${recoveryAnchor(workout, block.afterId)}: ${recovery(block.recovery)}`,
+      );
+      continue;
+    }
+    const repetitions = [
+      ...new Set(
+        block.sets.flatMap((set) =>
+          set.repetitions.flatMap((rep) =>
+            rep.recoveryAfter ? [recovery(rep.recoveryAfter)] : [],
+          ),
+        ),
+      ),
+    ];
+    if (repetitions.length)
+      result.push(
+        `After selected ${block.role} repetitions: ${repetitions.join("; ")}`,
+      );
+    for (const set of block.sets) {
+      if (set.recoveryAfter)
+        result.push(
+          `After ${block.role} set ${set.index}: ${recovery(set.recoveryAfter)}`,
+        );
+    }
+    if (block.recoveryAfter)
+      result.push(
+        `After ${block.role} block: ${recovery(block.recoveryAfter)}`,
+      );
+  }
+  return result;
+}
+
 function groupedSets(sets: WorkoutSet[]) {
   const groups: { set: WorkoutSet; count: number; signature: string }[] = [];
   for (const set of sets) {
@@ -72,7 +155,16 @@ export function StructuredWorkout({
       <p>Workout structure: {workout.structureStatus}</p>
       {workout.blocks.map((block) =>
         block.role === "recovery" ? (
-          <p key={block.id}>Recovery: {recovery(block.recovery)}</p>
+          <div key={block.id}>
+            <p>
+              Recovery after {recoveryAnchor(workout, block.afterId)}:{" "}
+              {recovery(block.recovery)}
+            </p>
+            <RecoveryNotes value={block.recovery} references={references} />
+            {block.coachText.map((text, i) => (
+              <p key={i}>{text}</p>
+            ))}
+          </div>
         ) : (
           <div key={block.id}>
             <strong>{block.role}</strong>
@@ -93,11 +185,23 @@ export function StructuredWorkout({
                       {rep.coachText.map((text) => ` · ${text}`)}
                       {rep.recoveryAfter &&
                         ` · Recovery after: ${recovery(rep.recoveryAfter)}`}
+                      {rep.recoveryAfter && (
+                        <RecoveryNotes
+                          value={rep.recoveryAfter}
+                          references={references}
+                        />
+                      )}
                     </li>
                   ))}
                 </ul>
                 {set.recoveryAfter && (
                   <p>Recovery after set: {recovery(set.recoveryAfter)}</p>
+                )}
+                {set.recoveryAfter && (
+                  <RecoveryNotes
+                    value={set.recoveryAfter}
+                    references={references}
+                  />
                 )}
                 {set.coachText.map((text, i) => (
                   <p key={i}>{text}</p>
@@ -106,6 +210,12 @@ export function StructuredWorkout({
             ))}
             {block.recoveryAfter && (
               <p>Recovery after block: {recovery(block.recoveryAfter)}</p>
+            )}
+            {block.recoveryAfter && (
+              <RecoveryNotes
+                value={block.recoveryAfter}
+                references={references}
+              />
             )}
           </div>
         ),
@@ -141,19 +251,19 @@ export function StructuredWorkoutSummary({
                             ` · ${targets(rep.targets ?? set.targets, references)}`}
                           {set.hammerRepetitionIndices?.includes(rep.index) &&
                             " · Hammer"}
-                          {rep.recoveryAfter &&
-                            ` · Recovery after: ${recovery(rep.recoveryAfter)}`}
                         </span>
                       ))}
                     </div>
-                    {set.recoveryAfter && (
-                      <p>Recovery after set: {recovery(set.recoveryAfter)}</p>
-                    )}
                   </div>
                 ))}
               </div>
             ),
         )}
+      {recoverySummary(workout).length > 0 && (
+        <p className="f2-recovery-summary">
+          {recoverySummary(workout).join(" · ")}
+        </p>
+      )}
     </div>
   );
 }

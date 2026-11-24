@@ -154,3 +154,117 @@ it("shows source coach instructions even if the editable snapshot differs", () =
     ),
   ).toBeInTheDocument();
 });
+
+it("renders projected legacy sessions as legacy rather than active source sessions", () => {
+  const legacy = state.data.sessions.find(
+    (item) => item.originalDate === "2026-11-02",
+  )!;
+  legacy.scheduledDate = "2026-11-17";
+  const result = validateTrainingPlan(fixture);
+  if (!result.ok) throw new Error("Invalid synthetic fixture");
+  state.activeProjection = projectActivePlan(
+    state.data,
+    result.plan,
+    "2026-11-16",
+    "test",
+  );
+  expect(
+    state.activeProjection.legacySessions.some((item) => item.id === legacy.id),
+  ).toBe(true);
+  render(<TodayDashboard openPlan={vi.fn()} openActivityReview={vi.fn()} />);
+  const cards = screen.getAllByRole("heading", { name: legacy.title });
+  const card = cards
+    .map((heading) => heading.closest("section")!)
+    .find((section) => within(section).queryByText(/Legacy/))!;
+  expect(card).toHaveTextContent("Legacy");
+  expect(card).not.toHaveTextContent("Linked double");
+  fireEvent.click(within(card).getByRole("button", { name: /Expand/ }));
+  expect(within(card).getByText(/Original prescription/)).toBeInTheDocument();
+  expect(
+    within(card).queryByRole("button", { name: "Move session" }),
+  ).not.toBeInTheDocument();
+});
+
+it("keeps an independent same-day session distinct from the main and its linked double", () => {
+  const independent = state.data.sessions.find(
+    (item) => item.sourceSessionId === "session-1",
+  )!;
+  independent.scheduledDate = "2026-11-17";
+  const result = validateTrainingPlan(fixture);
+  if (!result.ok) throw new Error("Invalid synthetic fixture");
+  state.activeProjection = projectActivePlan(
+    state.data,
+    result.plan,
+    "2026-11-16",
+    "test",
+  );
+  render(<TodayDashboard openPlan={vi.fn()} openActivityReview={vi.fn()} />);
+  const independentCard = screen
+    .getByRole("heading", { name: "Prescribed easy mileage" })
+    .closest("section")!;
+  const doubleCard = screen
+    .getByRole("heading", { name: "Synthetic optional double" })
+    .closest("section")!;
+  expect(independentCard).toHaveTextContent("Independent");
+  expect(independentCard).not.toHaveTextContent("Linked double");
+  expect(doubleCard).toHaveTextContent("Linked double");
+  fireEvent.click(within(doubleCard).getByRole("button", { name: /Expand/ }));
+  expect(
+    within(doubleCard).getByText(
+      "Linked to primary session: Synthetic threshold session",
+    ),
+  ).toBeInTheDocument();
+  expect(
+    within(independentCard).getByRole("button", { name: /Expand/ }),
+  ).toHaveAttribute("aria-expanded", "false");
+});
+
+it("shows retired planned sessions as Historical without editing controls, while retaining their original prescription", () => {
+  const retired = state.data.sessions.find(
+    (item) =>
+      item.retiredAt &&
+      item.kind !== "rest" &&
+      item.scheduledDate === "2026-11-17",
+  )!;
+  render(<TodayDashboard openPlan={vi.fn()} openActivityReview={vi.fn()} />);
+  const history = screen.getByRole("region", { name: "Historical sessions" });
+  const card = within(history)
+    .getByRole("heading", { name: retired.title })
+    .closest("section")!;
+  expect(
+    within(card).getByText("Historical", { selector: ".status" }),
+  ).toBeInTheDocument();
+  expect(
+    within(card).queryByText("Planned", { selector: ".status" }),
+  ).not.toBeInTheDocument();
+  expect(
+    within(card).queryByRole("button", {
+      name: /Log this run|Update entry|Move session/,
+    }),
+  ).not.toBeInTheDocument();
+  fireEvent.click(within(card).getByRole("button", { name: /Expand/ }));
+  expect(within(card).getByText(/Original prescription/)).toBeInTheDocument();
+  expect(within(card).getByText(/Original instructions/)).toBeInTheDocument();
+  expect(
+    within(card).queryByRole("button", { name: /Move session/ }),
+  ).not.toBeInTheDocument();
+});
+
+it("retains a recorded historical outcome alongside the Historical status", () => {
+  const retired = state.data.sessions.find(
+    (item) =>
+      item.retiredAt &&
+      item.kind !== "rest" &&
+      item.scheduledDate === "2026-11-17",
+  )!;
+  retired.status = "completed";
+  render(<TodayDashboard openPlan={vi.fn()} openActivityReview={vi.fn()} />);
+  const history = screen.getByRole("region", { name: "Historical sessions" });
+  const card = within(history)
+    .getByRole("heading", { name: retired.title })
+    .closest("section")!;
+  expect(
+    within(card).getByText("Historical", { selector: ".status" }),
+  ).toBeInTheDocument();
+  expect(within(card).getByText("Completed")).toBeInTheDocument();
+});

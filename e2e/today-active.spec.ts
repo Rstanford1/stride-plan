@@ -31,6 +31,10 @@ test("renders the active structured plan with keyboard and narrow-window support
   await expect(page.getByLabel("Prescribed workout summary")).toContainText(
     "400 m",
   );
+  await page.screenshot({
+    path: testInfo.outputPath("today-active-collapsed.png"),
+    fullPage: true,
+  });
   const expand = page.getByRole("button", { name: "Expand Synthetic workout" });
   await expand.focus();
   await page.keyboard.press("Enter");

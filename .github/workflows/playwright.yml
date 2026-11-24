@@ -24,6 +24,14 @@ jobs:
           echo "Runner: $RUNNER_OS; browser: Chromium" >> "$GITHUB_STEP_SUMMARY"
           echo 'Reproduce: pnpm install --frozen-lockfile && pnpm exec playwright install chromium && pnpm test:e2e' >> "$GITHUB_STEP_SUMMARY"
       - run: pnpm test:e2e
+      - name: Upload synthetic Today screenshots
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: f2-today-screenshots-${{ github.run_id }}
+          path: test-results/**/today-active-*.png
+          if-no-files-found: error
+          retention-days: 14
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

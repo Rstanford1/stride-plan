@@ -98,7 +98,16 @@ function WorkoutCard({
           </span>
           <h2>{session.title}</h2>
         </div>
-        <StatusBadge status={session.status} />
+        {historical ? (
+          <div>
+            <span className="status">Historical</span>
+            {session.status !== "planned" && (
+              <StatusBadge status={session.status} />
+            )}
+          </div>
+        ) : (
+          <StatusBadge status={session.status} />
+        )}
       </div>
       <p>
         <strong>
