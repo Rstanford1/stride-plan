@@ -18,6 +18,7 @@
 
 ## Architecture
 
+- For navigation, consult `docs/ARCHITECTURE_MAP.md` and `docs/TASK_HISTORY.md`; load linked details as needed. Follow `docs/PARALLEL_DEVELOPMENT.md` for task authority and coordination.
 - Tauri 2 desktop shell in `src-tauri/`.
 - React 19 + TypeScript + Vite UI in `src/`.
 - `src/screens/`: screen composition; `src/components/`: shared UI/forms.
