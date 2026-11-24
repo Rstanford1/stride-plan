@@ -3,30 +3,39 @@ import { useMemo, useState } from "react";
 import { useAppData } from "../data/app-context";
 import { calculateWeeklyMetrics, mileageAdherence } from "../domain/metrics";
 import { buildObservations } from "../domain/observations";
-import { formatMiles } from "../utils/format";
+import {
+  formatMiles,
+  formatPlannedMiles,
+  formatPrescription,
+} from "../utils/format";
 import { Metric } from "../components/Metric";
 import { StatusBadge } from "../components/StatusBadge";
+import { currentPlanSessions } from "../domain/active-plan";
 
 export function WeeklyReviewScreen() {
-  const { data } = useAppData();
+  const { data, activePlan } = useAppData();
   const [week, setWeek] = useState(1);
-  const maxWeek = Math.max(...data.sessions.map((session) => session.week));
+  const planSessions = currentPlanSessions(
+    data,
+    activePlan?.activationId ?? null,
+    activePlan?.effectiveDate ?? null,
+  );
+  const maxWeek = Math.max(1, ...planSessions.map((session) => session.week));
   const metrics = useMemo(
     () =>
       calculateWeeklyMetrics(
         week,
-        data.sessions,
+        planSessions,
         data.activities,
         data.journals,
       ),
-    [week, data],
+    [week, data, planSessions],
   );
   const observations = useMemo(
-    () =>
-      buildObservations(week, data.sessions, data.activities, data.journals),
-    [week, data],
+    () => buildObservations(week, planSessions, data.activities, data.journals),
+    [week, data, planSessions],
   );
-  const sessions = data.sessions.filter(
+  const sessions = planSessions.filter(
     (session) => session.week === week && session.kind !== "rest",
   );
   const adherence = mileageAdherence(metrics);
@@ -58,12 +67,18 @@ export function WeeklyReviewScreen() {
       <section className="metrics-panel">
         <Metric
           label="Core planned"
-          value={formatMiles(metrics.corePlannedMiles)}
+          value={formatPlannedMiles(
+            metrics.corePlannedMiles,
+            metrics.corePlannedRange,
+          )}
           detail={`${metrics.coreTotal} sessions`}
         />
         <Metric
           label="Flexible planned"
-          value={formatMiles(metrics.flexiblePlannedMiles)}
+          value={formatPlannedMiles(
+            metrics.flexiblePlannedMiles,
+            metrics.flexiblePlannedRange,
+          )}
           detail="Excluded from core"
         />
         <Metric
@@ -71,7 +86,7 @@ export function WeeklyReviewScreen() {
           value={formatMiles(metrics.actualMiles)}
           detail={
             adherence === null
-              ? "No core plan"
+              ? "Core mileage is ranged or unknown"
               : `${Math.round(adherence * 100)}% mileage adherence`
           }
         />
@@ -120,7 +135,12 @@ export function WeeklyReviewScreen() {
                     {session.title}
                     {session.flexible && <small>Flexible</small>}
                   </td>
-                  <td>{formatMiles(session.plannedDistanceMiles)}</td>
+                  <td>
+                    {formatPrescription(
+                      session.plannedDistanceMiles,
+                      session.plannedDistance,
+                    )}
+                  </td>
                   <td>
                     <StatusBadge status={session.status} />
                   </td>

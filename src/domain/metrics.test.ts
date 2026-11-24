@@ -17,7 +17,9 @@ describe("weekly metrics", () => {
     );
     expect(weekOne.corePlannedMiles).toBe(24);
     expect(weekOne.flexiblePlannedMiles).toBe(3.5);
-    expect(weekOne.corePlannedMiles + weekOne.flexiblePlannedMiles).toBe(27.5);
+    expect(weekOne.corePlannedMiles! + weekOne.flexiblePlannedMiles!).toBe(
+      27.5,
+    );
   });
 
   it("reconciles the first three workbook weekly totals", () => {
@@ -25,7 +27,7 @@ describe("weekly metrics", () => {
     const totals = [1, 2, 3].map((week) =>
       data.sessions
         .filter((session) => session.week === week)
-        .reduce((sum, session) => sum + session.plannedDistanceMiles, 0),
+        .reduce((sum, session) => sum + session.plannedDistanceMiles!, 0),
     );
     expect(totals).toEqual([27.5, 30.5, 34]);
   });
@@ -42,7 +44,7 @@ describe("weekly metrics", () => {
       return [
         metrics.corePlannedMiles,
         metrics.flexiblePlannedMiles,
-        metrics.corePlannedMiles + metrics.flexiblePlannedMiles,
+        metrics.corePlannedMiles! + metrics.flexiblePlannedMiles!,
       ];
     });
     expect(reconciled).toEqual([

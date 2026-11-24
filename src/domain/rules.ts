@@ -2,7 +2,7 @@ import type { PlannedSession, SessionStatus } from "./types";
 
 export interface SessionUpdate {
   scheduledDate?: string;
-  plannedDistanceMiles?: number;
+  plannedDistanceMiles?: number | null;
   title?: string;
   kind?: PlannedSession["kind"];
   instructions?: string;
@@ -37,6 +37,15 @@ export function reviseSession(
     (next as unknown as Record<string, unknown>)[field] = value;
   }
   if (
+    update.plannedDistanceMiles !== undefined &&
+    update.plannedDistanceMiles !== session.plannedDistanceMiles
+  ) {
+    next.plannedDistance =
+      update.plannedDistanceMiles === null
+        ? undefined
+        : { kind: "exact", value: update.plannedDistanceMiles, unit: "mi" };
+  }
+  if (
     update.scheduledDate &&
     update.scheduledDate !== session.originalDate &&
     update.status === undefined
@@ -53,6 +62,7 @@ export function validateSessionUpdate(
   const errors: string[] = [];
   if (
     update.plannedDistanceMiles !== undefined &&
+    update.plannedDistanceMiles !== null &&
     update.plannedDistanceMiles < 0
   ) {
     errors.push("Planned distance cannot be negative.");

@@ -6,6 +6,7 @@ import {
   formatDate,
   formatDuration,
   formatMiles,
+  formatPrescription,
   paceFrom,
 } from "../utils/format";
 
@@ -113,6 +114,7 @@ export function ActivityReviewScreen() {
                     {data.sessions
                       .filter(
                         (session) =>
+                          !session.retiredAt &&
                           session.kind !== "rest" &&
                           Math.abs(
                             new Date(session.scheduledDate).getTime() -
@@ -123,7 +125,10 @@ export function ActivityReviewScreen() {
                       .map((session) => (
                         <option value={session.id} key={session.id}>
                           {session.scheduledDate} · {session.title} ·{" "}
-                          {formatMiles(session.plannedDistanceMiles)}
+                          {formatPrescription(
+                            session.plannedDistanceMiles,
+                            session.plannedDistance,
+                          )}
                         </option>
                       ))}
                   </select>
@@ -166,7 +171,7 @@ export function ActivityReviewScreen() {
                   </strong>
                   <span>
                     {matched
-                      ? `${formatMiles(matched.plannedDistanceMiles)} planned on ${formatDate(matched.scheduledDate)}. Supporting activities add mileage but remain secondary.`
+                      ? `${formatPrescription(matched.plannedDistanceMiles, matched.plannedDistance)} planned on ${formatDate(matched.scheduledDate)}. Supporting activities add mileage but remain secondary.`
                       : "This mileage counts as actual, not core completion, unless attached as a replacement."}
                   </span>
                 </div>

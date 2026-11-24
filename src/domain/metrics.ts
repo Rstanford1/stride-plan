@@ -13,6 +13,35 @@ const outcomeTemplate = () => ({
   moved: 0,
 });
 
+export function plannedMileageRange(
+  sessions: PlannedSession[],
+): { min: number; max: number } | null {
+  let min = 0;
+  let max = 0;
+  for (const session of sessions) {
+    const quantity = session.plannedDistance;
+    if (!quantity && session.plannedDistanceMiles === null) return null;
+    const divisor =
+      quantity?.unit === "km"
+        ? 1.609344
+        : quantity?.unit === "m"
+          ? 1609.344
+          : 1;
+    min += quantity
+      ? (quantity.kind === "exact" ? quantity.value : quantity.min) / divisor
+      : session.plannedDistanceMiles!;
+    max += quantity
+      ? (quantity.kind === "exact" ? quantity.value : quantity.max) / divisor
+      : session.plannedDistanceMiles!;
+  }
+  return { min, max };
+}
+
+function knownPlannedMiles(sessions: PlannedSession[]): number | null {
+  const range = plannedMileageRange(sessions);
+  return range && range.min === range.max ? range.min : null;
+}
+
 export function actualMilesForSession(
   sessionId: string,
   activities: Activity[],
@@ -36,7 +65,9 @@ export function calculateWeeklyMetrics(
   activities: Activity[],
   journals: JournalEntry[],
 ): WeeklyMetrics {
-  const weeklySessions = sessions.filter((session) => session.week === week);
+  const weeklySessions = sessions.filter(
+    (session) => session.week === week && !session.retiredAt,
+  );
   const runnable = weeklySessions.filter((session) => session.kind !== "rest");
   const core = runnable.filter((session) => !session.flexible);
   const flexible = runnable.filter((session) => session.flexible);
@@ -78,14 +109,10 @@ export function calculateWeeklyMetrics(
   );
   return {
     week,
-    corePlannedMiles: core.reduce(
-      (sum, session) => sum + session.plannedDistanceMiles,
-      0,
-    ),
-    flexiblePlannedMiles: flexible.reduce(
-      (sum, session) => sum + session.plannedDistanceMiles,
-      0,
-    ),
+    corePlannedMiles: knownPlannedMiles(core),
+    flexiblePlannedMiles: knownPlannedMiles(flexible),
+    corePlannedRange: plannedMileageRange(core),
+    flexiblePlannedRange: plannedMileageRange(flexible),
     actualMiles:
       actualMiles +
       unplanned.reduce((sum, activity) => sum + activity.distanceMiles, 0),
@@ -103,7 +130,7 @@ export function calculateWeeklyMetrics(
 }
 
 export function mileageAdherence(metrics: WeeklyMetrics): number | null {
-  return metrics.corePlannedMiles === 0
+  return metrics.corePlannedMiles === null || metrics.corePlannedMiles === 0
     ? null
     : metrics.actualMiles / metrics.corePlannedMiles;
 }
@@ -112,17 +139,29 @@ export function isCutbackWeek(
   week: number,
   sessions: PlannedSession[],
 ): boolean {
-  const current = sessions.filter((session) => session.week === week);
+  const current = sessions.filter(
+    (session) => session.week === week && !session.retiredAt,
+  );
   if (
     current.some((session) => session.phase.toLowerCase().includes("cutback"))
   )
     return true;
   const planned = (targetWeek: number) =>
-    sessions
-      .filter(
-        (session) => session.week === targetWeek && session.kind !== "rest",
-      )
-      .reduce((sum, session) => sum + session.plannedDistanceMiles, 0);
+    knownPlannedMiles(
+      sessions.filter(
+        (session) =>
+          session.week === targetWeek &&
+          session.kind !== "rest" &&
+          !session.retiredAt,
+      ),
+    );
   const previous = planned(week - 1);
-  return week > 1 && previous > 0 && planned(week) <= previous * 0.9;
+  const currentPlanned = planned(week);
+  return (
+    week > 1 &&
+    previous !== null &&
+    currentPlanned !== null &&
+    previous > 0 &&
+    currentPlanned <= previous * 0.9
+  );
 }

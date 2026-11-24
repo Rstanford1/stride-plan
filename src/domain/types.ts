@@ -1,7 +1,27 @@
 export type SessionStatus =
   "planned" | "completed" | "modified" | "skipped" | "moved";
 
-export type SessionKind = "rest" | "easy" | "recovery" | "workout" | "long";
+export type SessionKind =
+  "rest" | "easy" | "recovery" | "workout" | "long" | "race" | "other";
+
+export type PlanQuantity =
+  | { kind: "exact"; value: number; unit: "m" | "km" | "mi" | "s" | "min" }
+  | {
+      kind: "range";
+      min: number;
+      max: number;
+      unit: "m" | "km" | "mi" | "s" | "min";
+    };
+
+export interface PlannedDay {
+  id: string;
+  sourceDayId?: string;
+  sourcePlanId?: string;
+  sourceVersionId?: string;
+  originalDate: string;
+  kind: "training" | "rest" | "unspecified";
+  retiredAt?: string;
+}
 
 export type ActivityRole =
   | "primary-easy"
@@ -29,8 +49,17 @@ export interface PlannedSession {
   week: number;
   originalDate: string;
   scheduledDate: string;
-  originalDistanceMiles: number;
-  plannedDistanceMiles: number;
+  originalDistanceMiles: number | null;
+  plannedDistanceMiles: number | null;
+  originalDistance?: PlanQuantity;
+  plannedDistance?: PlanQuantity;
+  originalDuration?: PlanQuantity;
+  plannedDuration?: PlanQuantity;
+  sourceSessionId?: string;
+  sourceDayId?: string;
+  sourcePlanId?: string;
+  sourceVersionId?: string;
+  retiredAt?: string;
   title: string;
   kind: SessionKind;
   instructions: string;
@@ -194,6 +223,7 @@ export interface AppSettings {
 
 export interface AppData {
   schemaVersion: number;
+  days?: PlannedDay[];
   sessions: PlannedSession[];
   activities: Activity[];
   fitSources: FitSourceRecord[];
@@ -207,8 +237,10 @@ export interface AppData {
 
 export interface WeeklyMetrics {
   week: number;
-  corePlannedMiles: number;
-  flexiblePlannedMiles: number;
+  corePlannedMiles: number | null;
+  flexiblePlannedMiles: number | null;
+  corePlannedRange: { min: number; max: number } | null;
+  flexiblePlannedRange: { min: number; max: number } | null;
   actualMiles: number;
   coreCompleted: number;
   coreTotal: number;

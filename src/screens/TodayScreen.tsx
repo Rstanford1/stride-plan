@@ -129,11 +129,9 @@ export function TodayScreen({
               <h2 id="week-progress-title">Week progress</h2>
             </div>
             <strong>
-              {Math.round(
-                (metrics.actualMiles / Math.max(metrics.corePlannedMiles, 1)) *
-                  100,
-              )}
-              %
+              {metrics.corePlannedMiles === null
+                ? "—"
+                : `${Math.round((metrics.actualMiles / Math.max(metrics.corePlannedMiles, 1)) * 100)}%`}
             </strong>
           </div>
           <div
@@ -142,7 +140,7 @@ export function TodayScreen({
           >
             <span
               style={{
-                width: `${Math.min(100, (metrics.actualMiles / Math.max(metrics.corePlannedMiles, 1)) * 100)}%`,
+                width: `${metrics.corePlannedMiles === null ? 0 : Math.min(100, (metrics.actualMiles / Math.max(metrics.corePlannedMiles, 1)) * 100)}%`,
               }}
             />
           </div>
