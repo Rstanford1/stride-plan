@@ -54,7 +54,7 @@ pub fn hash(bytes: &[u8]) -> String {
 pub fn fingerprint() -> String {
     version_fingerprint("1.1", false)
 }
-fn version_fingerprint(version: &str, pre16: bool) -> String {
+pub(crate) fn version_fingerprint(version: &str, pre16: bool) -> String {
     hash(
         format!(
             "{}\n---\n{}",
@@ -89,7 +89,8 @@ fn recognized_validator(record: &Record) -> bool {
         _ => false,
     }
 }
-const VERSION_DDL: &str = include_str!("../migrations/0004_plan_draft_versions.sql");
+pub(crate) const VERSION_DDL: &str = include_str!("../migrations/0004_plan_draft_versions.sql");
+const ACTIVE_DDL: &str = include_str!("../migrations/0005_active_plan_records.sql");
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -156,7 +157,7 @@ pub struct Store {
     pub fault: Option<&'static str>,
 }
 impl Store {
-    async fn connect(&self, readonly: bool) -> Result<SqliteConnection> {
+    pub(crate) async fn connect(&self, readonly: bool) -> Result<SqliteConnection> {
         let options = SqliteConnectOptions::new()
             .filename(&self.database)
             .create_if_missing(false)
@@ -201,7 +202,7 @@ impl Store {
             draft,
         })
     }
-    async fn prepare(&self, expected: &str, schema_version: &str) -> Result<()> {
+    pub(crate) async fn prepare(&self, expected: &str, schema_version: &str) -> Result<()> {
         let target = if schema_version == "1.2" { 4 } else { 3 };
         let _guards = guard(&self.database, false)?;
         // Opening a writable SQLite connection can recover/checkpoint journals.
@@ -215,7 +216,7 @@ impl Store {
             return Err(error("conflict"));
         }
         let value: serde_json::Value = serde_json::from_str(&raw).map_err(|_| error("corrupt"))?;
-        if value["schemaVersion"] != 4 {
+        if value["schemaVersion"] != 4 && value["schemaVersion"] != 5 {
             return Err(error("unsupported"));
         }
         if version >= target {
@@ -527,7 +528,7 @@ impl Store {
         let mut db = self.connect(false).await?;
         let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
         check_schema(&mut tx).await?;
-        if read_record(&mut tx).await?.is_some() {
+        if read_record(&mut tx).await?.is_some() || check_schema(&mut tx).await? == 5 {
             return Err(error("legacy_blocked"));
         }
         let changed = sqlx::query("UPDATE app_state SET payload=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=1 AND payload=?").bind(after).bind(before).execute(&mut *tx).await?;
@@ -539,7 +540,7 @@ impl Store {
     }
 }
 
-fn source_value(bytes: &[u8]) -> Result<crate::fit_source_store::PlanSourceHeader> {
+pub(crate) fn source_value(bytes: &[u8]) -> Result<crate::fit_source_store::PlanSourceHeader> {
     if bytes.is_empty() || bytes.len() > SOURCE_LIMIT {
         return Err(error("invalid"));
     }
@@ -643,7 +644,7 @@ fn verify_record(record: &Record, bytes: &[u8]) -> Result<()> {
     }
     verify_report(&record.diagnostics_json)
 }
-async fn integrity(db: &mut SqliteConnection) -> Result<()> {
+pub(crate) async fn integrity(db: &mut SqliteConnection) -> Result<()> {
     let checks: Vec<String> = sqlx::query_scalar("PRAGMA integrity_check")
         .fetch_all(&mut *db)
         .await?;
@@ -660,8 +661,18 @@ async fn integrity(db: &mut SqliteConnection) -> Result<()> {
 // Only shipped DDL is accepted. Statement-by-statement queries avoid SQLx
 // RawSql's non-Send stream across Tauri's async command boundary, while the
 // caller's single native transaction still owns every migration statement.
-async fn execute_ddl(db: &mut SqliteConnection, script: &'static str) -> Result<()> {
+pub(crate) async fn execute_ddl(db: &mut SqliteConnection, script: &'static str) -> Result<()> {
     for statement in script.split(';').map(str::trim).filter(|s| !s.is_empty()) {
+        sqlx::query(statement).execute(&mut *db).await?;
+    }
+    Ok(())
+}
+pub(crate) async fn execute_active_ddl(db: &mut SqliteConnection) -> Result<()> {
+    for statement in ACTIVE_DDL
+        .split(";\n\n")
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
         sqlx::query(statement).execute(&mut *db).await?;
     }
     Ok(())
@@ -679,14 +690,19 @@ const LEGACY: &[&str] = &[
     "shoes",
 ];
 const NEW: &[&str] = &["plan_draft_sources", "plan_drafts", "plan_draft_validation"];
+const ACTIVE: &[&str] = &[
+    "active_plan_records",
+    "active_plan_records_no_update",
+    "active_plan_records_no_delete",
+];
 async fn schema(db: &mut SqliteConnection) -> Result<BTreeMap<String, String>> {
     Ok(sqlx::query("SELECT name,sql FROM sqlite_master WHERE name NOT GLOB 'sqlite_*' AND sql IS NOT NULL ORDER BY name").fetch_all(db).await?.iter().map(|r| (r.get("name"),r.get("sql"))).collect())
 }
-async fn check_schema(db: &mut SqliteConnection) -> Result<i64> {
+pub(crate) async fn check_schema(db: &mut SqliteConnection) -> Result<i64> {
     let version: i64 = sqlx::query_scalar("PRAGMA user_version")
         .fetch_one(&mut *db)
         .await?;
-    if ![0, 3, 4].contains(&version) {
+    if ![0, 3, 4, 5].contains(&version) {
         return Err(error("unsupported"));
     }
     let objects = schema(db).await?;
@@ -696,7 +712,10 @@ async fn check_schema(db: &mut SqliteConnection) -> Result<i64> {
     .fetch_all(&mut *db)
     .await?;
     for name in objects.keys() {
-        if !LEGACY.contains(&name.as_str()) && !(version >= 3 && NEW.contains(&name.as_str())) {
+        if !LEGACY.contains(&name.as_str())
+            && !(version >= 3 && NEW.contains(&name.as_str()))
+            && !(version == 5 && ACTIVE.contains(&name.as_str()))
+        {
             return Err(error("unsupported"));
         }
     }
@@ -796,7 +815,7 @@ async fn check_schema(db: &mut SqliteConnection) -> Result<i64> {
         }
     }
     if version >= 3 {
-        let expected_ddl = if version == 4 {
+        let expected_ddl = if version >= 4 {
             DDL.replace("schema_version = '1.1'", "schema_version IN ('1.1','1.2')")
                 .replace("CHECK(validator_version = 't01-1')", "CHECK((schema_version = '1.1' AND validator_version = 't01-1') OR (schema_version = '1.2' AND validator_version = 't081-1'))")
         } else {
@@ -821,11 +840,22 @@ async fn check_schema(db: &mut SqliteConnection) -> Result<i64> {
                 return Err(error("unsupported"));
             }
         }
+        if version == 5 {
+            let mut expected_active = SqliteConnection::connect("sqlite::memory:").await?;
+            execute_active_ddl(&mut expected_active).await?;
+            for (name, statement) in schema(&mut expected_active).await? {
+                if objects.get(&name).is_none_or(|actual| {
+                    canonical(actual).replace('"', "") != canonical(&statement).replace('"', "")
+                }) {
+                    return Err(error("unsupported"));
+                }
+            }
+        }
     }
     integrity(db).await?;
     Ok(version)
 }
-async fn inventory(db: &mut SqliteConnection) -> Result<BTreeMap<String, Vec<String>>> {
+pub(crate) async fn inventory(db: &mut SqliteConnection) -> Result<BTreeMap<String, Vec<String>>> {
     inventory_inner(db, false).await
 }
 async fn legacy_inventory(db: &mut SqliteConnection) -> Result<BTreeMap<String, Vec<String>>> {
@@ -840,8 +870,15 @@ async fn inventory_inner(
         if legacy_only && NEW.contains(&name.as_str()) {
             continue;
         }
-        if !LEGACY.contains(&name.as_str()) && !NEW.contains(&name.as_str()) {
+        if !LEGACY.contains(&name.as_str())
+            && !NEW.contains(&name.as_str())
+            && !ACTIVE.contains(&name.as_str())
+        {
             return Err(error("unsupported"));
+        }
+        if ACTIVE.contains(&name.as_str()) && name != "active_plan_records" {
+            result.insert(name, vec![definition]);
+            continue;
         }
         let columns = sqlx::query(&format!("PRAGMA table_info(\"{name}\")"))
             .fetch_all(&mut *db)
@@ -865,7 +902,7 @@ async fn inventory_inner(
     Ok(result)
 }
 // Compare every old value while allowing only the approved validation-table DDL change.
-async fn migration_inventory(
+pub(crate) async fn migration_inventory(
     db: &mut SqliteConnection,
     previous: i64,
 ) -> Result<BTreeMap<String, Vec<String>>> {
@@ -922,7 +959,7 @@ async fn read_record(db: &mut SqliteConnection) -> Result<Option<Record>> {
 // Database paths are native-selected. Deny reparse/link substitution for the
 // entire operation, using the same Windows handle policy as the source store.
 #[cfg(windows)]
-fn guard(path: &std::path::Path, missing_leaf: bool) -> Result<Vec<std::fs::File>> {
+pub(crate) fn guard(path: &std::path::Path, missing_leaf: bool) -> Result<Vec<std::fs::File>> {
     use std::{
         fs::OpenOptions,
         os::windows::{
@@ -978,6 +1015,6 @@ fn guard(path: &std::path::Path, missing_leaf: bool) -> Result<Vec<std::fs::File
     Ok(guards)
 }
 #[cfg(not(windows))]
-fn guard(_: &std::path::Path, _: bool) -> Result<Vec<std::fs::File>> {
+pub(crate) fn guard(_: &std::path::Path, _: bool) -> Result<Vec<std::fs::File>> {
     Err(error("unsupported"))
 }

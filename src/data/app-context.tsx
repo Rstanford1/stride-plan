@@ -21,6 +21,16 @@ import {
 } from "../domain/snapshot-validation";
 import { reviseSession, type SessionUpdate } from "../domain/rules";
 import { mergeFitImportBatch } from "./fit-import-commit";
+import { activationCandidate, previewActivation } from "../domain/active-plan";
+import {
+  projectActivePlan,
+  type ActivePlanProjection,
+} from "../domain/active-plan-projection";
+import { parseTrainingPlan } from "../domain/training-plan";
+import type { TrainingPlan } from "../domain/training-plan-contract";
+import { sha256Hex } from "../domain/fit-hash";
+import { validatorFingerprint } from "./plan-validator-registry";
+import type { PlanPreview } from "./plan-draft-store";
 import type { FitImportBatchResult } from "./fit-import-controller";
 import type {
   Activity,
@@ -45,6 +55,7 @@ interface AppContextValue {
     update: SessionUpdate,
     reason: string,
   ) => void;
+  moveSession: (sessionId: string, date: string) => string | null;
   addSession: (session: PlannedSession) => void;
   saveJournal: (entry: JournalEntry) => void;
   saveRunEntry: (
@@ -64,6 +75,13 @@ interface AppContextValue {
     ) => FitImportBatch | null;
   };
   resetDemo: () => Promise<void>;
+  activePlan: {
+    activationId: string;
+    source: TrainingPlan;
+    effectiveDate: string;
+  } | null;
+  activeProjection: ActivePlanProjection;
+  activatePlan: (preview: PlanPreview) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -92,6 +110,11 @@ export function AppProvider({
     importFingerprints: [],
   });
   const [ready, setReady] = useState(false);
+  const [activePlan, setActivePlan] = useState<{
+    activationId: string;
+    source: TrainingPlan;
+    effectiveDate: string;
+  } | null>(null);
   const [recoveryError, setRecoveryError] = useState<DataIntegrityError | null>(
     null,
   );
@@ -128,8 +151,44 @@ export function AppProvider({
     writable.current = false;
     repository
       .load()
-      .then((loaded) => {
+      .then(async (loaded) => {
+        const activeRecord = (await repository.inspectActive?.()) ?? null;
+        let source: TrainingPlan | null = null;
+        if (activeRecord) {
+          const result = parseTrainingPlan(
+            new TextDecoder("utf-8", { fatal: true }).decode(
+              activeRecord.sourceBytes,
+            ),
+          );
+          if (!result.ok)
+            throw new DataIntegrityError(
+              "corrupted",
+              "The active plan source no longer validates. Saved data was not changed.",
+            );
+          source = result.plan;
+        }
+        if (loaded.schemaVersion === 5 && !source)
+          throw new DataIntegrityError(
+            "corrupted",
+            "The active schedule has no verified source record.",
+          );
+        if (source && activeRecord)
+          projectActivePlan(
+            loaded,
+            source,
+            activeRecord.effectiveDate,
+            activeRecord.activationId,
+          );
         if (!active) return;
+        setActivePlan(
+          source && activeRecord
+            ? {
+                activationId: activeRecord.activationId,
+                source,
+                effectiveDate: activeRecord.effectiveDate,
+              }
+            : null,
+        );
         persisted.current = loaded;
         currentData.current = loaded;
         publishData(loaded);
@@ -189,6 +248,79 @@ export function AppProvider({
     },
     [repository, fail],
   );
+  const activatePlan = useCallback(
+    async (preview: PlanPreview) => {
+      if (!writable.current || restoring.current)
+        throw new DataIntegrityError(
+          "inaccessible",
+          "Plan activation is unavailable while data is being saved or restored.",
+        );
+      const bytes = Uint8Array.from(preview.bytes);
+      const validation = parseTrainingPlan(
+        new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+      );
+      if (!validation.ok)
+        throw new DataIntegrityError(
+          "unsupported",
+          "The selected plan no longer validates. No schedule was changed.",
+        );
+      const today = new Date();
+      const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+      const before = currentData.current;
+      const impact = previewActivation(validation.plan, before, date);
+      if (impact.diagnostics.length)
+        throw new DataIntegrityError(
+          "unsupported",
+          impact.diagnostics[0].message,
+        );
+      restoring.current = true;
+      importEpoch.current += 1;
+      try {
+        if (persisted.current !== before) {
+          await repository.save(before);
+          persisted.current = before;
+        }
+        const activationId = crypto.randomUUID();
+        const after = activationCandidate(
+          validation.plan,
+          before,
+          activationId,
+          date,
+          new Date().toISOString(),
+        );
+        if (!repository.activate)
+          throw new DataIntegrityError(
+            "unsupported",
+            "Plan activation requires the Windows app.",
+          );
+        await repository.activate({
+          before,
+          after,
+          bytes,
+          sourceHash: await sha256Hex(bytes),
+          validatorFingerprint: await validatorFingerprint(
+            validation.plan.schemaVersion,
+          ),
+          effectiveDate: date,
+          activationId,
+        });
+        persisted.current = after;
+        currentData.current = after;
+        setActivePlan({
+          activationId,
+          source: validation.plan,
+          effectiveDate: date,
+        });
+        publishData(after);
+      } catch (error) {
+        if (!(error instanceof RestoreInputError)) fail(error);
+        throw error;
+      } finally {
+        restoring.current = false;
+      }
+    },
+    [repository, fail],
+  );
 
   const beginFitImportBatch = useCallback(() => {
     const epoch = importEpoch.current;
@@ -231,6 +363,83 @@ export function AppProvider({
       }));
     },
     [],
+  );
+  const moveSession = useCallback(
+    (sessionId: string, date: string): string | null => {
+      const current = currentData.current;
+      const selected = current.sessions.find(
+        (session) => session.id === sessionId && !session.retiredAt,
+      );
+      if (!selected)
+        return "The selected session is unavailable. Reload the plan.";
+      if (!selected.sourceSessionId) {
+        saveSession(sessionId, { scheduledDate: date }, "Session moved");
+        return null;
+      }
+      if (
+        !activePlan ||
+        !selected.id.startsWith(`active:${activePlan.activationId}:session:`) ||
+        selected.sourcePlanId !== activePlan.source.manifest.planId ||
+        selected.sourceVersionId !== activePlan.source.manifest.versionId
+      )
+        return "This session belongs to an earlier source plan and cannot be moved from the current plan.";
+      const week = activePlan.source.weeks.find((item) =>
+        item.days.some((day) => day.id === selected.sourceDayId),
+      );
+      const day = week?.days.find((item) => item.id === selected.sourceDayId);
+      const source = day?.sessions.find(
+        (item) => item.id === selected.sourceSessionId,
+      );
+      if (!week || !day || !source)
+        return "The plan source mapping is incomplete. No session was moved.";
+      const mainId =
+        source.role === "double"
+          ? source.primarySessionId
+          : source.role === "main"
+            ? source.id
+            : undefined;
+      const members = mainId
+        ? day.sessions.filter(
+            (item) =>
+              item.id === mainId ||
+              (item.role === "double" && item.primarySessionId === mainId),
+          )
+        : [source];
+      for (const member of members) {
+        if (activePlan.source.schemaVersion === "1.2") {
+          if (member.schedulingPolicy === "fixed-date" && date !== day.date)
+            return `The source fixes ${member.title} to ${day.date}.`;
+          if (
+            member.schedulingPolicy !== "fixed-date" &&
+            (date < week.startDate || date > week.endDate)
+          )
+            return `The source permits ${member.title} only within ${week.startDate}–${week.endDate}.`;
+        }
+      }
+      if (date < activePlan.effectiveDate)
+        return "Active-plan sessions cannot move before the activation date.";
+      const ids = new Set(members.map((member) => member.id));
+      setData((data) => ({
+        ...data,
+        sessions: data.sessions.map((session) =>
+          session.id.startsWith(`active:${activePlan.activationId}:session:`) &&
+          session.sourceDayId === day.id &&
+          session.sourcePlanId === selected.sourcePlanId &&
+          session.sourceVersionId === selected.sourceVersionId &&
+          session.sourceSessionId &&
+          ids.has(session.sourceSessionId) &&
+          !session.retiredAt
+            ? reviseSession(
+                session,
+                { scheduledDate: date },
+                "Source-aware move",
+              )
+            : session,
+        ),
+      }));
+      return null;
+    },
+    [activePlan, saveSession, setData],
   );
 
   const saveJournal = useCallback((entry: JournalEntry) => {
@@ -322,6 +531,17 @@ export function AppProvider({
     }));
   }, []);
 
+  const activeProjection = useMemo(
+    () =>
+      projectActivePlan(
+        data,
+        activePlan?.source ?? null,
+        activePlan?.effectiveDate ?? null,
+        activePlan?.activationId ?? null,
+      ),
+    [data, activePlan],
+  );
+
   const value = useMemo(
     () => ({
       data,
@@ -330,6 +550,7 @@ export function AppProvider({
       retryLoading,
       restoreBackup,
       saveSession,
+      moveSession,
       addSession,
       saveJournal,
       saveRunEntry,
@@ -343,6 +564,9 @@ export function AppProvider({
         if (!writable.current || restoring.current) return;
         await restoreBackup(JSON.stringify(createInitialData()));
       },
+      activePlan,
+      activeProjection,
+      activatePlan,
     }),
     [
       data,
@@ -351,6 +575,7 @@ export function AppProvider({
       retryLoading,
       restoreBackup,
       saveSession,
+      moveSession,
       addSession,
       saveJournal,
       saveRunEntry,
@@ -360,6 +585,9 @@ export function AppProvider({
       updateSettings,
       replaceData,
       beginFitImportBatch,
+      activePlan,
+      activeProjection,
+      activatePlan,
     ],
   );
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

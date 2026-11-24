@@ -13,23 +13,30 @@ import {
 } from "recharts";
 import { useAppData } from "../data/app-context";
 import { calculateWeeklyMetrics } from "../domain/metrics";
-import { formatMiles } from "../utils/format";
+import { formatMiles, formatPlannedMiles } from "../utils/format";
+import { currentPlanSessions } from "../domain/active-plan";
 
 export function TrendsScreen() {
-  const { data } = useAppData();
-  const maxWeek = Math.max(...data.sessions.map((session) => session.week));
+  const { data, activePlan } = useAppData();
+  const planSessions = currentPlanSessions(
+    data,
+    activePlan?.activationId ?? null,
+    activePlan?.effectiveDate ?? null,
+  );
+  const maxWeek = Math.max(1, ...planSessions.map((session) => session.week));
   const chartData = useMemo(
     () =>
       Array.from({ length: maxWeek }, (_, index) => {
         const metrics = calculateWeeklyMetrics(
           index + 1,
-          data.sessions,
+          planSessions,
           data.activities,
           data.journals,
         );
         return {
           week: `W${index + 1}`,
           planned: metrics.corePlannedMiles,
+          plannedRange: metrics.corePlannedRange,
           actual: Number(metrics.actualMiles.toFixed(1)),
           completion:
             metrics.coreCompletionRate === null
@@ -37,7 +44,7 @@ export function TrendsScreen() {
               : Math.round(metrics.coreCompletionRate * 100),
         };
       }),
-    [data, maxWeek],
+    [data, maxWeek, planSessions],
   );
   const rpeData = data.journals
     .filter((entry) => entry.rpe)
@@ -106,7 +113,7 @@ export function TrendsScreen() {
                 {chartData.map((row) => (
                   <tr key={row.week}>
                     <td>{row.week}</td>
-                    <td>{formatMiles(row.planned)}</td>
+                    <td>{formatPlannedMiles(row.planned, row.plannedRange)}</td>
                     <td>{formatMiles(row.actual)}</td>
                     <td>{row.completion}%</td>
                   </tr>

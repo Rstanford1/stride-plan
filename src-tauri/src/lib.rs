@@ -1,3 +1,5 @@
+mod active_plan_commands;
+mod active_plan_store;
 mod fit_source_commands;
 mod fit_source_store;
 mod garmin;
@@ -14,6 +16,9 @@ pub fn run() {
         .manage(garmin_commands::GarminState::default())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
+            active_plan_commands::inspect_active_plan,
+            active_plan_commands::activate_training_plan,
+            active_plan_commands::save_active_snapshot,
             fit_source_commands::store_fit_source,
             fit_source_commands::read_fit_source,
             plan_draft_commands::inspect_plan_draft,

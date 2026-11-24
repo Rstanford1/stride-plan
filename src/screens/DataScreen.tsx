@@ -24,6 +24,7 @@ export function DataScreen() {
     resetDemo,
     updateSettings,
     restoreBackup,
+    activePlan,
   } = useAppData();
   const [message, setMessage] = useState("");
   const [nativeDraftPresent, setNativeDraftPresent] = useState<boolean | null>(
@@ -257,17 +258,17 @@ export function DataScreen() {
               disabled={
                 restoring ||
                 fitImportProgress !== null ||
+                activePlan !== null ||
                 nativeDraftPresent !== false
               }
               onClick={() => restoreInput.current?.click()}
             >
               <ArchiveRestore size={17} /> Restore backup
             </button>
-            {nativeDraftPresent !== false && (
+            {(nativeDraftPresent !== false || activePlan !== null) && (
               <p>
-                Legacy restore is unavailable while a native draft exists or
-                draft storage cannot be verified. Export draft recovery
-                separately.
+                Legacy restore is unavailable while an active plan or native
+                draft exists. Its JSON backup omits immutable plan sources.
               </p>
             )}
             <input
@@ -429,7 +430,7 @@ export function DataScreen() {
       </section>
       <button
         className="text-button danger-link"
-        disabled={nativeDraftPresent !== false}
+        disabled={nativeDraftPresent !== false || activePlan !== null}
         onClick={() => {
           if (window.confirm("Reset local demo data?")) {
             void resetDemo()

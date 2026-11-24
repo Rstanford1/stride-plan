@@ -2,11 +2,12 @@ import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useAppData } from "../data/app-context";
 import type { PlannedSession, JournalEntry } from "../domain/types";
-import { formatDate, formatMiles } from "../utils/format";
+import { formatDate, formatMiles, formatPrescription } from "../utils/format";
 import { formatDuration } from "../domain/run-entry";
 import { Modal } from "../components/Modal";
 import { RunEntryWorkflow } from "../components/RunEntryWorkflow";
 import { StatusBadge } from "../components/StatusBadge";
+import type { ProjectedSession } from "../domain/active-plan-projection";
 
 export function isoDate(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -27,11 +28,13 @@ function WorkoutCard({
   journal,
   past,
   onLog,
+  projected,
 }: {
   session: PlannedSession;
   journal?: JournalEntry;
   past: boolean;
   onLog: () => void;
+  projected?: ProjectedSession;
 }) {
   const [expanded, setExpanded] = useState(false);
   const instructionRevision = session.revisions.find(
@@ -64,7 +67,13 @@ function WorkoutCard({
         <StatusBadge status={session.status} />
       </div>
       <p>
-        <strong>{formatMiles(session.plannedDistanceMiles)} planned</strong>
+        <strong>
+          {formatPrescription(
+            session.plannedDistanceMiles,
+            session.plannedDistance,
+          )}{" "}
+          planned
+        </strong>
         {session.guidance && <> · {session.guidance}</>}
       </p>
       {session.revisions.length > 0 && <p>Plan or outcome revised</p>}
@@ -101,6 +110,15 @@ function WorkoutCard({
       </div>
       {expanded && (
         <div className="instruction">
+          {projected?.source?.coachText.map((line, index) => (
+            <p key={index}>{line}</p>
+          ))}
+          {projected?.source?.workout && (
+            <p>
+              Workout structure: {projected.source.workout.structureStatus} ·{" "}
+              {projected.source.workout.blocks.length} blocks
+            </p>
+          )}
           <p>
             Original instructions: {originalInstructions || "Not available."}
           </p>
@@ -110,7 +128,11 @@ function WorkoutCard({
             </p>
           )}
           <p>
-            Original prescription: {formatMiles(session.originalDistanceMiles)}{" "}
+            Original prescription:{" "}
+            {formatPrescription(
+              session.originalDistanceMiles,
+              session.originalDistance,
+            )}{" "}
             on {formatDate(session.originalDate)}
           </p>
         </div>
@@ -125,17 +147,24 @@ export function TodayDashboard({
   openActivityReview: () => void;
   openPlan: () => void;
 }) {
-  const { data } = useAppData();
+  const { data, activeProjection } = useAppData();
+  const sourceDays = activeProjection?.days ?? [];
   const today = isoDate(new Date());
   const [selectedDate, setSelectedDate] = useState(today);
   const [displayedWeek, setDisplayedWeek] = useState(today);
   const [editing, setEditing] = useState<PlannedSession | null>(null);
   const dates = weekDates(displayedWeek);
   const sessions = data.sessions.filter(
-    (item) => item.scheduledDate === selectedDate,
+    (item) => !item.retiredAt && item.scheduledDate === selectedDate,
   );
+  const sourceDay = sourceDays.find((day) => day.originalDate === selectedDate);
   const next = data.sessions
-    .filter((item) => item.scheduledDate > selectedDate && item.kind !== "rest")
+    .filter(
+      (item) =>
+        !item.retiredAt &&
+        item.scheduledDate > selectedDate &&
+        item.kind !== "rest",
+    )
     .sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate))[0];
   function selectDate(date: string) {
     setSelectedDate(date);
@@ -195,7 +224,7 @@ export function TodayDashboard({
       <nav className="week-date-picker f2-date-picker" aria-label="Week dates">
         {dates.map((date) => {
           const daySessions = data.sessions.filter(
-            (item) => item.scheduledDate === date,
+            (item) => !item.retiredAt && item.scheduledDate === date,
           );
           const recorded = daySessions.some((session) =>
             data.journals.some((entry) => entry.sessionId === session.id),
@@ -217,20 +246,38 @@ export function TodayDashboard({
               <strong>{new Date(`${date}T12:00:00`).getDate()}</strong>
               <small>
                 {daySessions.length === 0
-                  ? "—"
+                  ? data.days?.find(
+                      (day) => !day.retiredAt && day.originalDate === date,
+                    )?.kind === "rest"
+                    ? "Rest"
+                    : data.days?.find(
+                          (day) => !day.retiredAt && day.originalDate === date,
+                        )?.kind === "unspecified"
+                      ? "Unspecified"
+                      : "—"
                   : daySessions.every((s) => s.kind === "rest")
                     ? "Rest"
                     : recorded
                       ? "Recorded"
                       : daySessions.length > 1
                         ? `${daySessions.length} sessions`
-                        : `${daySessions[0].plannedDistanceMiles} mi`}
+                        : formatPrescription(
+                            daySessions[0].plannedDistanceMiles,
+                            daySessions[0].plannedDistance,
+                          )}
               </small>
             </button>
           );
         })}
       </nav>
       <div className="f2-cards">
+        {sessions.length > 0 && sourceDay && sourceDay.kind !== "training" && (
+          <p className="f2-source-day-note">
+            The source classifies this date as{" "}
+            {sourceDay.kind === "rest" ? "Rest" : "unspecified"}; the session
+            shown here was scheduled onto it.
+          </p>
+        )}
         {sessions.length ? (
           sessions.map((session) => (
             <WorkoutCard
@@ -241,8 +288,33 @@ export function TodayDashboard({
               )}
               past={selectedDate < today}
               onLog={() => setEditing(session)}
+              projected={sourceDays
+                .flatMap((day) => day.sessions)
+                .find((item) => item.id === session.id)}
             />
           ))
+        ) : sourceDay?.kind === "rest" ? (
+          <section className="primary-panel f2-card">
+            <h2>Rest day</h2>
+            {sourceDay.coachText.length ? (
+              sourceDay.coachText.map((line, index) => (
+                <p key={index}>{line}</p>
+              ))
+            ) : (
+              <p>The active plan prescribes Rest for this date.</p>
+            )}
+          </section>
+        ) : sourceDay?.kind === "unspecified" ? (
+          <section className="primary-panel f2-card">
+            <h2>Unspecified day</h2>
+            {sourceDay.coachText.length ? (
+              sourceDay.coachText.map((line, index) => (
+                <p key={index}>{line}</p>
+              ))
+            ) : (
+              <p>The source does not classify this date as training or Rest.</p>
+            )}
+          </section>
         ) : (
           <section className="primary-panel f2-card">
             <h2>No planned session</h2>

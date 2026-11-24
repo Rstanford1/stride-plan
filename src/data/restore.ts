@@ -1,6 +1,7 @@
 import { parseBackup } from "../domain/backup";
 import { sha256Hex } from "../domain/fit-hash";
 import {
+  DataIntegrityError,
   parseSnapshotJson,
   validateSnapshot,
 } from "../domain/snapshot-validation";
@@ -19,6 +20,11 @@ export async function inspectLegacyRestore(
 ): Promise<RestorePreview> {
   const parsed = parseSnapshotJson(raw);
   validateSnapshot(parsed);
+  if ((parsed as AppData).schemaVersion === 5)
+    throw new DataIntegrityError(
+      "unsupported",
+      "Version-5 snapshots require their immutable activation records. Legacy JSON restore cannot safely recreate them.",
+    );
   const data = parseBackup(raw);
   const missingSources: string[] = [];
   for (const source of data.fitSources) {

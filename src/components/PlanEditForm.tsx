@@ -16,7 +16,7 @@ export function PlanEditForm({
   const [title, setTitle] = useState(session?.title ?? "Easy");
   const [kind, setKind] = useState<SessionKind>(session?.kind ?? "easy");
   const [distance, setDistance] = useState(
-    session?.plannedDistanceMiles.toString() ?? "0",
+    session ? (session.plannedDistanceMiles?.toString() ?? "") : "0",
   );
   const [guidance, setGuidance] = useState(session?.guidance ?? "");
   const [instructions, setInstructions] = useState(session?.instructions ?? "");
@@ -25,7 +25,8 @@ export function PlanEditForm({
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
-    const miles = Number(distance);
+    const miles = distance.trim() === "" ? null : Number(distance);
+    if (!session && miles === null) return;
     if (session) {
       saveSession(
         session.id,
@@ -49,8 +50,8 @@ export function PlanEditForm({
         week,
         originalDate: date,
         scheduledDate: date,
-        originalDistanceMiles: miles,
-        plannedDistanceMiles: miles,
+        originalDistanceMiles: miles!,
+        plannedDistanceMiles: miles!,
         title,
         kind,
         guidance,
@@ -72,6 +73,7 @@ export function PlanEditForm({
           type="date"
           value={date}
           onChange={(event) => setDate(event.target.value)}
+          disabled={Boolean(session?.sourceSessionId)}
           required
         />
       </label>
@@ -86,6 +88,8 @@ export function PlanEditForm({
           <option value="recovery">Recovery</option>
           <option value="workout">Workout</option>
           <option value="long">Long run</option>
+          <option value="race">Race</option>
+          <option value="other">Other</option>
         </select>
       </label>
       <label className="full">
@@ -105,7 +109,7 @@ export function PlanEditForm({
           step="0.1"
           value={distance}
           onChange={(event) => setDistance(event.target.value)}
-          required
+          required={!session}
         />
       </label>
       <label>

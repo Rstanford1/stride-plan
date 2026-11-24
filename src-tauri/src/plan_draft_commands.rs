@@ -29,7 +29,7 @@ pub struct ExportSaveRequest {
     pub expected_recovery_hash: String,
 }
 
-fn storage(app: &tauri::AppHandle, version: u32) -> Result<Store> {
+pub(crate) fn storage(app: &tauri::AppHandle, version: u32) -> Result<Store> {
     if version != 1 {
         return Err(error("unsupported"));
     }

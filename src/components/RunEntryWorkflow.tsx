@@ -1,6 +1,7 @@
 import { ChevronDown, FileUp } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useAppData } from "../data/app-context";
+import { formatPrescription } from "../utils/format";
 import {
   durationFromPace,
   formatDuration,
@@ -397,7 +398,11 @@ export function RunEntryWorkflow({
         <div className="original-prescription">
           <span>Original prescription remains unchanged</span>
           <strong>
-            {session.plannedDistanceMiles.toFixed(1)} mi · {session.guidance}
+            {formatPrescription(
+              session.plannedDistanceMiles,
+              session.plannedDistance,
+            )}{" "}
+            · {session.guidance}
           </strong>
         </div>
         {status === "modified" && (
@@ -419,7 +424,7 @@ export function RunEntryWorkflow({
         >
           <FormField
             label="Actual distance"
-            hint={`Planned: ${session.plannedDistanceMiles.toFixed(1)} mi`}
+            hint={`Planned: ${formatPrescription(session.plannedDistanceMiles, session.plannedDistance)}`}
             error={errors.distanceMiles}
           >
             <div className="unit-input">

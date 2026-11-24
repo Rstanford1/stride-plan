@@ -2,26 +2,49 @@ import { ClipboardCheck, History, MoveRight, Pencil, Plus } from "lucide-react";
 import { useState } from "react";
 import { useAppData } from "../data/app-context";
 import type { PlannedSession } from "../domain/types";
-import { formatDate, formatMiles } from "../utils/format";
+import { formatDate, formatPrescription } from "../utils/format";
 import { Modal } from "../components/Modal";
 import { PlanEditForm } from "../components/PlanEditForm";
 import { RunEntryWorkflow } from "../components/RunEntryWorkflow";
 import { StatusBadge } from "../components/StatusBadge";
+import { PlanActivationPanel } from "../components/PlanActivationPanel";
+import { plannedMileageRange } from "../domain/metrics";
+import { formatPlannedMiles } from "../utils/format";
+import { currentPlanSessions } from "../domain/active-plan";
 
 export function PlanScreen() {
-  const { data, saveSession } = useAppData();
+  const { data, activePlan, activeProjection, moveSession } = useAppData();
   const [week, setWeek] = useState(1);
   const [editing, setEditing] = useState<PlannedSession | null>(null);
   const [creating, setCreating] = useState(false);
   const [moving, setMoving] = useState<PlannedSession | null>(null);
   const [reviewing, setReviewing] = useState<PlannedSession | null>(null);
   const [moveDate, setMoveDate] = useState("");
-  const maxWeek = Math.max(...data.sessions.map((session) => session.week));
-  const sessions = data.sessions.filter((session) => session.week === week);
-  const total = sessions.reduce(
-    (sum, session) => sum + session.plannedDistanceMiles,
-    0,
+  const [moveError, setMoveError] = useState("");
+  const planSessions = currentPlanSessions(
+    data,
+    activePlan?.activationId ?? null,
+    activePlan?.effectiveDate ?? null,
   );
+  const maxWeek = Math.max(1, ...planSessions.map((session) => session.week));
+  const sessions = planSessions.filter((session) => session.week === week);
+  const sourceDayIds = new Set(
+    activePlan?.source.weeks
+      .find((item) => item.number === week)
+      ?.days.map((day) => day.id) ?? [],
+  );
+  const nonTrainingDays = (activeProjection?.days ?? []).filter(
+    (day) =>
+      day.id.startsWith(`active:${activePlan?.activationId}:day:`) &&
+      day.sourceDayId &&
+      sourceDayIds.has(day.sourceDayId) &&
+      day.kind !== "training",
+  );
+  const totalRange = plannedMileageRange(
+    sessions.filter((session) => session.kind !== "rest"),
+  );
+  const total =
+    totalRange?.min === totalRange?.max ? (totalRange?.min ?? null) : null;
 
   return (
     <div className="screen">
@@ -35,6 +58,7 @@ export function PlanScreen() {
           <Plus size={17} /> Add session
         </button>
       </header>
+      <PlanActivationPanel />
       <div className="toolbar">
         <label>
           Week
@@ -50,7 +74,9 @@ export function PlanScreen() {
           </select>
         </label>
         <span className="phase-label">{sessions[0]?.phase}</span>
-        <span className="toolbar-summary">{formatMiles(total)} planned</span>
+        <span className="toolbar-summary">
+          {formatPlannedMiles(total, totalRange)} planned
+        </span>
       </div>
       <div className="plan-table-wrap">
         <table className="data-table plan-table">
@@ -89,11 +115,18 @@ export function PlanScreen() {
                 </td>
                 <td>{session.guidance}</td>
                 <td>
-                  {formatMiles(session.plannedDistanceMiles)}
+                  {formatPrescription(
+                    session.plannedDistanceMiles,
+                    session.plannedDistance,
+                  )}
                   {session.plannedDistanceMiles !==
                     session.originalDistanceMiles && (
                     <small>
-                      Original {formatMiles(session.originalDistanceMiles)}
+                      Original{" "}
+                      {formatPrescription(
+                        session.originalDistanceMiles,
+                        session.originalDistance,
+                      )}
                     </small>
                   )}
                 </td>
@@ -125,6 +158,7 @@ export function PlanScreen() {
                       onClick={() => {
                         setMoving(session);
                         setMoveDate(session.scheduledDate);
+                        setMoveError("");
                       }}
                     >
                       <MoveRight size={17} />
@@ -136,6 +170,20 @@ export function PlanScreen() {
           </tbody>
         </table>
       </div>
+      {nonTrainingDays.length > 0 && (
+        <section className="panel" aria-label="Source day states">
+          <h3>Rest and unspecified days</h3>
+          <ul>
+            {nonTrainingDays.map((day) => (
+              <li key={day.id}>
+                {formatDate(day.originalDate)} ·{" "}
+                {day.kind === "rest" ? "Rest" : "Unspecified"}
+                {day.coachText.length ? ` · ${day.coachText.join(" ")}` : ""}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <section className="revision-panel">
         <div className="section-heading">
           <div>
@@ -206,18 +254,20 @@ export function PlanScreen() {
             className="form-grid"
             onSubmit={(event) => {
               event.preventDefault();
-              saveSession(
-                moving.id,
-                { scheduledDate: moveDate },
-                "Session moved",
-              );
-              setMoving(null);
+              const error = moveSession(moving.id, moveDate);
+              if (error) setMoveError(error);
+              else setMoving(null);
             }}
           >
             <p className="full form-explainer">
               Moving this session preserves its identity and does not create a
               skip.
             </p>
+            {moveError && (
+              <p className="full" role="alert">
+                {moveError}
+              </p>
+            )}
             <label className="full">
               New date
               <input

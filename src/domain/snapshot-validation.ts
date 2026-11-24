@@ -48,6 +48,27 @@ const revision = z
     reason: text,
   })
   .strict();
+const quantity = (units: readonly [string, ...string[]]) =>
+  z.union([
+    z
+      .object({
+        kind: z.literal("exact"),
+        value: positive,
+        unit: z.enum(units),
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal("range"),
+        min: positive,
+        max: positive,
+        unit: z.enum(units),
+      })
+      .strict()
+      .refine((value) => value.min <= value.max),
+  ]);
+const distanceQuantity = quantity(["m", "km", "mi"]);
+const durationQuantity = quantity(["s", "min"]);
 const session = z
   .object({
     id,
@@ -67,6 +88,39 @@ const session = z
     outcomeNote: text.optional(),
     replacementDescription: text.optional(),
     revisions: z.array(revision),
+  })
+  .strict();
+const sessionV5 = session.extend({
+  kind: z.enum([
+    "rest",
+    "easy",
+    "recovery",
+    "workout",
+    "long",
+    "race",
+    "other",
+  ]),
+  originalDistanceMiles: positive.nullable(),
+  plannedDistanceMiles: positive.nullable(),
+  originalDistance: distanceQuantity.optional(),
+  plannedDistance: distanceQuantity.optional(),
+  originalDuration: durationQuantity.optional(),
+  plannedDuration: durationQuantity.optional(),
+  sourceSessionId: id.optional(),
+  sourceDayId: id.optional(),
+  sourcePlanId: id.optional(),
+  sourceVersionId: id.optional(),
+  retiredAt: time.optional(),
+});
+const dayV5 = z
+  .object({
+    id,
+    sourceDayId: id.optional(),
+    sourcePlanId: id.optional(),
+    sourceVersionId: id.optional(),
+    originalDate: date,
+    kind: z.enum(["training", "rest", "unspecified"]),
+    retiredAt: time.optional(),
   })
   .strict();
 const activity = z
@@ -281,6 +335,18 @@ const versions = {
       fitImportBatches: z.array(batch),
     })
     .strict(),
+  5: z
+    .object({
+      ...common,
+      schemaVersion: z.literal(5),
+      days: z.array(dayV5),
+      sessions: z.array(sessionV5),
+      shoes: z.array(shoe),
+      fitSources: z.array(source),
+      fitSourceActivities: z.array(sourceActivity),
+      fitImportBatches: z.array(batch),
+    })
+    .strict(),
 };
 export function parseSnapshotJson(raw: string): unknown {
   try {
@@ -302,10 +368,10 @@ export function validateSnapshot(value: unknown): void {
       "corrupted",
       "Saved data has no valid schema version.",
     );
-  if (version !== 2 && version !== 3 && version !== 4)
+  if (version !== 2 && version !== 3 && version !== 4 && version !== 5)
     throw new DataIntegrityError(
       "unsupported",
-      `Snapshot version ${version} is unsupported. Use a compatible application; this build supports versions 2–4 and cannot downgrade newer data.`,
+      `Snapshot version ${version} is unsupported. Use a compatible application; this build supports versions 2–5 and cannot downgrade newer data.`,
     );
   const result = versions[version].safeParse(value);
   if (!result.success)
@@ -358,7 +424,61 @@ export function validateSnapshot(value: unknown): void {
       "lap",
     );
   }
-  if (data.schemaVersion === 4) {
+  if (data.schemaVersion === 5) {
+    for (const item of data.sessions) {
+      const linked = [
+        item.sourceSessionId,
+        item.sourceDayId,
+        item.sourcePlanId,
+        item.sourceVersionId,
+      ];
+      if (linked.some((value) => value !== undefined)) {
+        if (linked.some((value) => value === undefined))
+          throw new DataIntegrityError(
+            "corrupted",
+            "Incomplete plan source identity.",
+          );
+        if (
+          !data.days.some(
+            (day) =>
+              day.sourceDayId === item.sourceDayId &&
+              day.sourcePlanId === item.sourcePlanId &&
+              day.sourceVersionId === item.sourceVersionId &&
+              day.originalDate === item.originalDate,
+          )
+        )
+          throw new DataIntegrityError(
+            "corrupted",
+            "Session source day is missing or mismatched.",
+          );
+      }
+      for (const [quantity, miles] of [
+        [item.originalDistance, item.originalDistanceMiles],
+        [item.plannedDistance, item.plannedDistanceMiles],
+      ] as const) {
+        if (!quantity) continue;
+        const expected =
+          quantity.kind === "exact"
+            ? quantity.value /
+              (quantity.unit === "mi"
+                ? 1
+                : quantity.unit === "km"
+                  ? 1.609344
+                  : 1609.344)
+            : null;
+        if (
+          expected === null
+            ? miles !== null
+            : miles === null || Math.abs(miles - expected) > 1e-9
+        )
+          throw new DataIntegrityError(
+            "corrupted",
+            "Distance quantity and numeric projection disagree.",
+          );
+      }
+    }
+  }
+  if (data.schemaVersion === 4 || data.schemaVersion === 5) {
     const sources = new Set(data.fitSources.map((x) => x.id));
     const activities = new Map(data.fitSourceActivities.map((x) => [x.id, x]));
     unique(
@@ -394,9 +514,9 @@ export function validateSnapshot(value: unknown): void {
 }
 export function validateCurrentSnapshot(value: AppData): void {
   validateSnapshot(value);
-  if (value.schemaVersion !== 4)
+  if (value.schemaVersion !== 4 && value.schemaVersion !== 5)
     throw new DataIntegrityError(
       "unsupported",
-      "Writes require a validated version-4 snapshot.",
+      "Writes require a validated version-4 or version-5 snapshot.",
     );
 }

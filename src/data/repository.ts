@@ -26,6 +26,20 @@ export interface AppRepository {
   load(): Promise<AppData>;
   save(data: AppData): Promise<void>;
   restore?(raw: string): Promise<AppData>;
+  activate?(input: {
+    before: AppData;
+    after: AppData;
+    bytes: Uint8Array;
+    sourceHash: string;
+    validatorFingerprint: string;
+    effectiveDate: string;
+    activationId: string;
+  }): Promise<void>;
+  inspectActive?(): Promise<{
+    activationId: string;
+    sourceBytes: Uint8Array;
+    effectiveDate: string;
+  } | null>;
 }
 
 /** One canonical snapshot, immutable recovery/staging copies, atomic publication. */
@@ -37,7 +51,7 @@ abstract class SnapshotRepository implements AppRepository {
     | "unsupported"
     | "corrupted"
     | "inaccessible" = "unresolved";
-  private expected: string | null = null;
+  protected expected: string | null = null;
   constructor(private readonly sources: FitSourceStore) {}
   protected abstract read(): Promise<string | null>;
   protected abstract copy(raw: string, purpose: string): Promise<void>;
@@ -64,7 +78,10 @@ abstract class SnapshotRepository implements AppRepository {
       const parsed = parseSnapshotJson(raw);
       validateSnapshot(parsed);
       // Preserve exact stored bytes before running any historical adapter.
-      if ((parsed as AppData).schemaVersion !== 4)
+      if (
+        (parsed as AppData).schemaVersion !== 4 &&
+        (parsed as AppData).schemaVersion !== 5
+      )
         await this.copy(raw, "before-migration");
       const data = upgradeAppData(parsed);
       validateCurrentSnapshot(data);
@@ -79,7 +96,7 @@ abstract class SnapshotRepository implements AppRepository {
       throw this.lock(error);
     }
   }
-  private lock(error: unknown): DataIntegrityError {
+  protected lock(error: unknown): DataIntegrityError {
     const failure = storageError(error);
     this.state = failure.kind;
     return failure;
@@ -91,7 +108,7 @@ abstract class SnapshotRepository implements AppRepository {
         "Writes are disabled until saved-state integrity is resolved. Retry loading first.",
       );
   }
-  private async assertCurrent() {
+  protected async assertCurrent() {
     await this.compatible();
     if ((await this.read()) !== this.expected)
       throw new DataIntegrityError(
@@ -221,8 +238,77 @@ export class SqliteRepository extends SnapshotRepository {
       throw error;
     }));
   }
+  async inspectActive(): Promise<{
+    activationId: string;
+    sourceBytes: Uint8Array;
+    effectiveDate: string;
+  } | null> {
+    if (!("__TAURI_INTERNALS__" in globalThis)) return null;
+    const result = await invoke<{
+      activationId: string | null;
+      sourceBytes: number[] | null;
+      effectiveDate: string | null;
+    }>("inspect_active_plan", { request: { contractVersion: 1 } });
+    return result.activationId && result.sourceBytes && result.effectiveDate
+      ? {
+          activationId: result.activationId,
+          sourceBytes: Uint8Array.from(result.sourceBytes),
+          effectiveDate: result.effectiveDate,
+        }
+      : null;
+  }
+  async activate(input: {
+    before: AppData;
+    after: AppData;
+    bytes: Uint8Array;
+    sourceHash: string;
+    validatorFingerprint: string;
+    effectiveDate: string;
+    activationId: string;
+  }): Promise<void> {
+    if (!("__TAURI_INTERNALS__" in globalThis))
+      throw new DataIntegrityError(
+        "unsupported",
+        "Plan activation requires the Windows app.",
+      );
+    validateCurrentSnapshot(input.before);
+    validateCurrentSnapshot(input.after);
+    await this.assertCurrent();
+    if (this.expected !== JSON.stringify(input.before))
+      throw new DataIntegrityError(
+        "inaccessible",
+        "Saved data changed before activation. Reload and review the impact again.",
+      );
+    try {
+      await invoke("activate_training_plan", {
+        request: {
+          contractVersion: 1,
+          activationId: input.activationId,
+          before: this.expected,
+          after: JSON.stringify(input.after),
+          sourceBytes: Array.from(input.bytes),
+          sourceHash: input.sourceHash,
+          validatorFingerprint: input.validatorFingerprint,
+          effectiveDate: input.effectiveDate,
+        },
+      });
+      const stored = await this.read();
+      if (stored !== JSON.stringify(input.after))
+        throw new Error(
+          "Activation acknowledgement could not be verified. Reload saved data.",
+        );
+      this.expected = stored;
+    } catch (error) {
+      throw this.lock(error);
+    }
+  }
   protected async assertReplacementAllowed() {
     if (!("__TAURI_INTERNALS__" in globalThis)) return;
+    if (await this.inspectActive())
+      throw new DataIntegrityError(
+        "unsupported",
+        "Legacy restore and reset are unavailable after plan activation because they omit immutable plan sources.",
+      );
     const result = await invoke<{ draft: unknown }>("inspect_plan_draft", {
       request: { contractVersion: 1 },
     });
@@ -240,6 +326,12 @@ export class SqliteRepository extends SnapshotRepository {
       await invoke("inspect_plan_draft", { request: { contractVersion: 1 } });
     }
     const db = await this.db();
+    if (nativeDraftAware) {
+      const version = await db.select<{ user_version: number }[]>(
+        "PRAGMA user_version",
+      );
+      if (version[0]?.user_version === 5) await this.inspectActive();
+    }
     const tables = await db.select<{ name: string }[]>(
       "SELECT name FROM sqlite_master WHERE type = 'table'",
     );
@@ -255,7 +347,12 @@ export class SqliteRepository extends SnapshotRepository {
       "import_sources",
       "shoes",
       ...(nativeDraftAware
-        ? ["plan_draft_sources", "plan_drafts", "plan_draft_validation"]
+        ? [
+            "plan_draft_sources",
+            "plan_drafts",
+            "plan_draft_validation",
+            "active_plan_records",
+          ]
         : []),
     ]);
     for (const { name } of tables) {
@@ -269,9 +366,12 @@ export class SqliteRepository extends SnapshotRepository {
         continue;
       if (
         nativeDraftAware &&
-        ["plan_draft_sources", "plan_drafts", "plan_draft_validation"].includes(
-          name,
-        )
+        [
+          "plan_draft_sources",
+          "plan_drafts",
+          "plan_draft_validation",
+          "active_plan_records",
+        ].includes(name)
       )
         continue;
       const rows = await db.select<{ count: number }[]>(
@@ -370,6 +470,26 @@ export class SqliteRepository extends SnapshotRepository {
       }
       return;
     }
+    if (
+      "__TAURI_INTERNALS__" in globalThis &&
+      ((before !== null && JSON.parse(before).schemaVersion === 5) ||
+        (after !== null && JSON.parse(after).schemaVersion === 5))
+    ) {
+      if (
+        before === null ||
+        after === null ||
+        JSON.parse(before).schemaVersion !== 5 ||
+        JSON.parse(after).schemaVersion !== 5
+      )
+        throw new DataIntegrityError(
+          "unsupported",
+          "Version-5 schedules change only through guarded native commands.",
+        );
+      await invoke("save_active_snapshot", {
+        request: { contractVersion: 1, before, after },
+      });
+      return;
+    }
     const db = await this.db();
     if (before === null && after !== null) {
       await this.compatible();
@@ -426,6 +546,29 @@ export class SerializedRepository implements AppRepository {
         );
       return this.repository.restore(raw);
     });
+  }
+  activate(input: {
+    before: AppData;
+    after: AppData;
+    bytes: Uint8Array;
+    sourceHash: string;
+    validatorFingerprint: string;
+    effectiveDate: string;
+    activationId: string;
+  }) {
+    return this.enqueue(() => {
+      if (!this.repository.activate)
+        throw new DataIntegrityError(
+          "unsupported",
+          "Plan activation requires the Windows app.",
+        );
+      return this.repository.activate(input);
+    });
+  }
+  inspectActive() {
+    return this.enqueue(
+      () => this.repository.inspectActive?.() ?? Promise.resolve(null),
+    );
   }
 }
 export function createRepository(): AppRepository {
