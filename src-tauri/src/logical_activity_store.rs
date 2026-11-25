@@ -1,6 +1,6 @@
 //! Atomic publication of a logical-activity revision inside the canonical snapshot.
 //! This does not introduce a separate database or physical SQLite migration.
-use crate::plan_draft_store::{check_schema, error, guard, Result, Store};
+use crate::plan_draft_store::{check_schema, error, guard, integrity, inventory, Result, Store};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sqlx::Connection;
@@ -187,6 +187,59 @@ fn validate_transition(before: &Value, after: &Value) -> Result<Value> {
 }
 
 impl Store {
+    async fn backup_before_activity_upgrade(&self, expected: &str) -> Result<()> {
+        let _guards = guard(&self.database, false)?;
+        let mut source = self.connect(true).await?;
+        check_schema(&mut source).await?;
+        let current: String = sqlx::query_scalar("SELECT payload FROM app_state WHERE id=1")
+            .fetch_one(&mut source)
+            .await?;
+        // A retry after a lost acknowledgement is handled inside the transaction.
+        if current != expected {
+            return Ok(());
+        }
+        let before = inventory(&mut source).await?;
+        let directory = self
+            .database
+            .parent()
+            .ok_or_else(|| error("backup"))?
+            .join("activity-safety");
+        std::fs::create_dir_all(&directory).map_err(|_| error("backup"))?;
+        let path = directory.join(format!("before-activity-{}.sqlite", uuid::Uuid::new_v4()));
+        let _copy_guard = guard(&path, true).map_err(|_| error("backup"))?;
+        sqlx::query("VACUUM INTO ?")
+            .bind(path.to_str().ok_or_else(|| error("backup"))?)
+            .execute(&mut source)
+            .await
+            .map_err(|_| error("backup"))?;
+        let _verified_guard = guard(&path, false).map_err(|_| error("backup"))?;
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&path)
+            .and_then(|file| file.sync_all())
+            .map_err(|_| error("backup"))?;
+        let mut copy = sqlx::SqliteConnection::connect_with(
+            &sqlx::sqlite::SqliteConnectOptions::new()
+                .filename(&path)
+                .read_only(true),
+        )
+        .await
+        .map_err(|_| error("backup"))?;
+        integrity(&mut copy).await.map_err(|_| error("backup"))?;
+        if inventory(&mut copy).await.map_err(|_| error("backup"))? != before {
+            return Err(error("backup"));
+        }
+        let copied: String = sqlx::query_scalar("SELECT payload FROM app_state WHERE id=1")
+            .fetch_one(&mut copy)
+            .await
+            .map_err(|_| error("backup"))?;
+        if copied != expected {
+            return Err(error("backup"));
+        }
+        copy.close().await.map_err(|_| error("backup"))?;
+        source.close().await?;
+        Ok(())
+    }
     /// Returns a receipt only after FULL-synchronous SQLite commit. An identical
     /// command retry returns its already committed receipt even after later edits.
     pub async fn save_logical_activity(&self, request: ActivitySaveRequest) -> Result<Value> {
@@ -203,6 +256,9 @@ impl Store {
             .last()
             .cloned()
             .ok_or_else(invalid)?;
+        if before["schemaVersion"] != 7 {
+            self.backup_before_activity_upgrade(&request.before).await?;
+        }
         let _guards = guard(&self.database, false)?;
         let mut db = self.connect(false).await?;
         sqlx::query("PRAGMA synchronous=FULL")
@@ -312,6 +368,33 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(retry, receipt);
+        let backup = fs::read_dir(profile.0.join("activity-safety"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        let mut recovered = sqlx::SqliteConnection::connect_with(
+            &SqliteConnectOptions::new()
+                .filename(&backup)
+                .read_only(true),
+        )
+        .await
+        .unwrap();
+        let integrity: String = sqlx::query_scalar("PRAGMA integrity_check")
+            .fetch_one(&mut recovered)
+            .await
+            .unwrap();
+        assert_eq!(integrity, "ok");
+        let saved_before: String = sqlx::query_scalar("SELECT payload FROM app_state WHERE id=1")
+            .fetch_one(&mut recovered)
+            .await
+            .unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(&saved_before).unwrap(),
+            Profile::before()
+        );
+        recovered.close().await.unwrap();
         let mut db = profile.store(None).connect(true).await.unwrap();
         let persisted: String = sqlx::query_scalar("SELECT payload FROM app_state WHERE id=1")
             .fetch_one(&mut db)

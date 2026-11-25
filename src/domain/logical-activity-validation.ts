@@ -97,7 +97,7 @@ const version = z
     changedAt: timestamp,
   })
   .strict();
-const stateSchema = z
+export const logicalActivityStateSchema = z
   .object({
     activities: z.array(
       z
@@ -124,7 +124,7 @@ function sourceKey(source: z.infer<typeof evidence>): string {
 export function validateLogicalActivityState(
   value: unknown,
 ): asserts value is LogicalActivityState {
-  const result = stateSchema.safeParse(value);
+  const result = logicalActivityStateSchema.safeParse(value);
   if (!result.success) throw new Error("Invalid logical activity snapshot.");
   const { activities, commands } = result.data;
   const owners = new Map<string, string>();

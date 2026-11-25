@@ -110,7 +110,10 @@ export function previewActivation(
       data.activities.some(
         (activity) => activity.plannedSessionId === session.id,
       ) ||
-      data.journals.some((entry) => entry.sessionId === session.id)
+      data.journals.some((entry) => entry.sessionId === session.id) ||
+      data.logicalActivities?.activities.some(
+        (activity) => activity.versions.at(-1)?.plannedSessionId === session.id,
+      )
     )
       diagnostics.push(
         issue(
@@ -224,7 +227,7 @@ export function activationCandidate(
     }
   return {
     ...data,
-    schemaVersion: 5,
+    schemaVersion: data.schemaVersion === 7 ? 7 : 5,
     days: [
       ...(data.days ?? []).map((day) =>
         day.retiredAt || day.originalDate < effectiveDate
@@ -236,7 +239,7 @@ export function activationCandidate(
     sessions: [
       ...data.sessions.map((session) => {
         const migrated =
-          data.schemaVersion === 4
+          data.schemaVersion === 4 || (data.schemaVersion === 7 && !data.days)
             ? {
                 ...session,
                 originalDistance: {

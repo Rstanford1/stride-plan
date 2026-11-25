@@ -233,6 +233,7 @@ export interface AppData {
   shoes: Shoe[];
   settings: AppSettings;
   importFingerprints: string[];
+  logicalActivities?: import("./logical-activity").LogicalActivityState;
 }
 
 export interface WeeklyMetrics {

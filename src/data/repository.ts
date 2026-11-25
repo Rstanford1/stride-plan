@@ -12,6 +12,14 @@ import { inspectLegacyRestore } from "./restore";
 import { createFitSourceStore, type FitSourceStore } from "./fit-source-store";
 import Database from "@tauri-apps/plugin-sql";
 import { invoke } from "@tauri-apps/api/core";
+import {
+  applyConfirmation,
+  commandFingerprint,
+  type ConfirmationCommand,
+  type ConfirmationReceipt,
+  type LogicalActivityState,
+} from "../domain/logical-activity";
+import type { DurableConfirmationResult } from "./logical-activity-service";
 
 export const STORAGE_KEY = "stride-plan:data:v1";
 /** Candidate-only rejection: the active repository has not been invalidated. */
@@ -25,6 +33,9 @@ export class RestoreInputError extends DataIntegrityError {
 export interface AppRepository {
   load(): Promise<AppData>;
   save(data: AppData): Promise<void>;
+  confirmLogicalActivity?(
+    command: ConfirmationCommand,
+  ): Promise<{ result: DurableConfirmationResult; data: AppData }>;
   restore?(raw: string): Promise<AppData>;
   activate?(input: {
     before: AppData;
@@ -62,6 +73,16 @@ abstract class SnapshotRepository implements AppRepository {
   ): Promise<void>;
   protected async compatible(): Promise<void> {}
   protected async assertReplacementAllowed(): Promise<void> {}
+  protected async beforeLogicalUpgrade(raw: string): Promise<void> {
+    await this.copy(raw, "before-confirmed-activity");
+  }
+  protected async commitLogical(
+    before: string,
+    after: string,
+  ): Promise<ConfirmationReceipt | null> {
+    await this.commit(before, after);
+    return null;
+  }
 
   async load(): Promise<AppData> {
     this.state = "unresolved";
@@ -80,7 +101,8 @@ abstract class SnapshotRepository implements AppRepository {
       // Preserve exact stored bytes before running any historical adapter.
       if (
         (parsed as AppData).schemaVersion !== 4 &&
-        (parsed as AppData).schemaVersion !== 5
+        (parsed as AppData).schemaVersion !== 5 &&
+        (parsed as AppData).schemaVersion !== 7
       )
         await this.copy(raw, "before-migration");
       const data = upgradeAppData(parsed);
@@ -145,11 +167,93 @@ abstract class SnapshotRepository implements AppRepository {
       throw this.lock(error);
     }
   }
+  async confirmLogicalActivity(
+    command: ConfirmationCommand,
+  ): Promise<{ result: DurableConfirmationResult; data: AppData }> {
+    this.assertWritable();
+    await this.compatible();
+    const raw = await this.read();
+    if (raw === null)
+      throw new DataIntegrityError(
+        "inaccessible",
+        "No saved snapshot is available.",
+      );
+    const parsed = parseSnapshotJson(raw) as AppData;
+    validateCurrentSnapshot(parsed);
+    const existing = parsed.logicalActivities?.commands.find(
+      (item) => item.id === command.commandId,
+    );
+    if (existing) {
+      if (existing.fingerprint !== commandFingerprint(command))
+        throw new Error("Command ID was already used for a different request.");
+      this.expected = raw;
+      return {
+        result: { status: "confirmed", receipt: existing.receipt },
+        data: parsed,
+      };
+    }
+    if (raw !== this.expected)
+      throw new DataIntegrityError(
+        "inaccessible",
+        "Saved data changed in another window. Reload before confirming.",
+      );
+    const logical: LogicalActivityState = parsed.logicalActivities ?? {
+      activities: [],
+      commands: [],
+    };
+    const candidate = applyConfirmation(
+      logical,
+      command,
+      new Date().toISOString(),
+    );
+    if (candidate.status !== "confirmed")
+      return { result: candidate, data: parsed };
+    const next: AppData = {
+      ...parsed,
+      schemaVersion: 7,
+      logicalActivities: candidate.state,
+    };
+    validateCurrentSnapshot(next);
+    const after = JSON.stringify(next);
+    if (parsed.schemaVersion !== 7) await this.beforeLogicalUpgrade(raw);
+    const nativeReceipt = await this.commitLogical(raw, after);
+    if (
+      nativeReceipt &&
+      (nativeReceipt.commandId !== candidate.receipt.commandId ||
+        nativeReceipt.logicalActivityId !==
+          candidate.receipt.logicalActivityId ||
+        nativeReceipt.confirmationEventId !==
+          candidate.receipt.confirmationEventId ||
+        nativeReceipt.confirmedAt !== candidate.receipt.confirmedAt ||
+        nativeReceipt.committedRevision !== candidate.receipt.committedRevision)
+    )
+      throw new DataIntegrityError(
+        "corrupted",
+        "The committed activity receipt could not be verified.",
+      );
+    const persisted = await this.read();
+    if (persisted !== after)
+      throw new DataIntegrityError(
+        "inaccessible",
+        "The confirmation could not be verified. Retry the same command.",
+      );
+    this.expected = persisted;
+    this.state = "valid";
+    return {
+      result: { status: "confirmed", receipt: candidate.receipt },
+      data: next,
+    };
+  }
   async restore(raw: string): Promise<AppData> {
     this.assertWritable();
     // Invalid candidates do not invalidate the existing valid store.
     let preview;
     try {
+      if (this.expected && JSON.parse(this.expected).schemaVersion === 7)
+        throw new DataIntegrityError(
+          "unsupported",
+          "Legacy restore cannot replace confirmed activity history. Recover a complete compatible database instead.",
+        );
       await this.assertReplacementAllowed();
       preview = await inspectLegacyRestore(raw, this.sources);
       if (preview.missingSources.length)
@@ -237,6 +341,21 @@ export class SqliteRepository extends SnapshotRepository {
       this.database = undefined;
       throw error;
     }));
+  }
+  // The native transaction creates and verifies a complete SQLite safety copy.
+  protected async beforeLogicalUpgrade(): Promise<void> {}
+  protected async commitLogical(
+    before: string,
+    after: string,
+  ): Promise<ConfirmationReceipt | null> {
+    if (!("__TAURI_INTERNALS__" in globalThis))
+      throw new DataIntegrityError(
+        "unsupported",
+        "Durable activity confirmation requires the Windows app.",
+      );
+    return invoke<ConfirmationReceipt>("save_logical_activity", {
+      request: { contractVersion: 1, before, after },
+    });
   }
   async inspectActive(): Promise<{
     activationId: string;
@@ -472,18 +591,18 @@ export class SqliteRepository extends SnapshotRepository {
     }
     if (
       "__TAURI_INTERNALS__" in globalThis &&
-      ((before !== null && JSON.parse(before).schemaVersion === 5) ||
-        (after !== null && JSON.parse(after).schemaVersion === 5))
+      ((before !== null && [5, 7].includes(JSON.parse(before).schemaVersion)) ||
+        (after !== null && [5, 7].includes(JSON.parse(after).schemaVersion)))
     ) {
       if (
         before === null ||
         after === null ||
-        JSON.parse(before).schemaVersion !== 5 ||
-        JSON.parse(after).schemaVersion !== 5
+        ![5, 7].includes(JSON.parse(before).schemaVersion) ||
+        JSON.parse(before).schemaVersion !== JSON.parse(after).schemaVersion
       )
         throw new DataIntegrityError(
           "unsupported",
-          "Version-5 schedules change only through guarded native commands.",
+          "Protected snapshots change only through guarded native commands.",
         );
       await invoke("save_active_snapshot", {
         request: { contractVersion: 1, before, after },
@@ -524,6 +643,7 @@ export class SqliteRepository extends SnapshotRepository {
 
 export class SerializedRepository implements AppRepository {
   private queue: Promise<unknown> = Promise.resolve();
+  private logical: LogicalActivityState | undefined;
   constructor(private readonly repository: AppRepository) {}
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
     const result = this.queue.then(operation);
@@ -531,11 +651,41 @@ export class SerializedRepository implements AppRepository {
     return result;
   }
   load() {
-    return this.enqueue(() => this.repository.load());
+    return this.enqueue(async () => {
+      const data = await this.repository.load();
+      this.logical = data.logicalActivities
+        ? structuredClone(data.logicalActivities)
+        : undefined;
+      return data;
+    });
   }
   save(data: AppData) {
     const snapshot = structuredClone(data);
-    return this.enqueue(() => this.repository.save(snapshot));
+    return this.enqueue(() =>
+      this.repository.save(
+        this.logical
+          ? {
+              ...snapshot,
+              schemaVersion: 7,
+              logicalActivities: structuredClone(this.logical),
+            }
+          : snapshot,
+      ),
+    );
+  }
+  confirmLogicalActivity(command: ConfirmationCommand) {
+    const request = structuredClone(command);
+    return this.enqueue(async () => {
+      if (!this.repository.confirmLogicalActivity)
+        throw new DataIntegrityError(
+          "unsupported",
+          "Durable activity confirmation is unavailable.",
+        );
+      const result = await this.repository.confirmLogicalActivity(request);
+      if (result.data.logicalActivities)
+        this.logical = structuredClone(result.data.logicalActivities);
+      return result;
+    });
   }
   restore(raw: string) {
     return this.enqueue(() => {
