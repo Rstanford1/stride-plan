@@ -2,13 +2,18 @@ import { Footprints } from "lucide-react";
 import { useState } from "react";
 import { useAppData } from "../data/app-context";
 import { formatMiles } from "../utils/format";
+import { projectShoeMileage } from "../domain/logical-activity-accounting";
 
 export function ShoesScreen() {
   const { data } = useAppData();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const shoes = [...data.shoes].sort(
-    (a, b) => Number(!!a.retired) - Number(!!b.retired),
-  );
+  const projected = projectShoeMileage(data);
+  const shoes = data.shoes
+    .map((shoe) => ({
+      ...shoe,
+      mileageMiles: projected.totals.get(shoe.id) ?? shoe.mileageMiles,
+    }))
+    .sort((a, b) => Number(!!a.retired) - Number(!!b.retired));
   const selected = shoes.find((shoe) => shoe.id === selectedId) ?? shoes[0];
   const activeCount = shoes.filter((shoe) => !shoe.retired).length;
 
@@ -26,6 +31,12 @@ export function ShoesScreen() {
           </span>
         )}
       </header>
+      {projected.unresolved.length > 0 && (
+        <p role="status">
+          Some historical shoe allocations need review before their totals can
+          be adjusted.
+        </p>
+      )}
       {shoes.length === 0 ? (
         <div className="panel shoes-empty">
           <Footprints size={26} aria-hidden="true" />

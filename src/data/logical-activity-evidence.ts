@@ -7,6 +7,7 @@ export function manualEvidence(entry: JournalEntry): ActivityEvidence {
   return {
     kind: "manual",
     sourceId: entry.id,
+    original: structuredClone(entry),
     occurredAt: null,
     localDate: entry.date,
     timezone: null,

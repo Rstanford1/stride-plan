@@ -18,6 +18,12 @@ it("keeps a manual training date separate from unknown original time", () => {
   ).toEqual({
     kind: "manual",
     sourceId: "journal",
+    original: {
+      id: "journal",
+      date: "2026-11-23",
+      createdAt: "2026-11-24T12:00:00Z",
+      updatedAt: "2026-11-24T12:00:00Z",
+    },
     occurredAt: null,
     localDate: "2026-11-23",
     timezone: null,

@@ -67,6 +67,46 @@ fn indexed<'a>(values: &'a [Value]) -> Result<BTreeMap<&'a str, &'a Value>> {
     Ok(map)
 }
 
+/// Generic saves may not replace records that have become immutable evidence.
+pub(crate) fn guard_linked_evidence(before: &Value, after: &Value) -> Result<()> {
+    if before["schemaVersion"] != 7 {
+        return Ok(());
+    }
+    let logical = state(before)?;
+    for activity in array(&logical, "activities")? {
+        let current = array(activity, "versions")?.last().ok_or_else(invalid)?;
+        for source in array(current, "sources")? {
+            let references: Vec<(&str, &str)> = match string(source, "kind")? {
+                "manual" => vec![("journals", string(source, "sourceId")?)],
+                "fit" => vec![
+                    ("fitSources", string(source, "sourceId")?),
+                    ("fitSourceActivities", string(source, "activityId")?),
+                    ("activities", string(source, "activityId")?),
+                ],
+                "garmin" => Vec::new(),
+                _ => return Err(invalid()),
+            };
+            for (collection, id) in references {
+                let previous = before
+                    .get(collection)
+                    .and_then(Value::as_array)
+                    .and_then(|items| items.iter().find(|item| item["id"] == id));
+                if let Some(previous) = previous {
+                    let current = after
+                        .get(collection)
+                        .and_then(Value::as_array)
+                        .and_then(|items| items.iter().find(|item| item["id"] == id))
+                        .ok_or_else(invalid)?;
+                    if current != previous {
+                        return Err(invalid());
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Enforce append-only history and reject any changes outside this command.
 fn validate_transition(before: &Value, after: &Value) -> Result<Value> {
     if after["schemaVersion"] != 7 {
@@ -201,7 +241,23 @@ impl Store {
         let storage = FitSourceStorage::new(self.sources.clone());
         for source in array(current, "sources")? {
             match string(source, "kind")? {
-                "manual" => (),
+                "manual" => {
+                    let original = source.get("original").ok_or_else(invalid)?;
+                    if string(original, "id")? != string(source, "sourceId")? {
+                        return Err(invalid());
+                    }
+                    string(original, "date")?;
+                    string(original, "updatedAt")?;
+                    if let Some(journals) = snapshot.get("journals").and_then(Value::as_array) {
+                        if let Some(existing) =
+                            journals.iter().find(|entry| entry["id"] == original["id"])
+                        {
+                            if existing != original {
+                                return Err(invalid());
+                            }
+                        }
+                    }
+                }
                 "fit" => {
                     let hash = string(source, "sourceHash")?;
                     let source_id = string(source, "sourceId")?;
@@ -392,7 +448,7 @@ mod tests {
         }
         fn after() -> Value {
             let receipt = json!({"commandId":"cmd","logicalActivityId":"activity","committedRevision":1,"confirmationEventId":"event","confirmedAt":"2026-11-24T12:00:00Z"});
-            json!({"schemaVersion":7,"history":"synthetic","logicalActivities":{"activities":[{"id":"activity","confirmationState":"confirmed","confirmed":receipt,"versions":[{"revision":1,"sources":[{"kind":"manual","sourceId":"manual"}]}]}],"commands":[{"id":"cmd","fingerprint":"synthetic","receipt":receipt}]}})
+            json!({"schemaVersion":7,"history":"synthetic","logicalActivities":{"activities":[{"id":"activity","confirmationState":"confirmed","confirmed":receipt,"versions":[{"revision":1,"sources":[{"kind":"manual","sourceId":"manual","original":{"id":"manual","date":"2026-11-24","updatedAt":"2026-11-24T12:00:00Z"}}]}]}],"commands":[{"id":"cmd","fingerprint":"synthetic","receipt":receipt}]}})
         }
         fn request() -> ActivitySaveRequest {
             ActivitySaveRequest {
@@ -478,6 +534,78 @@ mod tests {
         );
     }
     #[tokio::test]
+    async fn ordinary_saves_cannot_overwrite_committed_activity_history() {
+        let profile = Profile::new().await;
+        profile
+            .store(None)
+            .save_logical_activity(Profile::request())
+            .await
+            .unwrap();
+        let before = Profile::after();
+        let mut after = before.clone();
+        after["history"] = json!("ordinary edit");
+        profile
+            .store(None)
+            .save_active(crate::active_plan_store::SaveRequest {
+                contract_version: 1,
+                before: before.to_string(),
+                after: after.to_string(),
+            })
+            .await
+            .unwrap();
+        let mut stale = after.clone();
+        stale["logicalActivities"] = json!({"activities":[],"commands":[]});
+        assert!(profile
+            .store(None)
+            .save_active(crate::active_plan_store::SaveRequest {
+                contract_version: 1,
+                before: after.to_string(),
+                after: stale.to_string()
+            })
+            .await
+            .is_err());
+        let mut db = profile.store(None).connect(true).await.unwrap();
+        let raw: String = sqlx::query_scalar("SELECT payload FROM app_state WHERE id=1")
+            .fetch_one(&mut db)
+            .await
+            .unwrap();
+        assert_eq!(serde_json::from_str::<Value>(&raw).unwrap(), after);
+        db.close().await.unwrap();
+        let backup = profile.0.join("synthetic-complete-backup.sqlite");
+        let mut writable = profile.store(None).connect(false).await.unwrap();
+        sqlx::query("VACUUM INTO ?")
+            .bind(backup.to_str().unwrap())
+            .execute(&mut writable)
+            .await
+            .unwrap();
+        writable.close().await.unwrap();
+        let recovered = profile.0.join("synthetic-recovered.sqlite");
+        fs::copy(&backup, &recovered).unwrap();
+        let mut recovered_db = sqlx::SqliteConnection::connect_with(
+            &SqliteConnectOptions::new()
+                .filename(&recovered)
+                .read_only(true),
+        )
+        .await
+        .unwrap();
+        let recovered_raw: String = sqlx::query_scalar("SELECT payload FROM app_state WHERE id=1")
+            .fetch_one(&mut recovered_db)
+            .await
+            .unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(&recovered_raw).unwrap(),
+            after
+        );
+        assert_eq!(
+            sqlx::query_scalar::<_, String>("PRAGMA integrity_check")
+                .fetch_one(&mut recovered_db)
+                .await
+                .unwrap(),
+            "ok"
+        );
+        recovered_db.close().await.unwrap();
+    }
+    #[tokio::test]
     async fn accepts_only_verified_original_fit_and_garmin_receipts() {
         for kind in ["fit", "garmin"] {
             let profile = Profile::new().await;
@@ -533,5 +661,17 @@ mod tests {
             .unwrap()
             .push(json!({"kind":"manual","sourceId":"manual"}));
         assert!(validate_transition(&before, &after).is_err());
+    }
+    #[test]
+    fn ordinary_save_cannot_remove_or_rewrite_a_linked_manual_source() {
+        let mut before = Profile::after();
+        before["journals"] =
+            json!([{ "id":"manual", "date":"2026-11-24", "updatedAt":"2026-11-24T12:00:00Z" }]);
+        let mut changed = before.clone();
+        changed["journals"][0]["note"] = json!("changed");
+        assert!(guard_linked_evidence(&before, &changed).is_err());
+        changed["journals"] = json!([]);
+        assert!(guard_linked_evidence(&before, &changed).is_err());
+        assert!(guard_linked_evidence(&before, &before).is_ok());
     }
 }

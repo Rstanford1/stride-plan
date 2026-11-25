@@ -18,6 +18,11 @@ const command: ConfirmationCommand = {
     {
       kind: "manual",
       sourceId: "manual",
+      original: {
+        id: "manual",
+        date: "2026-11-24",
+        updatedAt: "2026-11-24T12:00:00Z",
+      },
       occurredAt: null,
       localDate: null,
       timezone: null,
@@ -90,6 +95,59 @@ describe("confirmed activities in the canonical snapshot", () => {
     expect(JSON.parse(f.values.get(STORAGE_KEY)!).schemaVersion).toBe(4);
     commit.mockRestore();
   });
+  it("does not adopt another window's unrelated edits during a command retry", async () => {
+    const f = fixture();
+    await f.repository.load();
+    await f.repository.confirmLogicalActivity(command);
+    const other = new BrowserRepository({
+      getItem: (key) => f.values.get(key) ?? null,
+      setItem: (key, value) => {
+        f.values.set(key, value);
+      },
+      removeItem: (key) => {
+        f.values.delete(key);
+      },
+    });
+    const current = await other.load();
+    await other.save({
+      ...current,
+      settings: { ...current.settings, easyHrHigh: 170 },
+    });
+    await expect(f.repository.confirmLogicalActivity(command)).rejects.toThrow(
+      /Reload/,
+    );
+    expect(JSON.parse(f.values.get(STORAGE_KEY)!).settings.easyHrHigh).toBe(
+      170,
+    );
+    expect(
+      JSON.parse(f.values.get(STORAGE_KEY)!).logicalActivities.commands,
+    ).toHaveLength(1);
+  });
+  it("recovers the original receipt after the committed acknowledgement is lost", async () => {
+    const f = fixture();
+    await f.repository.load();
+    const target = f.base as unknown as {
+      commitLogical: (before: string, after: string) => Promise<null>;
+    };
+    const actual = target.commitLogical.bind(f.base);
+    vi.spyOn(target, "commitLogical").mockImplementationOnce(
+      async (before, after) => {
+        await actual(before, after);
+        throw new Error("acknowledgement lost");
+      },
+    );
+    await expect(f.repository.confirmLogicalActivity(command)).rejects.toThrow(
+      /acknowledgement lost/,
+    );
+    const retried = await f.repository.confirmLogicalActivity(command);
+    expect(retried.result).toMatchObject({
+      status: "confirmed",
+      receipt: { commandId: "command", committedRevision: 1 },
+    });
+    expect(
+      JSON.parse(f.values.get(STORAGE_KEY)!).logicalActivities.activities,
+    ).toHaveLength(1);
+  });
   it("blocks legacy reset after confirmation", async () => {
     const f = fixture();
     await f.repository.load();
@@ -131,5 +189,34 @@ describe("confirmed activities in the canonical snapshot", () => {
     expect(
       (await f.repository.correctLogicalActivity(correction)).result,
     ).toEqual(changed.result);
+  });
+  it("preserves a linked legacy journal against later ordinary saves", async () => {
+    const f = fixture();
+    const original = command.sources[0];
+    if (original.kind !== "manual") throw new Error("Expected manual source");
+    f.initial.journals = [original.original];
+    f.values.set(STORAGE_KEY, JSON.stringify(f.initial));
+    await f.repository.load();
+    const confirmed = await f.repository.confirmLogicalActivity(command);
+    const changed = {
+      ...confirmed.data,
+      journals: [{ ...original.original, note: "overwritten" }],
+    };
+    await expect(f.repository.save(changed)).rejects.toThrow(/source evidence/);
+    expect(
+      JSON.parse(f.values.get(STORAGE_KEY)!).journals[0].note,
+    ).toBeUndefined();
+  });
+  it("refuses to associate a manual identity with different original journal facts", async () => {
+    const f = fixture();
+    const source = command.sources[0];
+    if (source.kind !== "manual") throw new Error("Expected manual source");
+    f.initial.journals = [{ ...source.original, note: "original note" }];
+    f.values.set(STORAGE_KEY, JSON.stringify(f.initial));
+    await f.repository.load();
+    await expect(f.repository.confirmLogicalActivity(command)).rejects.toThrow(
+      /does not match/,
+    );
+    expect(JSON.parse(f.values.get(STORAGE_KEY)!).schemaVersion).toBe(4);
   });
 });

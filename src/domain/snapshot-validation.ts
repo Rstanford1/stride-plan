@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { AppData } from "./types";
+import { journalSchema as journal } from "./journal-schema";
 import {
   logicalActivityStateSchema,
   validateLogicalActivityState,
@@ -160,32 +161,6 @@ const activity = z
         })
         .strict(),
     ),
-  })
-  .strict();
-const journal = z
-  .object({
-    id,
-    sessionId: id.optional(),
-    date,
-    actualDistanceMiles: positive.optional(),
-    durationSeconds: positive.optional(),
-    timeEntryMode: z.enum(["duration", "pace"]).optional(),
-    paceSecondsPerUnit: positive.optional(),
-    paceUnit: z.enum(["min-mi", "min-km"]).optional(),
-    averageHr: hr,
-    rpe: integer.min(1).max(10).optional(),
-    sleep: z
-      .enum(["restorative", "adequate", "limited", "severely-limited"])
-      .optional(),
-    sleepEntryMode: z.enum(["subjective", "garmin"]).optional(),
-    sleepScore: integer.max(100).optional(),
-    sleepDurationMinutes: positive.max(1440).optional(),
-    soreness: z.enum(["none", "mild", "moderate", "severe"]).optional(),
-    sorenessLocation: text.optional(),
-    shoeId: id.optional(),
-    note: text.optional(),
-    createdAt: time.optional(),
-    updatedAt: time,
   })
   .strict();
 const shoe = z

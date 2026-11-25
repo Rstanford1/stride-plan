@@ -24,6 +24,81 @@ import {
 import type { DurableConfirmationResult } from "./logical-activity-service";
 
 export const STORAGE_KEY = "stride-plan:data:v1";
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (value && typeof value === "object")
+    return `{${Object.entries(value)
+      .filter(([, entry]) => entry !== undefined)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`)
+      .join(",")}}`;
+  return JSON.stringify(value);
+}
+function sameSnapshotOutsideActivity(a: AppData, b: AppData): boolean {
+  const {
+    schemaVersion: _aVersion,
+    logicalActivities: _aActivity,
+    ...aBase
+  } = a;
+  const {
+    schemaVersion: _bVersion,
+    logicalActivities: _bActivity,
+    ...bBase
+  } = b;
+  return canonical(aBase) === canonical(bBase);
+}
+function assertLinkedEvidenceUnchanged(before: AppData, after: AppData): void {
+  for (const activity of before.logicalActivities?.activities ?? []) {
+    const current = activity.versions.at(-1);
+    if (!current) throw new Error("Confirmed activity has no revision.");
+    for (const source of current.sources) {
+      const refs: Array<{
+        old: Array<{ id: string }>;
+        next: Array<{ id: string }>;
+        id: string;
+      }> =
+        source.kind === "manual"
+          ? [
+              {
+                old: before.journals,
+                next: after.journals,
+                id: source.sourceId,
+              },
+            ]
+          : source.kind === "fit"
+            ? [
+                {
+                  old: before.fitSources,
+                  next: after.fitSources,
+                  id: source.sourceId,
+                },
+                {
+                  old: before.fitSourceActivities,
+                  next: after.fitSourceActivities,
+                  id: source.activityId,
+                },
+                {
+                  old: before.activities,
+                  next: after.activities,
+                  id: source.activityId,
+                },
+              ]
+            : [];
+      for (const ref of refs) {
+        const previous = ref.old.find((item) => item.id === ref.id);
+        if (
+          previous &&
+          canonical(previous) !==
+            canonical(ref.next.find((item) => item.id === ref.id))
+        )
+          throw new DataIntegrityError(
+            "corrupted",
+            "Confirmed source evidence cannot be changed by an ordinary save.",
+          );
+      }
+    }
+  }
+}
 /** Candidate-only rejection: the active repository has not been invalidated. */
 export class RestoreInputError extends DataIntegrityError {
   constructor(error: unknown) {
@@ -166,6 +241,11 @@ abstract class SnapshotRepository implements AppRepository {
     try {
       validateCurrentSnapshot(data);
       await this.assertCurrent();
+      if (this.expected && JSON.parse(this.expected).schemaVersion === 7)
+        assertLinkedEvidenceUnchanged(
+          JSON.parse(this.expected) as AppData,
+          data,
+        );
       await this.publish(JSON.stringify(data));
       this.state = "valid";
     } catch (error) {
@@ -201,6 +281,18 @@ abstract class SnapshotRepository implements AppRepository {
     if (existing) {
       if (existing.fingerprint !== commandFingerprint(command))
         throw new Error("Command ID was already used for a different request.");
+      if (
+        raw !== this.expected &&
+        (!this.expected ||
+          !sameSnapshotOutsideActivity(
+            parseSnapshotJson(this.expected) as AppData,
+            parsed,
+          ))
+      )
+        throw new DataIntegrityError(
+          "inaccessible",
+          "Saved data changed in another window. Reload before retrying.",
+        );
       this.expected = raw;
       return {
         result: { status: "confirmed", receipt: existing.receipt },
@@ -216,6 +308,20 @@ abstract class SnapshotRepository implements AppRepository {
       activities: [],
       commands: [],
     };
+    if ("eventId" in command)
+      for (const source of command.sources) {
+        if (source.kind !== "manual") continue;
+        const existingJournal = parsed.journals.find(
+          (entry) => entry.id === source.sourceId,
+        );
+        if (
+          existingJournal &&
+          canonical(existingJournal) !== canonical(source.original)
+        )
+          throw new Error(
+            "Manual source evidence does not match the preserved journal.",
+          );
+      }
     const now = new Date().toISOString();
     const candidate =
       "eventId" in command

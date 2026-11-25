@@ -8,9 +8,12 @@ import {
 import {
   logicalActivityCredits,
   logicalShoeCredits,
+  projectShoeMileage,
 } from "./logical-activity-accounting";
 import { calculateWeeklyMetrics } from "./metrics";
 import { createInitialData } from "./seed";
+import { projectActivePlan } from "./active-plan-projection";
+import { currentPlanSessions } from "./active-plan";
 
 const empty: LogicalActivityState = { activities: [], commands: [] };
 const first: ConfirmationCommand = {
@@ -24,6 +27,11 @@ const first: ConfirmationCommand = {
     {
       kind: "manual",
       sourceId: "manual-one",
+      original: {
+        id: "manual-one",
+        date: "2026-11-23",
+        updatedAt: "2026-11-24T12:00:00Z",
+      },
       occurredAt: null,
       localDate: "2026-11-23",
       timezone: null,
@@ -74,6 +82,11 @@ it("credits linked evidence once and separate doubles twice, while revisions rep
       {
         kind: "manual",
         sourceId: "manual-two",
+        original: {
+          id: "manual-two",
+          date: "2026-11-24",
+          updatedAt: "2026-11-24T12:00:00Z",
+        },
         occurredAt: null,
         localDate: "2026-11-24",
         timezone: null,
@@ -117,6 +130,26 @@ it("credits linked evidence once and separate doubles twice, while revisions rep
       .confirmedAt,
   ).toBe("2026-11-24T12:00:00Z");
 });
+it("adds new shoe credits once and refuses to guess historic attribution", () => {
+  const data = createInitialData();
+  data.shoes = [
+    { id: "shoe", name: "Synthetic", mileageMiles: 100, isDefault: true },
+  ];
+  const result = applyConfirmation(empty, first, "2026-11-24T12:00:00Z");
+  if (result.status !== "confirmed") throw new Error("Expected confirmation");
+  data.logicalActivities = result.state;
+  expect(projectShoeMileage(data).totals.get("shoe")).toBe(104);
+  data.journals.push({
+    id: "manual-one",
+    date: "2026-11-24",
+    actualDistanceMiles: 4,
+    shoeId: "shoe",
+    updatedAt: "2026-11-24T12:00:00Z",
+  });
+  const projected = projectShoeMileage(data);
+  expect(projected.totals.get("shoe")).toBe(100);
+  expect(projected.unresolved).toEqual(["run-one"]);
+});
 it("credits a confirmed manual source once even when its legacy journal remains present", () => {
   const data = createInitialData();
   const session = data.sessions.find((item) => item.kind !== "rest")!;
@@ -150,4 +183,67 @@ it("credits a confirmed manual source once even when its legacy journal remains 
   );
   expect(metrics.actualMiles).toBe(4);
   expect(metrics.coreCompleted).toBe(session.flexible ? 0 : 1);
+  data.logicalActivities = result.state;
+  expect(projectActivePlan(data, null).legacySessions[0].status).toBe(
+    "completed",
+  );
+  expect(currentPlanSessions(data, null, null)[0].status).toBe("completed");
+  expect(data.sessions[0].status).toBe("planned");
+});
+it("does not reactivate a legacy journal fallback when its attached FIT activity is confirmed", () => {
+  const data = createInitialData();
+  const session = data.sessions.find((item) => item.kind !== "rest")!;
+  data.sessions = [
+    { ...session, status: "planned", scheduledDate: "2026-11-24" },
+  ];
+  data.journals = [
+    {
+      id: "legacy-journal",
+      sessionId: session.id,
+      date: "2026-11-24",
+      actualDistanceMiles: 4,
+      updatedAt: "2026-11-24T12:00:00Z",
+    },
+  ];
+  data.activities = [
+    {
+      id: "recording",
+      sourceHash: "a".repeat(64),
+      fileName: "synthetic.fit",
+      occurredAt: "2026-11-24T10:00:00Z",
+      distanceMiles: 4,
+      role: "primary-easy",
+      plannedSessionId: session.id,
+      isPrimary: true,
+      importedAt: "2026-11-24T12:00:00Z",
+      laps: [],
+    },
+  ];
+  const input: ConfirmationCommand = {
+    ...first,
+    plannedSessionId: session.id,
+    sources: [
+      {
+        kind: "fit",
+        sourceId: "source",
+        activityId: "recording",
+        sourceHash: "a".repeat(64),
+        occurredAt: "2026-11-24T10:00:00Z",
+        localDate: null,
+        timezone: null,
+      },
+    ],
+    recorded: { ...first.recorded, shoeAllocations: [] },
+  };
+  const result = applyConfirmation(empty, input, "2026-11-24T12:00:00Z");
+  if (result.status !== "confirmed") throw new Error("Expected confirmation");
+  expect(
+    calculateWeeklyMetrics(
+      session.week,
+      data.sessions,
+      data.activities,
+      data.journals,
+      result.state,
+    ).actualMiles,
+  ).toBe(4);
 });

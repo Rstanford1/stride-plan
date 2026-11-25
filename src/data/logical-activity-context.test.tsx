@@ -20,6 +20,11 @@ const command: ConfirmationCommand = {
     {
       kind: "manual",
       sourceId: "manual",
+      original: {
+        id: "manual",
+        date: "2026-11-24",
+        updatedAt: "2026-11-24T12:00:00Z",
+      },
       occurredAt: null,
       localDate: null,
       timezone: null,

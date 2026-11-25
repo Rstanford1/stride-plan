@@ -1,8 +1,12 @@
+import type { JournalEntry } from "./types";
+import { journalSchema } from "./journal-schema";
+
 /** Source facts are evidence; a link never rewrites an original record. */
 export type ActivityEvidence =
   | {
       kind: "manual";
       sourceId: string;
+      original: JournalEntry;
       occurredAt: string | null;
       localDate: string | null;
       timezone: string | null;
@@ -32,6 +36,7 @@ export interface RecordedValues {
   outcome: "completed" | "modified" | "unplanned";
   note: string | null;
   shoeAllocations: { shoeId: string; distanceMiles: number }[];
+  manualEntry?: JournalEntry;
 }
 export interface ActivityVersion {
   revision: number;
@@ -153,7 +158,10 @@ function validate(command: ConfirmationCommand) {
     throw new Error("Invalid assigned training date.");
   for (const source of command.sources) {
     if (
-      (source.kind === "manual" && !source.sourceId) ||
+      (source.kind === "manual" &&
+        (!source.sourceId ||
+          !journalSchema.safeParse(source.original).success ||
+          source.original.id !== source.sourceId)) ||
       (source.kind === "fit" &&
         (!source.sourceId ||
           !source.activityId ||
@@ -168,6 +176,16 @@ function validate(command: ConfirmationCommand) {
   if (new Set(command.sources.map(sourceKey)).size !== command.sources.length)
     throw new Error("Duplicate source identity.");
   const values = command.recorded;
+  if (
+    values.manualEntry &&
+    (!journalSchema.safeParse(values.manualEntry).success ||
+      !command.sources.some(
+        (source) =>
+          source.kind === "manual" &&
+          source.sourceId === values.manualEntry?.id,
+      ))
+  )
+    throw new Error("Manual entry does not match its original source.");
   for (const number of [
     values.distanceMiles,
     values.durationSeconds,

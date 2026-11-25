@@ -7,6 +7,7 @@ import { formatDuration } from "../domain/run-entry";
 import { Modal } from "../components/Modal";
 import { RunEntryWorkflow } from "../components/RunEntryWorkflow";
 import { StatusBadge } from "../components/StatusBadge";
+import { logicalSessionStatus } from "../domain/logical-activity-accounting";
 import type { TrainingPlan } from "../domain/training-plan-contract";
 import type { ProjectedSession } from "../domain/active-plan-projection";
 import {
@@ -308,9 +309,29 @@ export function TodayDashboard({
         const session = data.sessions.find(
           (candidate) => candidate.id === item.id,
         );
-        return session ? [session] : [];
+        return session
+          ? [
+              {
+                ...session,
+                status: logicalSessionStatus(
+                  session.id,
+                  session.status,
+                  data.logicalActivities,
+                ),
+              },
+            ]
+          : [];
       })
-    : data.sessions.filter((item) => !item.retiredAt);
+    : data.sessions
+        .filter((item) => !item.retiredAt)
+        .map((session) => ({
+          ...session,
+          status: logicalSessionStatus(
+            session.id,
+            session.status,
+            data.logicalActivities,
+          ),
+        }));
   const selectedSessions = visibleSessions.filter(
     (item) => item.scheduledDate === selectedDate,
   );
@@ -355,7 +376,21 @@ export function TodayDashboard({
       const session = data.sessions.find(
         (candidate) => candidate.id === item.id,
       );
-      return session ? [{ session, projected: item }] : [];
+      return session
+        ? [
+            {
+              session: {
+                ...session,
+                status: logicalSessionStatus(
+                  session.id,
+                  session.status,
+                  data.logicalActivities,
+                ),
+              },
+              projected: item,
+            },
+          ]
+        : [];
     });
   const sourceDay = sourceDays.find((day) => day.originalDate === selectedDate);
   const next = visibleSessions

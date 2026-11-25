@@ -1,4 +1,5 @@
 import type { TrainingPlan, PlanDiagnostic } from "./training-plan-contract";
+import { logicalSessionStatus } from "./logical-activity-accounting";
 import type {
   AppData,
   PlannedDay,
@@ -20,15 +21,24 @@ export function currentPlanSessions(
   activationId: string | null,
   effectiveDate: string | null,
 ): PlannedSession[] {
-  return data.sessions.filter(
-    (session) =>
-      !session.retiredAt &&
-      (!activationId ||
-        session.id.startsWith(`active:${activationId}:session:`) ||
-        (!session.sourceSessionId &&
-          effectiveDate !== null &&
-          session.scheduledDate >= effectiveDate)),
-  );
+  return data.sessions
+    .filter(
+      (session) =>
+        !session.retiredAt &&
+        (!activationId ||
+          session.id.startsWith(`active:${activationId}:session:`) ||
+          (!session.sourceSessionId &&
+            effectiveDate !== null &&
+            session.scheduledDate >= effectiveDate)),
+    )
+    .map((session) => ({
+      ...session,
+      status: logicalSessionStatus(
+        session.id,
+        session.status,
+        data.logicalActivities,
+      ),
+    }));
 }
 
 const issue = (

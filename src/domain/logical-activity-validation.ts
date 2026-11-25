@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { LogicalActivityState } from "./logical-activity";
+import { journalSchema } from "./journal-schema";
 
 const id = z.string().min(1);
 const date = z
@@ -26,7 +27,12 @@ const evidenceFields = {
 };
 const evidence = z.discriminatedUnion("kind", [
   z
-    .object({ kind: z.literal("manual"), sourceId: id, ...evidenceFields })
+    .object({
+      kind: z.literal("manual"),
+      sourceId: id,
+      original: journalSchema,
+      ...evidenceFields,
+    })
     .strict(),
   z
     .object({
@@ -61,6 +67,7 @@ const recorded = z
         })
         .strict(),
     ),
+    manualEntry: journalSchema.optional(),
   })
   .strict()
   .refine((value) => {
@@ -151,6 +158,18 @@ export function validateLogicalActivityState(
           JSON.stringify(source),
         ]),
       );
+      for (const source of item.sources)
+        if (source.kind === "manual" && source.original.id !== source.sourceId)
+          throw new Error("Invalid manual source identity.");
+      if (
+        item.recorded.manualEntry &&
+        !item.sources.some(
+          (source) =>
+            source.kind === "manual" &&
+            source.sourceId === item.recorded.manualEntry?.id,
+        )
+      )
+        throw new Error("Missing manual source evidence.");
       if (
         current.size !== item.sources.length ||
         [...previous].some(([key, source]) => current.get(key) !== source)

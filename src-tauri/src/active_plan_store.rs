@@ -81,6 +81,7 @@ fn guard_save(
     sources: &std::collections::BTreeMap<String, Value>,
     effective_dates: &std::collections::BTreeMap<String, String>,
 ) -> Result<Vec<Value>> {
+    crate::logical_activity_store::guard_linked_evidence(before, after)?;
     let versions_match = (before["schemaVersion"] == 5 && after["schemaVersion"] == 5)
         || (before["schemaVersion"] == 7
             && after["schemaVersion"] == 7
@@ -643,6 +644,7 @@ impl Store {
             {
                 return Err(error("unsupported"));
             }
+            crate::logical_activity_store::guard_linked_evidence(&before, &after)?;
             let changed = sqlx::query("UPDATE app_state SET payload=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=1 AND payload=?")
                 .bind(&request.after).bind(&request.before).execute(&mut *tx).await?;
             if changed.rows_affected() != 1 {

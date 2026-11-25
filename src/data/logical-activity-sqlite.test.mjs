@@ -69,6 +69,11 @@ const request = {
     {
       kind: "manual",
       sourceId: "manual-1",
+      original: {
+        id: "manual-1",
+        date: "2026-11-24",
+        updatedAt: "2026-11-24T12:00:00Z",
+      },
       occurredAt: null,
       localDate: null,
       timezone: null,

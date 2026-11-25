@@ -16,7 +16,14 @@ const source = (
   time: string | null = "2026-11-24T10:00:00Z",
 ): ActivityEvidence =>
   kind === "manual"
-    ? { kind, sourceId: id, occurredAt: time, localDate: null, timezone: null }
+    ? {
+        kind,
+        sourceId: id,
+        original: { id, date: "2026-11-24", updatedAt: "2026-11-24T12:00:00Z" },
+        occurredAt: time,
+        localDate: null,
+        timezone: null,
+      }
     : kind === "fit"
       ? {
           kind,

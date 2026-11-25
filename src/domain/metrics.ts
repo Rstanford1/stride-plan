@@ -5,7 +5,10 @@ import type {
   WeeklyMetrics,
 } from "./types";
 import type { LogicalActivityState } from "./logical-activity";
-import { logicalActivityCredits } from "./logical-activity-accounting";
+import {
+  logicalActivityCredits,
+  logicalSessionStatus,
+} from "./logical-activity-accounting";
 
 const outcomeTemplate = () => ({
   planned: 0,
@@ -59,13 +62,13 @@ export function actualMilesForSession(
   );
   const attached = activities.filter(
     (activity) =>
-      activity.plannedSessionId === sessionId &&
-      activity.role !== "unrelated" &&
-      !ownedActivities.has(activity.id),
+      activity.plannedSessionId === sessionId && activity.role !== "unrelated",
   );
   const legacy =
     attached.length > 0
-      ? attached.reduce((sum, activity) => sum + activity.distanceMiles, 0)
+      ? attached
+          .filter((activity) => !ownedActivities.has(activity.id))
+          .reduce((sum, activity) => sum + activity.distanceMiles, 0)
       : (journals.find(
           (entry) =>
             entry.sessionId === sessionId && !ownedJournals.has(entry.id),
@@ -115,16 +118,8 @@ export function calculateWeeklyMetrics(
             activity.occurredAt.slice(0, 10) <= weekEnd,
         );
   const outcomes = outcomeTemplate();
-  const outcome = (session: PlannedSession) => {
-    const associated = credits.filter(
-      (credit) => credit.plannedSessionId === session.id,
-    );
-    if (associated.some((credit) => credit.recorded.outcome === "completed"))
-      return "completed" as const;
-    if (associated.some((credit) => credit.recorded.outcome === "modified"))
-      return "modified" as const;
-    return session.status;
-  };
+  const outcome = (session: PlannedSession) =>
+    logicalSessionStatus(session.id, session.status, logical);
   for (const session of runnable) outcomes[outcome(session)] += 1;
   const coreCompleted = core.filter(
     (session) => outcome(session) === "completed",
