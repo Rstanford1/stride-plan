@@ -136,10 +136,10 @@ describe("confirmed activities in the canonical snapshot", () => {
         throw new Error("acknowledgement lost");
       },
     );
-    await expect(f.repository.confirmLogicalActivity(command)).rejects.toThrow(
-      /acknowledgement lost/,
-    );
+    const recovered = await f.repository.confirmLogicalActivity(command);
+    expect(recovered.result.status).toBe("confirmed");
     const retried = await f.repository.confirmLogicalActivity(command);
+    expect(retried.result).toEqual(recovered.result);
     expect(retried.result).toMatchObject({
       status: "confirmed",
       receipt: { commandId: "command", committedRevision: 1 },
@@ -242,5 +242,101 @@ describe("confirmed activities in the canonical snapshot", () => {
       }),
     ).rejects.toThrow(/does not match/);
     expect(JSON.parse(f.values.get(STORAGE_KEY)!).schemaVersion).toBe(4);
+  });
+  it("durably saves review-later evidence without credit, then confirms it after review", async () => {
+    const f = fixture();
+    f.initial.journals = [
+      {
+        id: "older",
+        date: "2026-11-24",
+        actualDistanceMiles: 4,
+        updatedAt: "2026-11-24T12:00:00Z",
+      },
+    ];
+    f.values.set(STORAGE_KEY, JSON.stringify(f.initial));
+    await f.repository.load();
+    const deferred = {
+      ...command,
+      legacyDuplicateDecisions: [
+        { candidateId: "journal:older", decision: "review-later" as const },
+      ],
+    };
+    const result = await f.repository.confirmLogicalActivity(deferred);
+    expect(result.result.status).toBe("review-later");
+    const reopened = await new BrowserRepository({
+      getItem: (key) => f.values.get(key) ?? null,
+      setItem: (key, value) => {
+        f.values.set(key, value);
+      },
+      removeItem: (key) => {
+        f.values.delete(key);
+      },
+    }).load();
+    expect(reopened.logicalActivities?.activities).toHaveLength(0);
+    expect(reopened.logicalActivities?.pending?.[0].command.sources).toEqual(
+      command.sources,
+    );
+    expect(
+      (await f.repository.confirmLogicalActivity(deferred)).result.status,
+    ).toBe("review-later");
+    const competing = {
+      ...command,
+      commandId: "another-command",
+      activityId: "another-activity",
+      eventId: "another-event",
+      sources: [
+        {
+          kind: "manual" as const,
+          sourceId: "another",
+          original: {
+            id: "another",
+            date: "2026-11-24",
+            updatedAt: "2026-11-24T12:00:00Z",
+          },
+          occurredAt: null,
+          localDate: "2026-11-24",
+          timezone: null,
+        },
+      ],
+    };
+    expect(
+      (await f.repository.confirmLogicalActivity(competing)).result,
+    ).toEqual({ status: "review-required", candidates: ["pending:command"] });
+    expect(
+      JSON.parse(f.values.get(STORAGE_KEY)!).logicalActivities.activities,
+    ).toHaveLength(0);
+    const confirmed = await f.repository.confirmLogicalActivity({
+      ...command,
+      legacyDuplicateDecisions: [
+        { candidateId: "journal:older", decision: "keep-both" },
+      ],
+    });
+    expect(confirmed.result.status).toBe("confirmed");
+    expect(confirmed.data.logicalActivities?.pending).toHaveLength(0);
+    expect(confirmed.data.logicalActivities?.activities).toHaveLength(1);
+  });
+  it("protects an older source while its duplicate review is deferred", async () => {
+    const f = fixture();
+    const source = command.sources[0];
+    if (source.kind !== "manual") throw new Error("Expected manual source");
+    f.initial.journals = [source.original];
+    f.values.set(STORAGE_KEY, JSON.stringify(f.initial));
+    await f.repository.load();
+    const deferred = await f.repository.confirmLogicalActivity({
+      ...command,
+      legacyDuplicateDecisions: [
+        { candidateId: "journal:manual", decision: "review-later" },
+      ],
+    });
+    expect(deferred.result.status).toBe("review-later");
+    await expect(
+      f.repository.save({
+        ...deferred.data,
+        journals: [{ ...source.original, note: "changed" }],
+      }),
+    ).rejects.toThrow(/source evidence/);
+    expect(
+      JSON.parse(f.values.get(STORAGE_KEY)!).journals[0].note,
+    ).toBeUndefined();
   });
 });

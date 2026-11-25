@@ -9,6 +9,9 @@ export interface LogicalActivityCredit {
   recorded: RecordedValues;
   manualSourceIds: string[];
   fitActivityIds: string[];
+  legacyDuplicateDecisions: NonNullable<
+    import("./logical-activity").ActivityVersion["legacyDuplicateDecisions"]
+  >;
 }
 
 /** One current credit per confirmed physical activity, irrespective of source count. */
@@ -24,6 +27,7 @@ export function logicalActivityCredits(
       assignedDate: current.assignedDate,
       plannedSessionId: current.plannedSessionId,
       recorded: current.recorded,
+      legacyDuplicateDecisions: current.legacyDuplicateDecisions ?? [],
       manualSourceIds: current.sources.flatMap((source) =>
         source.kind === "manual" ? [source.sourceId] : [],
       ),

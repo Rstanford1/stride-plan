@@ -29,8 +29,9 @@ export function WeeklyReviewScreen() {
         data.activities,
         data.journals,
         data.logicalActivities,
+        activePlan?.source.weeks.find((item) => item.number === week),
       ),
-    [week, data, planSessions],
+    [week, data, planSessions, activePlan],
   );
   const observations = useMemo(
     () =>
@@ -40,8 +41,9 @@ export function WeeklyReviewScreen() {
         data.activities,
         data.journals,
         data.logicalActivities,
+        activePlan?.source.weeks.find((item) => item.number === week),
       ),
-    [week, data, planSessions],
+    [week, data, planSessions, activePlan],
   );
   const sessions = planSessions.filter(
     (session) => session.week === week && session.kind !== "rest",

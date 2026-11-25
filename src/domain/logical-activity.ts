@@ -48,6 +48,10 @@ export interface ActivityVersion {
   recorded: RecordedValues;
   reason: string;
   changedAt: string;
+  legacyDuplicateDecisions?: {
+    candidateId: string;
+    decision: "merge" | "keep-both" | "review-later";
+  }[];
 }
 export interface ConfirmationReceipt {
   commandId: string;
@@ -79,6 +83,7 @@ export interface ConfirmationCommand {
     candidateId: string;
     decision: "merge" | "keep-both" | "review-later";
   }[];
+  mergeRecordedChoice?: "keep-existing" | "use-incoming";
 }
 export interface ActivityCommandRecord {
   id: string;
@@ -97,6 +102,7 @@ export interface CorrectionCommand {
 export interface LogicalActivityState {
   activities: LogicalActivity[];
   commands: ActivityCommandRecord[];
+  pending?: { id: string; command: ConfirmationCommand; createdAt: string }[];
 }
 export type ConfirmationPreparation =
   | { status: "review-required"; candidates: string[] }
@@ -131,7 +137,10 @@ function current(activity: LogicalActivity): ActivityVersion {
   if (!version) throw new Error("Logical activity has no revision.");
   return version;
 }
-function possible(a: ActivityEvidence, b: ActivityEvidence): boolean {
+export function possiblyRelatedEvidence(
+  a: ActivityEvidence,
+  b: ActivityEvidence,
+): boolean {
   // Provider and FIT evidence can refer to the same original bytes even if
   // their recorded timestamps disagree. Never dismiss those as separate runs.
   if (
@@ -146,8 +155,30 @@ function possible(a: ActivityEvidence, b: ActivityEvidence): boolean {
     if (Number.isFinite(first) && Number.isFinite(second))
       return Math.abs(first - second) <= 86400000;
   }
+  if (a.localDate && b.localDate) {
+    const first = Date.parse(`${a.localDate}T12:00:00Z`);
+    const second = Date.parse(`${b.localDate}T12:00:00Z`);
+    if (Number.isFinite(first) && Number.isFinite(second))
+      return Math.abs(first - second) <= 86400000;
+  }
   // Without reliable original times, do not rule out a match based on an assigned date.
   return true;
+}
+export function pendingCandidateIds(
+  state: LogicalActivityState,
+  command: ConfirmationCommand,
+): string[] {
+  return (state.pending ?? [])
+    .filter(
+      (item) =>
+        item.id !== command.commandId &&
+        item.command.sources.some((source) =>
+          command.sources.some((incoming) =>
+            possiblyRelatedEvidence(source, incoming),
+          ),
+        ),
+    )
+    .map((item) => `pending:${item.id}`);
 }
 function validate(command: ConfirmationCommand) {
   if (
@@ -240,6 +271,9 @@ export function prepareConfirmation(
   command: ConfirmationCommand,
 ): ConfirmationPreparation {
   validate(command);
+  const pendingMatches = pendingCandidateIds(state, command);
+  if (pendingMatches.length)
+    return { status: "review-required", candidates: pendingMatches };
   const existing = state.activities.find(
     (activity) => activity.id === command.activityId,
   );
@@ -264,7 +298,9 @@ export function prepareConfirmation(
         activity.id !== command.activityId &&
         (activity === exact[0] ||
           current(activity).sources.some((source) =>
-            command.sources.some((other) => possible(source, other)),
+            command.sources.some((other) =>
+              possiblyRelatedEvidence(source, other),
+            ),
           )),
     )
     .map((activity) => activity.id);
@@ -330,6 +366,21 @@ export function applyConfirmation(
   }
   if (!Number.isFinite(Date.parse(committedAt)))
     throw new Error("Invalid confirmation timestamp.");
+  const pending = state.pending?.find((item) => item.id === command.commandId);
+  if (pending)
+    for (const original of pending.command.sources) {
+      const incoming = command.sources.find(
+        (source) => sourceKey(source) === sourceKey(original),
+      );
+      if (!incoming)
+        throw new Error("Deferred source evidence must be retained.");
+      const originalFacts = { ...original } as Record<string, unknown>;
+      const incomingFacts = { ...incoming } as Record<string, unknown>;
+      delete originalFacts.legacyShoeCredit;
+      delete incomingFacts.legacyShoeCredit;
+      if (stable(originalFacts) !== stable(incomingFacts))
+        throw new Error("Deferred source evidence cannot be changed.");
+    }
   const preparation = prepareConfirmation(state, command);
   if (preparation.status !== "ready") return preparation;
   const existing = state.activities.find(
@@ -351,13 +402,23 @@ export function applyConfirmation(
   if (
     existing &&
     (current(existing).assignedDate !== command.assignedDate ||
-      current(existing).plannedSessionId !== command.plannedSessionId ||
-      stable(current(existing).recorded) !== stable(command.recorded))
+      current(existing).plannedSessionId !== command.plannedSessionId)
   )
     throw new Error(
-      "A merge cannot silently change recorded values, date or association.",
+      "A merge cannot silently change the assigned date or association.",
     );
   const previous = existing ? current(existing) : null;
+  const recordedDiffers =
+    !!previous && stable(previous.recorded) !== stable(command.recorded);
+  if (
+    recordedDiffers &&
+    !["keep-existing", "use-incoming"].includes(
+      command.mergeRecordedChoice ?? "",
+    )
+  )
+    throw new Error(
+      "A merge cannot silently change recorded values; choose which values to keep.",
+    );
   const sources = previous
     ? [
         ...previous.sources,
@@ -383,9 +444,26 @@ export function applyConfirmation(
     assignedDate: command.assignedDate,
     plannedSessionId: command.plannedSessionId,
     sources: structuredClone(sources),
-    recorded: structuredClone(command.recorded),
-    reason: preparation.merged ? "source association" : "confirmation",
+    recorded: structuredClone(
+      previous &&
+        recordedDiffers &&
+        command.mergeRecordedChoice === "keep-existing"
+        ? previous.recorded
+        : command.recorded,
+    ),
+    reason: preparation.merged
+      ? recordedDiffers && command.mergeRecordedChoice === "use-incoming"
+        ? "source association and recorded correction"
+        : "source association"
+      : "confirmation",
     changedAt: committedAt,
+    ...((previous?.legacyDuplicateDecisions ||
+      command.legacyDuplicateDecisions) && {
+      legacyDuplicateDecisions: [
+        ...(previous?.legacyDuplicateDecisions ?? []),
+        ...(command.legacyDuplicateDecisions ?? []),
+      ],
+    }),
   };
   const activity: LogicalActivity = existing
     ? { ...existing, versions: [...existing.versions, version] }
@@ -398,6 +476,7 @@ export function applyConfirmation(
   return {
     status: "confirmed",
     state: {
+      ...state,
       activities: [
         ...state.activities.filter((item) => item.id !== activity.id),
         activity,
@@ -406,6 +485,9 @@ export function applyConfirmation(
         ...state.commands,
         { id: command.commandId, fingerprint, receipt },
       ],
+      ...(state.pending && {
+        pending: state.pending.filter((item) => item.id !== command.commandId),
+      }),
     },
     receipt,
   };
@@ -474,11 +556,17 @@ export function applyCorrection(
         recorded: structuredClone(command.recorded),
         reason: command.reason,
         changedAt,
+        ...(previous.legacyDuplicateDecisions && {
+          legacyDuplicateDecisions: structuredClone(
+            previous.legacyDuplicateDecisions,
+          ),
+        }),
       },
     ],
   };
   return {
     state: {
+      ...state,
       activities: state.activities.map((item) =>
         item.id === activity.id ? next : item,
       ),

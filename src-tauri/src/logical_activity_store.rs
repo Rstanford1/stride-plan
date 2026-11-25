@@ -15,6 +15,7 @@ pub struct ActivitySaveRequest {
     pub contract_version: u32,
     pub before: String,
     pub after: String,
+    pub operation: Option<String>,
 }
 
 fn invalid() -> crate::plan_draft_store::DraftError {
@@ -73,33 +74,40 @@ pub(crate) fn guard_linked_evidence(before: &Value, after: &Value) -> Result<()>
         return Ok(());
     }
     let logical = state(before)?;
+    let mut all_sources = Vec::new();
     for activity in array(&logical, "activities")? {
         let current = array(activity, "versions")?.last().ok_or_else(invalid)?;
-        for source in array(current, "sources")? {
-            let references: Vec<(&str, &str)> = match string(source, "kind")? {
-                "manual" => vec![("journals", string(source, "sourceId")?)],
-                "fit" => vec![
-                    ("fitSources", string(source, "sourceId")?),
-                    ("fitSourceActivities", string(source, "activityId")?),
-                    ("activities", string(source, "activityId")?),
-                ],
-                "garmin" => Vec::new(),
-                _ => return Err(invalid()),
-            };
-            for (collection, id) in references {
-                let previous = before
+        all_sources.extend(array(current, "sources")?);
+    }
+    if let Some(pending) = logical.get("pending").and_then(Value::as_array) {
+        for item in pending {
+            all_sources.extend(array(&item["command"], "sources")?);
+        }
+    }
+    for source in all_sources {
+        let references: Vec<(&str, &str)> = match string(source, "kind")? {
+            "manual" => vec![("journals", string(source, "sourceId")?)],
+            "fit" => vec![
+                ("fitSources", string(source, "sourceId")?),
+                ("fitSourceActivities", string(source, "activityId")?),
+                ("activities", string(source, "activityId")?),
+            ],
+            "garmin" => Vec::new(),
+            _ => return Err(invalid()),
+        };
+        for (collection, id) in references {
+            let previous = before
+                .get(collection)
+                .and_then(Value::as_array)
+                .and_then(|items| items.iter().find(|item| item["id"] == id));
+            if let Some(previous) = previous {
+                let current = after
                     .get(collection)
                     .and_then(Value::as_array)
-                    .and_then(|items| items.iter().find(|item| item["id"] == id));
-                if let Some(previous) = previous {
-                    let current = after
-                        .get(collection)
-                        .and_then(Value::as_array)
-                        .and_then(|items| items.iter().find(|item| item["id"] == id))
-                        .ok_or_else(invalid)?;
-                    if current != previous {
-                        return Err(invalid());
-                    }
+                    .and_then(|items| items.iter().find(|item| item["id"] == id))
+                    .ok_or_else(invalid)?;
+                if current != previous {
+                    return Err(invalid());
                 }
             }
         }
@@ -131,6 +139,24 @@ fn validate_transition(before: &Value, after: &Value) -> Result<Value> {
     let commands = indexed(new_commands)?;
     let command = new_commands.last().ok_or_else(invalid)?;
     let command_id = string(command, "id")?;
+    let old_pending = old_state
+        .get("pending")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let new_pending = new_state
+        .get("pending")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let retained: Vec<Value> = old_pending
+        .iter()
+        .filter(|item| item["id"] != command_id)
+        .cloned()
+        .collect();
+    if retained != new_pending {
+        return Err(invalid());
+    }
     string(command, "fingerprint")?;
     let receipt = command.get("receipt").ok_or_else(invalid)?;
     if string(receipt, "commandId")? != command_id {
@@ -148,6 +174,26 @@ fn validate_transition(before: &Value, after: &Value) -> Result<Value> {
     let new = indexed(array(&new_state, "activities")?)?;
     if old.keys().any(|id| !new.contains_key(id)) || new.len() > old.len() + 1 {
         return Err(invalid());
+    }
+    if let Some(pending) = old_pending.iter().find(|item| item["id"] == command_id) {
+        let incoming = array(&pending["command"], "sources")?;
+        let activity = new.get(activity_id).ok_or_else(invalid)?;
+        let current = array(activity, "versions")?.last().ok_or_else(invalid)?;
+        let sources = array(current, "sources")?;
+        for old_source in incoming {
+            let key = source_key(old_source)?;
+            let current_source = sources
+                .iter()
+                .find(|source| source_key(source).is_ok_and(|current_key| current_key == key))
+                .ok_or_else(invalid)?;
+            let mut old_facts = old_source.as_object().cloned().ok_or_else(invalid)?;
+            let mut new_facts = current_source.as_object().cloned().ok_or_else(invalid)?;
+            old_facts.remove("legacyShoeCredit");
+            new_facts.remove("legacyShoeCredit");
+            if old_facts != new_facts {
+                return Err(invalid());
+            }
+        }
     }
     let mut sources = BTreeSet::new();
     let mut events = BTreeSet::new();
@@ -229,6 +275,55 @@ fn validate_transition(before: &Value, after: &Value) -> Result<Value> {
     Ok(receipt.clone())
 }
 
+fn validate_deferred_transition(before: &Value, after: &Value) -> Result<Value> {
+    if after["schemaVersion"] != 7 {
+        return Err(invalid());
+    }
+    let old_state = state(before)?;
+    let new_state = state(after)?;
+    let mut old_base = before.as_object().cloned().ok_or_else(invalid)?;
+    let mut new_base = after.as_object().cloned().ok_or_else(invalid)?;
+    old_base.remove("schemaVersion");
+    new_base.remove("schemaVersion");
+    old_base.remove("logicalActivities");
+    new_base.remove("logicalActivities");
+    if old_base != new_base
+        || old_state["activities"] != new_state["activities"]
+        || old_state["commands"] != new_state["commands"]
+    {
+        return Err(invalid());
+    }
+    let old_pending = old_state
+        .get("pending")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let new_pending = new_state
+        .get("pending")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if new_pending.len() != old_pending.len() + 1 || !new_pending.starts_with(&old_pending) {
+        return Err(invalid());
+    }
+    let item = new_pending.last().ok_or_else(invalid)?;
+    let id = string(item, "id")?;
+    string(item, "createdAt")?;
+    let command = item.get("command").ok_or_else(invalid)?;
+    if string(command, "commandId")? != id
+        || old_pending.iter().any(|old| old["id"] == id)
+        || array(&old_state, "commands")?
+            .iter()
+            .any(|old| old["id"] == id)
+    {
+        return Err(invalid());
+    }
+    if array(command, "sources")?.is_empty() {
+        return Err(invalid());
+    }
+    Ok(item.clone())
+}
+
 impl Store {
     fn verify_activity_sources(&self, snapshot: &Value, receipt: &Value) -> Result<()> {
         let logical = state(snapshot)?;
@@ -238,8 +333,16 @@ impl Store {
             .find(|item| item["id"] == activity_id)
             .ok_or_else(invalid)?;
         let current = array(activity, "versions")?.last().ok_or_else(invalid)?;
+        self.verify_sources(snapshot, array(current, "sources")?, true)
+    }
+    fn verify_sources(
+        &self,
+        snapshot: &Value,
+        sources: &[Value],
+        require_attribution: bool,
+    ) -> Result<()> {
         let storage = FitSourceStorage::new(self.sources.clone());
-        for source in array(current, "sources")? {
+        for source in sources {
             match string(source, "kind")? {
                 "manual" => {
                     let original = source.get("original").ok_or_else(invalid)?;
@@ -255,27 +358,29 @@ impl Store {
                             if existing != original {
                                 return Err(invalid());
                             }
-                            if let Some(shoe) = existing.get("shoeId").and_then(Value::as_str) {
-                                let attribution =
-                                    source.get("legacyShoeCredit").ok_or_else(invalid)?;
-                                if !attribution.is_null() {
-                                    if string(attribution, "shoeId")? != shoe
-                                        || attribution["distanceMiles"]
-                                            != existing["actualDistanceMiles"]
-                                    {
-                                        return Err(invalid());
-                                    }
-                                    let miles = attribution["distanceMiles"]
-                                        .as_f64()
-                                        .filter(|value| *value >= 0.0)
-                                        .ok_or_else(invalid)?;
-                                    let balance = array(snapshot, "shoes")?
-                                        .iter()
-                                        .find(|item| item["id"] == shoe)
-                                        .and_then(|item| item["mileageMiles"].as_f64())
-                                        .ok_or_else(invalid)?;
-                                    if balance < miles {
-                                        return Err(invalid());
+                            if require_attribution {
+                                if let Some(shoe) = existing.get("shoeId").and_then(Value::as_str) {
+                                    let attribution =
+                                        source.get("legacyShoeCredit").ok_or_else(invalid)?;
+                                    if !attribution.is_null() {
+                                        if string(attribution, "shoeId")? != shoe
+                                            || attribution["distanceMiles"]
+                                                != existing["actualDistanceMiles"]
+                                        {
+                                            return Err(invalid());
+                                        }
+                                        let miles = attribution["distanceMiles"]
+                                            .as_f64()
+                                            .filter(|value| *value >= 0.0)
+                                            .ok_or_else(invalid)?;
+                                        let balance = array(snapshot, "shoes")?
+                                            .iter()
+                                            .find(|item| item["id"] == shoe)
+                                            .and_then(|item| item["mileageMiles"].as_f64())
+                                            .ok_or_else(invalid)?;
+                                        if balance < miles {
+                                            return Err(invalid());
+                                        }
                                     }
                                 }
                             }
@@ -384,11 +489,24 @@ impl Store {
         }
         let before: Value = serde_json::from_str(&request.before).map_err(|_| invalid())?;
         let after: Value = serde_json::from_str(&request.after).map_err(|_| invalid())?;
-        let receipt = validate_transition(&before, &after)?;
-        let command = array(&state(&after)?, "commands")?
-            .last()
-            .cloned()
-            .ok_or_else(invalid)?;
+        let deferred = match request.operation.as_deref() {
+            None | Some("confirm") => false,
+            Some("defer") => true,
+            _ => return Err(invalid()),
+        };
+        let result = if deferred {
+            validate_deferred_transition(&before, &after)?
+        } else {
+            validate_transition(&before, &after)?
+        };
+        let command = if deferred {
+            result.clone()
+        } else {
+            array(&state(&after)?, "commands")?
+                .last()
+                .cloned()
+                .ok_or_else(invalid)?
+        };
         if before["schemaVersion"] != 7 {
             self.backup_before_activity_upgrade(&request.before).await?;
         }
@@ -405,18 +523,32 @@ impl Store {
         if current != request.before {
             let snapshot: Value = serde_json::from_str(&current).map_err(|_| error("corrupt"))?;
             let current_state = state(&snapshot)?;
-            if let Some(existing) = array(&current_state, "commands")?
-                .iter()
-                .find(|entry| entry["id"] == command["id"])
-            {
+            let entries = if deferred {
+                current_state
+                    .get("pending")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default()
+            } else {
+                array(&current_state, "commands")?.clone()
+            };
+            if let Some(existing) = entries.iter().find(|entry| entry["id"] == command["id"]) {
                 if existing != &command {
                     return Err(invalid());
                 }
-                return Ok(existing["receipt"].clone());
+                return Ok(if deferred {
+                    json!({"status":"review-later","commandId":existing["id"]})
+                } else {
+                    existing["receipt"].clone()
+                });
             }
             return Err(error("conflict"));
         }
-        self.verify_activity_sources(&after, &receipt)?;
+        if deferred {
+            self.verify_sources(&after, array(&result["command"], "sources")?, false)?;
+        } else {
+            self.verify_activity_sources(&after, &result)?;
+        }
         let changed = sqlx::query("UPDATE app_state SET payload=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=1 AND payload=?")
             .bind(&request.after).bind(&request.before).execute(&mut *tx).await?;
         if changed.rows_affected() != 1 {
@@ -427,7 +559,11 @@ impl Store {
             return Err(error("storage"));
         }
         tx.commit().await?;
-        Ok(receipt)
+        Ok(if deferred {
+            json!({"status":"review-later","commandId":result["id"]})
+        } else {
+            result
+        })
     }
 }
 
@@ -479,6 +615,7 @@ mod tests {
                 contract_version: 1,
                 before: Self::before().to_string(),
                 after: Self::after().to_string(),
+                operation: None,
             }
         }
     }
@@ -558,6 +695,62 @@ mod tests {
         );
     }
     #[tokio::test]
+    async fn review_later_is_durable_and_does_not_create_confirmed_credit() {
+        let profile = Profile::new().await;
+        let before = Profile::before();
+        let mut deferred = before.clone();
+        deferred["schemaVersion"] = json!(7);
+        let source = Profile::after()["logicalActivities"]["activities"][0]["versions"][0]
+            ["sources"][0]
+            .clone();
+        deferred["logicalActivities"] = json!({"activities":[],"commands":[],"pending":[{"id":"cmd","createdAt":"2026-11-24T12:00:00Z","command":{"commandId":"cmd","sources":[source]}}]});
+        let request = || ActivitySaveRequest {
+            contract_version: 1,
+            before: before.to_string(),
+            after: deferred.to_string(),
+            operation: Some("defer".into()),
+        };
+        assert_eq!(
+            profile
+                .store(None)
+                .save_logical_activity(request())
+                .await
+                .unwrap()["status"],
+            "review-later"
+        );
+        assert_eq!(
+            profile
+                .store(None)
+                .save_logical_activity(request())
+                .await
+                .unwrap()["status"],
+            "review-later"
+        );
+        let mut db = profile.store(None).connect(true).await.unwrap();
+        let raw: String = sqlx::query_scalar("SELECT payload FROM app_state WHERE id=1")
+            .fetch_one(&mut db)
+            .await
+            .unwrap();
+        let stored: Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(stored["logicalActivities"]["activities"], json!([]));
+        assert_eq!(
+            stored["logicalActivities"]["pending"][0]["command"]["sources"][0],
+            source
+        );
+        db.close().await.unwrap();
+        let confirm = ActivitySaveRequest {
+            contract_version: 1,
+            before: deferred.to_string(),
+            after: Profile::after().to_string(),
+            operation: None,
+        };
+        assert!(profile
+            .store(None)
+            .save_logical_activity(confirm)
+            .await
+            .is_ok());
+    }
+    #[tokio::test]
     async fn ordinary_saves_cannot_overwrite_committed_activity_history() {
         let profile = Profile::new().await;
         profile
@@ -574,6 +767,7 @@ mod tests {
                 contract_version: 1,
                 before: before.to_string(),
                 after: after.to_string(),
+                operation: None,
             })
             .await
             .unwrap();

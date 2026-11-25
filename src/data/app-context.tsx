@@ -133,6 +133,7 @@ export function AppProvider({
   const writable = useRef(false);
   const restoring = useRef(false);
   const confirming = useRef(0);
+  const uncertainCommands = useRef(new Set<string>());
   const persisted = useRef<AppData | null>(null);
   const currentData = useRef(data);
   const importEpoch = useRef(0);
@@ -362,12 +363,23 @@ export function AppProvider({
       try {
         // Flush the current optimistic snapshot. The serialized repository merges
         // already-committed identities into any older saves queued during this wait.
-        await repository.save(currentData.current);
-        const confirmed =
-          "eventId" in command
-            ? await repository.confirmLogicalActivity!(command)
-            : await repository.correctLogicalActivity!(command);
-        if (confirmed.result.status === "confirmed") {
+        if (!uncertainCommands.current.has(command.commandId))
+          await repository.save(currentData.current);
+        let confirmed;
+        try {
+          confirmed =
+            "eventId" in command
+              ? await repository.confirmLogicalActivity!(command)
+              : await repository.correctLogicalActivity!(command);
+        } catch (error) {
+          uncertainCommands.current.add(command.commandId);
+          throw error;
+        }
+        uncertainCommands.current.delete(command.commandId);
+        if (
+          confirmed.result.status === "confirmed" ||
+          confirmed.result.status === "review-later"
+        ) {
           const latest = currentData.current;
           const next =
             latest === persisted.current

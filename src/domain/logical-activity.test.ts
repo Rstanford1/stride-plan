@@ -340,4 +340,46 @@ describe("confirmed activity candidate rules", () => {
       /silently change/,
     );
   });
+  it("requires an explicit value choice when merging different notes and shoes", () => {
+    const first = committed(
+      applyConfirmation(
+        empty(),
+        command("manual", [source("manual", "m")]),
+        time,
+      ),
+    );
+    const next = command("fit", [source("fit", "f")]);
+    next.duplicateDecisions = [
+      { activityId: "activity-manual", decision: "merge" },
+    ];
+    next.expectedRevision = 1;
+    next.recorded.note = "New detail";
+    next.recorded.shoeAllocations = [{ shoeId: "shoe", distanceMiles: 4 }];
+    expect(() => applyConfirmation(first.state, next, time)).toThrow(
+      /choose which values/,
+    );
+    const kept = committed(
+      applyConfirmation(
+        first.state,
+        { ...next, mergeRecordedChoice: "keep-existing" },
+        time,
+      ),
+    );
+    expect(kept.state.activities[0].versions[1].recorded).toEqual(
+      first.state.activities[0].versions[0].recorded,
+    );
+    const changed = committed(
+      applyConfirmation(
+        first.state,
+        { ...next, mergeRecordedChoice: "use-incoming" },
+        time,
+      ),
+    );
+    expect(changed.state.activities[0].versions[0].recorded.note).toBeNull();
+    expect(changed.state.activities[0].versions[1].recorded).toMatchObject({
+      note: "New detail",
+      shoeAllocations: [{ shoeId: "shoe", distanceMiles: 4 }],
+    });
+    expect(changed.receipt.confirmedAt).toBe(time);
+  });
 });

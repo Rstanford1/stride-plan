@@ -469,6 +469,28 @@ export function validateSnapshot(value: unknown): void {
             }
         }
       }
+      for (const pending of data.logicalActivities.pending ?? []) {
+        reference(
+          pending.command.plannedSessionId ?? undefined,
+          sessions,
+          "pending activity session",
+        );
+        for (const allocation of pending.command.recorded.shoeAllocations)
+          reference(allocation.shoeId, shoes, "pending activity shoe");
+        for (const source of pending.command.sources)
+          if (source.kind === "manual") {
+            reference(
+              source.original.sessionId,
+              sessions,
+              "pending manual source session",
+            );
+            reference(
+              source.original.shoeId,
+              shoes,
+              "pending manual source shoe",
+            );
+          }
+      }
     }
     for (const item of data.sessions) {
       const linked = [

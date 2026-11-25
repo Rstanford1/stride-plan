@@ -13,6 +13,7 @@ export function buildObservations(
   activities: Activity[],
   journals: JournalEntry[],
   logical?: LogicalActivityState,
+  weekCalendar?: { startDate: string; endDate: string },
 ): Observation[] {
   const observations: Observation[] = [];
   const weeklySessions = sessions.filter((session) => session.week === week);
@@ -26,6 +27,7 @@ export function buildObservations(
     activities,
     journals,
     logical,
+    weekCalendar,
   );
   const weeklyActivities = activities.filter(
     (activity) =>

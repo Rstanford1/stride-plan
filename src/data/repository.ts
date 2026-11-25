@@ -16,6 +16,7 @@ import {
   applyConfirmation,
   applyCorrection,
   commandFingerprint,
+  pendingCandidateIds,
   type ConfirmationCommand,
   type ConfirmationReceipt,
   type CorrectionCommand,
@@ -49,54 +50,60 @@ function sameSnapshotOutsideActivity(a: AppData, b: AppData): boolean {
   return canonical(aBase) === canonical(bBase);
 }
 function assertLinkedEvidenceUnchanged(before: AppData, after: AppData): void {
-  for (const activity of before.logicalActivities?.activities ?? []) {
-    const current = activity.versions.at(-1);
-    if (!current) throw new Error("Confirmed activity has no revision.");
-    for (const source of current.sources) {
-      const refs: Array<{
-        old: Array<{ id: string }>;
-        next: Array<{ id: string }>;
-        id: string;
-      }> =
-        source.kind === "manual"
+  const sources = [
+    ...(before.logicalActivities?.activities ?? []).flatMap((activity) => {
+      const current = activity.versions.at(-1);
+      if (!current) throw new Error("Confirmed activity has no revision.");
+      return current.sources;
+    }),
+    ...(before.logicalActivities?.pending ?? []).flatMap(
+      (item) => item.command.sources,
+    ),
+  ];
+  for (const source of sources) {
+    const refs: Array<{
+      old: Array<{ id: string }>;
+      next: Array<{ id: string }>;
+      id: string;
+    }> =
+      source.kind === "manual"
+        ? [
+            {
+              old: before.journals,
+              next: after.journals,
+              id: source.sourceId,
+            },
+          ]
+        : source.kind === "fit"
           ? [
               {
-                old: before.journals,
-                next: after.journals,
+                old: before.fitSources,
+                next: after.fitSources,
                 id: source.sourceId,
               },
+              {
+                old: before.fitSourceActivities,
+                next: after.fitSourceActivities,
+                id: source.activityId,
+              },
+              {
+                old: before.activities,
+                next: after.activities,
+                id: source.activityId,
+              },
             ]
-          : source.kind === "fit"
-            ? [
-                {
-                  old: before.fitSources,
-                  next: after.fitSources,
-                  id: source.sourceId,
-                },
-                {
-                  old: before.fitSourceActivities,
-                  next: after.fitSourceActivities,
-                  id: source.activityId,
-                },
-                {
-                  old: before.activities,
-                  next: after.activities,
-                  id: source.activityId,
-                },
-              ]
-            : [];
-      for (const ref of refs) {
-        const previous = ref.old.find((item) => item.id === ref.id);
-        if (
-          previous &&
-          canonical(previous) !==
-            canonical(ref.next.find((item) => item.id === ref.id))
-        )
-          throw new DataIntegrityError(
-            "corrupted",
-            "Confirmed source evidence cannot be changed by an ordinary save.",
-          );
-      }
+          : [];
+    for (const ref of refs) {
+      const previous = ref.old.find((item) => item.id === ref.id);
+      if (
+        previous &&
+        canonical(previous) !==
+          canonical(ref.next.find((item) => item.id === ref.id))
+      )
+        throw new DataIntegrityError(
+          "corrupted",
+          "Confirmed source evidence cannot be changed by an ordinary save.",
+        );
     }
   }
 }
@@ -163,6 +170,13 @@ abstract class SnapshotRepository implements AppRepository {
   ): Promise<ConfirmationReceipt | null> {
     await this.commit(before, after);
     return null;
+  }
+  protected async commitDeferred(
+    before: string,
+    after: string,
+    _commandId: string,
+  ): Promise<void> {
+    await this.commit(before, after);
   }
 
   async load(): Promise<AppData> {
@@ -315,6 +329,30 @@ abstract class SnapshotRepository implements AppRepository {
         data: parsed,
       };
     }
+    const existingPending = parsed.logicalActivities?.pending?.find(
+      (item) => item.id === command.commandId,
+    );
+    if (
+      existingPending &&
+      "eventId" in command &&
+      commandFingerprint(existingPending.command) ===
+        commandFingerprint(command)
+    ) {
+      if (
+        raw !== this.expected &&
+        (!this.expected ||
+          !sameSnapshotOutsideActivity(
+            parseSnapshotJson(this.expected) as AppData,
+            parsed,
+          ))
+      )
+        throw new DataIntegrityError(
+          "inaccessible",
+          "Saved data changed in another window. Reload before retrying.",
+        );
+      this.expected = raw;
+      return { result: { status: "review-later" }, data: parsed };
+    }
     if (raw !== this.expected)
       throw new DataIntegrityError(
         "inaccessible",
@@ -325,7 +363,15 @@ abstract class SnapshotRepository implements AppRepository {
       commands: [],
     };
     if ("eventId" in command) {
+      const pendingMatches = pendingCandidateIds(logical, command);
+      if (pendingMatches.length)
+        return {
+          result: { status: "review-required", candidates: pendingMatches },
+          data: parsed,
+        };
       const review = reviewLegacyCandidates(parsed, command);
+      if (review.status === "review-later")
+        return this.deferLogicalActivity(raw, parsed, logical, command);
       if (review.status !== "ready") return { result: review, data: parsed };
       for (const source of command.sources) {
         if (source.kind !== "manual") continue;
@@ -349,6 +395,8 @@ abstract class SnapshotRepository implements AppRepository {
             status: "confirmed" as const,
             ...applyCorrection(logical, command, now),
           };
+    if (candidate.status === "review-later" && "eventId" in command)
+      return this.deferLogicalActivity(raw, parsed, logical, command);
     if (candidate.status !== "confirmed")
       return { result: candidate, data: parsed };
     const next: AppData = {
@@ -359,7 +407,15 @@ abstract class SnapshotRepository implements AppRepository {
     validateCurrentSnapshot(next);
     const after = JSON.stringify(next);
     if (parsed.schemaVersion !== 7) await this.beforeLogicalUpgrade(raw);
-    const nativeReceipt = await this.commitLogical(raw, after);
+    let nativeReceipt: ConfirmationReceipt | null;
+    try {
+      nativeReceipt = await this.commitLogical(raw, after);
+    } catch (error) {
+      // An acknowledgement can be lost after commit. Never undo the write:
+      // accept it only when the exact committed snapshot is readable.
+      if ((await this.read().catch(() => null)) !== after) throw error;
+      nativeReceipt = null;
+    }
     if (
       nativeReceipt &&
       (nativeReceipt.commandId !== candidate.receipt.commandId ||
@@ -386,6 +442,58 @@ abstract class SnapshotRepository implements AppRepository {
       result: { status: "confirmed", receipt: candidate.receipt },
       data: next,
     };
+  }
+  private async deferLogicalActivity(
+    raw: string,
+    parsed: AppData,
+    logical: LogicalActivityState,
+    command: ConfirmationCommand,
+  ): Promise<{ result: DurableConfirmationResult; data: AppData }> {
+    for (const source of command.sources)
+      if (source.kind === "manual") {
+        const existing = parsed.journals.find(
+          (entry) => entry.id === source.sourceId,
+        );
+        if (existing && canonical(existing) !== canonical(source.original))
+          throw new Error(
+            "Manual source evidence does not match the preserved journal.",
+          );
+      }
+    if (logical.pending?.some((item) => item.id === command.commandId))
+      throw new Error(
+        "This deferred review already exists. Resolve it before saving another version.",
+      );
+    const next: AppData = {
+      ...parsed,
+      schemaVersion: 7,
+      logicalActivities: {
+        ...logical,
+        pending: [
+          ...(logical.pending ?? []),
+          {
+            id: command.commandId,
+            command: structuredClone(command),
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      },
+    };
+    validateCurrentSnapshot(next);
+    const after = JSON.stringify(next);
+    if (parsed.schemaVersion !== 7) await this.beforeLogicalUpgrade(raw);
+    try {
+      await this.commitDeferred(raw, after, command.commandId);
+    } catch (error) {
+      if ((await this.read().catch(() => null)) !== after) throw error;
+    }
+    if ((await this.read()) !== after)
+      throw new DataIntegrityError(
+        "inaccessible",
+        "The deferred review could not be verified. Retry the same command.",
+      );
+    this.expected = after;
+    this.state = "valid";
+    return { result: { status: "review-later" }, data: next };
   }
   async restore(raw: string): Promise<AppData> {
     this.assertWritable();
@@ -499,6 +607,26 @@ export class SqliteRepository extends SnapshotRepository {
     return invoke<ConfirmationReceipt>("save_logical_activity", {
       request: { contractVersion: 1, before, after },
     });
+  }
+  protected async commitDeferred(
+    before: string,
+    after: string,
+    commandId: string,
+  ): Promise<void> {
+    if (!("__TAURI_INTERNALS__" in globalThis))
+      throw new DataIntegrityError(
+        "unsupported",
+        "Saving an activity review requires the Windows app.",
+      );
+    const result = await invoke<{ status: string; commandId: string }>(
+      "save_logical_activity",
+      { request: { contractVersion: 1, before, after, operation: "defer" } },
+    );
+    if (result.status !== "review-later" || result.commandId !== commandId)
+      throw new DataIntegrityError(
+        "corrupted",
+        "The saved review could not be verified.",
+      );
   }
   async inspectActive(): Promise<{
     activationId: string;

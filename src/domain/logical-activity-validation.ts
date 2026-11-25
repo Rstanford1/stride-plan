@@ -111,6 +111,38 @@ const version = z
     recorded,
     reason: id,
     changedAt: timestamp,
+    legacyDuplicateDecisions: z
+      .array(
+        z
+          .object({
+            candidateId: id,
+            decision: z.enum(["merge", "keep-both", "review-later"]),
+          })
+          .strict(),
+      )
+      .optional(),
+  })
+  .strict();
+const duplicateDecision = z.enum(["merge", "keep-both", "review-later"]);
+const confirmationCommand = z
+  .object({
+    commandId: id,
+    activityId: id,
+    eventId: id,
+    expectedRevision: z.number().int().positive().nullable(),
+    assignedDate: date,
+    plannedSessionId: id.nullable(),
+    sources: z.array(evidence).min(1),
+    recorded,
+    duplicateDecisions: z.array(
+      z.object({ activityId: id, decision: duplicateDecision }).strict(),
+    ),
+    legacyDuplicateDecisions: z
+      .array(
+        z.object({ candidateId: id, decision: duplicateDecision }).strict(),
+      )
+      .optional(),
+    mergeRecordedChoice: z.enum(["keep-existing", "use-incoming"]).optional(),
   })
   .strict();
 export const logicalActivityStateSchema = z
@@ -126,6 +158,13 @@ export const logicalActivityStateSchema = z
         .strict(),
     ),
     commands: z.array(z.object({ id, fingerprint: id, receipt }).strict()),
+    pending: z
+      .array(
+        z
+          .object({ id, command: confirmationCommand, createdAt: timestamp })
+          .strict(),
+      )
+      .optional(),
   })
   .strict();
 
@@ -142,7 +181,7 @@ export function validateLogicalActivityState(
 ): asserts value is LogicalActivityState {
   const result = logicalActivityStateSchema.safeParse(value);
   if (!result.success) throw new Error("Invalid logical activity snapshot.");
-  const { activities, commands } = result.data;
+  const { activities, commands, pending = [] } = result.data;
   const owners = new Map<string, string>();
   const ids = new Set<string>();
   const events = new Set<string>();
@@ -219,4 +258,32 @@ export function validateLogicalActivityState(
       )
     )
       throw new Error("Missing original confirmation receipt.");
+  const pendingIds = new Set<string>();
+  for (const item of pending) {
+    if (
+      item.id !== item.command.commandId ||
+      pendingIds.has(item.id) ||
+      commandIds.has(item.id)
+    )
+      throw new Error("Invalid pending activity identity.");
+    pendingIds.add(item.id);
+    const sourceIds = item.command.sources.map(sourceKey);
+    if (
+      new Set(sourceIds).size !== sourceIds.length ||
+      item.command.sources.some(
+        (source) =>
+          source.kind === "manual" && source.sourceId !== source.original.id,
+      )
+    )
+      throw new Error("Invalid pending source evidence.");
+    if (
+      item.command.recorded.manualEntry &&
+      !item.command.sources.some(
+        (source) =>
+          source.kind === "manual" &&
+          source.sourceId === item.command.recorded.manualEntry?.id,
+      )
+    )
+      throw new Error("Pending manual entry has no source evidence.");
+  }
 }

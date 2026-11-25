@@ -72,7 +72,14 @@ export function RunEntryWorkflow({
 }) {
   const { data, saveRunEntry, confirmLogicalActivity, correctLogicalActivity } =
     useAppData();
-  const existing = journalForSession(data, session.id);
+  const deferred = data.logicalActivities?.pending?.find(
+    (item) =>
+      item.command.plannedSessionId === session.id &&
+      item.command.sources.some((source) => source.kind === "manual"),
+  );
+  const existing =
+    deferred?.command.recorded.manualEntry ??
+    journalForSession(data, session.id);
   const existingLogical = data.logicalActivities?.activities.find(
     (activity) => {
       const version = activity.versions.at(-1);
@@ -156,6 +163,9 @@ export function RunEntryWorkflow({
   const [shoeAttribution, setShoeAttribution] = useState<
     Record<string, "included" | "not-included" | "">
   >({});
+  const [mergeRecordedChoice, setMergeRecordedChoice] = useState<
+    "" | "keep-existing" | "use-incoming"
+  >("");
   const pending = useRef<ConfirmationCommand | CorrectionCommand | null>(null);
 
   const parsedDistance = numberValue(distance);
@@ -210,6 +220,7 @@ export function RunEntryWorkflow({
       setCandidates([]);
       setDecisions({});
       setShoeAttribution({});
+      setMergeRecordedChoice("");
       setSaveError("");
       setRetryOnly(false);
       setStep("review");
@@ -285,21 +296,30 @@ export function RunEntryWorkflow({
             recorded,
             reason: "Manual run correction",
           }
-        : {
-            commandId: crypto.randomUUID(),
-            activityId: crypto.randomUUID(),
-            eventId: crypto.randomUUID(),
-            expectedRevision: null,
-            assignedDate: entry.date,
-            plannedSessionId: session.id,
-            sources: [
-              manualEvidence(
-                data.journals.find((item) => item.id === entry.id) ?? entry,
-              ),
-            ],
-            recorded,
-            duplicateDecisions: [],
-          };
+        : deferred
+          ? {
+              ...structuredClone(deferred.command),
+              recorded,
+              assignedDate: entry.date,
+              plannedSessionId: session.id,
+              duplicateDecisions: [],
+              legacyDuplicateDecisions: [],
+            }
+          : {
+              commandId: crypto.randomUUID(),
+              activityId: crypto.randomUUID(),
+              eventId: crypto.randomUUID(),
+              expectedRevision: null,
+              assignedDate: entry.date,
+              plannedSessionId: session.id,
+              sources: [
+                manualEvidence(
+                  data.journals.find((item) => item.id === entry.id) ?? entry,
+                ),
+              ],
+              recorded,
+              duplicateDecisions: [],
+            };
     }
     let request = pending.current;
     if ("eventId" in request && candidates.length && !retryOnly) {
@@ -322,19 +342,23 @@ export function RunEntryWorkflow({
         if (
           !version ||
           version.assignedDate !== request.assignedDate ||
-          version.plannedSessionId !== request.plannedSessionId ||
-          version.recorded.distanceMiles !== request.recorded.distanceMiles ||
-          version.recorded.durationSeconds !== request.recorded.durationSeconds
+          version.plannedSessionId !== request.plannedSessionId
         ) {
           setSaveError(
-            "The selected activity has different values or a different session. Review it before merging.",
+            "The selected activity has a different date or session. Review it before merging.",
+          );
+          return;
+        }
+        if (!mergeRecordedChoice) {
+          setSaveError(
+            "Choose which recorded values the combined activity should use.",
           );
           return;
         }
         request = {
           ...request,
           expectedRevision: version.revision,
-          recorded: version.recorded,
+          mergeRecordedChoice,
         };
       }
       if (legacyIds.length) {
@@ -435,12 +459,22 @@ export function RunEntryWorkflow({
           ? await confirmLogicalActivity(request)
           : await correctLogicalActivity(request);
       if (result.status === "review-required") {
+        if (
+          result.candidates.some((candidate) =>
+            candidate.startsWith("pending:"),
+          )
+        ) {
+          setSaveError(
+            "An earlier unconfirmed review may describe the same run. Resolve that review before confirming this entry.",
+          );
+          return;
+        }
         setCandidates(result.candidates);
         return;
       }
       if (result.status === "review-later") {
         setSaveError(
-          "Nothing was confirmed. You can review these activities later.",
+          "Saved for review later. No activity was confirmed or credited.",
         );
         return;
       }
@@ -648,6 +682,32 @@ export function RunEntryWorkflow({
                         <option value="review-later">Review later</option>
                       </select>
                     </label>
+                    {!legacy && decisions[id] === "merge" && (
+                      <label>
+                        Which recorded values should the combined activity use?
+                        <select
+                          value={mergeRecordedChoice}
+                          onChange={(event) =>
+                            setMergeRecordedChoice(
+                              event.target.value as
+                                "" | "keep-existing" | "use-incoming",
+                            )
+                          }
+                        >
+                          <option value="">Choose which values to keep</option>
+                          <option value="keep-existing">
+                            Keep the existing activity values
+                          </option>
+                          <option value="use-incoming">
+                            Use the values entered here
+                          </option>
+                        </select>
+                        <small>
+                          The other source and the earlier values remain in the
+                          history.
+                        </small>
+                      </label>
+                    )}
                     {legacyJournal?.shoeId && decisions[id] === "merge" && (
                       <label>
                         Was this older run already included in its shoe mileage?

@@ -305,4 +305,54 @@ it("does not reactivate a legacy journal fallback when its attached FIT activity
       result.state,
     ).actualMiles,
   ).toBe(4);
+  const keepBoth = applyConfirmation(
+    empty,
+    {
+      ...input,
+      legacyDuplicateDecisions: [
+        { candidateId: "journal:legacy-journal", decision: "keep-both" },
+      ],
+    },
+    "2026-11-24T12:00:00Z",
+  );
+  if (keepBoth.status !== "confirmed") throw new Error("Expected confirmation");
+  expect(
+    calculateWeeklyMetrics(
+      session.week,
+      data.sessions,
+      data.activities,
+      data.journals,
+      keepBoth.state,
+    ).actualMiles,
+  ).toBe(8);
+});
+it("uses the authoritative week calendar for unplanned runs with sparse unsorted sessions", () => {
+  const data = createInitialData();
+  const session = data.sessions.find((item) => item.kind !== "rest")!;
+  data.sessions = [
+    { ...session, id: "sat", scheduledDate: "2026-11-28" },
+    { ...session, id: "tue", scheduledDate: "2026-11-24" },
+  ];
+  const unplanned = {
+    ...first,
+    assignedDate: "2026-11-29",
+    plannedSessionId: null,
+    recorded: {
+      ...first.recorded,
+      outcome: "unplanned" as const,
+      shoeAllocations: [],
+    },
+  };
+  const result = applyConfirmation(empty, unplanned, "2026-11-29T12:00:00Z");
+  if (result.status !== "confirmed") throw new Error("Expected confirmation");
+  const metrics = calculateWeeklyMetrics(
+    session.week,
+    data.sessions,
+    [],
+    [],
+    result.state,
+    { startDate: "2026-11-23", endDate: "2026-11-29" },
+  );
+  expect(metrics.actualMiles).toBe(4);
+  expect(metrics.runDays).toBe(1);
 });

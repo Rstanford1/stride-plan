@@ -60,21 +60,46 @@ export function actualMilesForSession(
   const ownedJournals = new Set(
     credits.flatMap((credit) => credit.manualSourceIds),
   );
+  const keptJournals = new Set(
+    credits.flatMap((credit) =>
+      credit.legacyDuplicateDecisions
+        .filter(
+          (decision) =>
+            decision.decision === "keep-both" &&
+            decision.candidateId.startsWith("journal:"),
+        )
+        .map((decision) => decision.candidateId.slice("journal:".length)),
+    ),
+  );
   const attached = activities.filter(
     (activity) =>
       activity.plannedSessionId === sessionId && activity.role !== "unrelated",
   );
+  const fallback =
+    attached.length === 0
+      ? journals.find(
+          (entry) =>
+            entry.sessionId === sessionId && !ownedJournals.has(entry.id),
+        )
+      : undefined;
   const legacy =
     attached.length > 0
       ? attached
           .filter((activity) => !ownedActivities.has(activity.id))
           .reduce((sum, activity) => sum + activity.distanceMiles, 0)
-      : (journals.find(
-          (entry) =>
-            entry.sessionId === sessionId && !ownedJournals.has(entry.id),
-        )?.actualDistanceMiles ?? 0);
+      : (fallback?.actualDistanceMiles ?? 0);
+  const separatelyKept = journals
+    .filter(
+      (entry) =>
+        entry.sessionId === sessionId &&
+        keptJournals.has(entry.id) &&
+        !ownedJournals.has(entry.id) &&
+        entry.id !== fallback?.id,
+    )
+    .reduce((sum, entry) => sum + (entry.actualDistanceMiles ?? 0), 0);
   return (
     legacy +
+    separatelyKept +
     credits
       .filter((credit) => credit.plannedSessionId === sessionId)
       .reduce((sum, credit) => sum + (credit.recorded.distanceMiles ?? 0), 0)
@@ -87,6 +112,7 @@ export function calculateWeeklyMetrics(
   activities: Activity[],
   journals: JournalEntry[],
   logical?: LogicalActivityState,
+  weekCalendar?: { startDate: string; endDate: string },
 ): WeeklyMetrics {
   const credits = logicalActivityCredits(logical);
   const ownedActivities = new Set(
@@ -106,6 +132,8 @@ export function calculateWeeklyMetrics(
   const attachedIds = new Set(weeklySessions.map((session) => session.id));
   const weekStart = weeklySessions[0]?.scheduledDate;
   const weekEnd = weeklySessions.at(-1)?.scheduledDate;
+  const logicalStart = weekCalendar?.startDate ?? weekStart;
+  const logicalEnd = weekCalendar?.endDate ?? weekEnd;
   const unplanned =
     !weekStart || !weekEnd
       ? []
@@ -142,20 +170,20 @@ export function calculateWeeklyMetrics(
     if (
       attachedIds.has(credit.plannedSessionId ?? "") ||
       (!credit.plannedSessionId &&
-        weekStart &&
-        weekEnd &&
-        credit.assignedDate >= weekStart &&
-        credit.assignedDate <= weekEnd)
+        logicalStart &&
+        logicalEnd &&
+        credit.assignedDate >= logicalStart &&
+        credit.assignedDate <= logicalEnd)
     )
       runDates.add(credit.assignedDate);
   const unplannedCredits =
-    !weekStart || !weekEnd
+    !logicalStart || !logicalEnd
       ? []
       : credits.filter(
           (credit) =>
             !credit.plannedSessionId &&
-            credit.assignedDate >= weekStart &&
-            credit.assignedDate <= weekEnd,
+            credit.assignedDate >= logicalStart &&
+            credit.assignedDate <= logicalEnd,
         );
   return {
     week,

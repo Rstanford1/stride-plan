@@ -33,6 +33,7 @@ export function TrendsScreen() {
           data.activities,
           data.journals,
           data.logicalActivities,
+          activePlan?.source.weeks.find((item) => item.number === index + 1),
         );
         return {
           week: `W${index + 1}`,
@@ -45,7 +46,7 @@ export function TrendsScreen() {
               : Math.round(metrics.coreCompletionRate * 100),
         };
       }),
-    [data, maxWeek, planSessions],
+    [data, maxWeek, planSessions, activePlan],
   );
   const rpeData = data.journals
     .filter((entry) => entry.rpe)

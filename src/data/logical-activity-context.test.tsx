@@ -41,7 +41,7 @@ const command: ConfirmationCommand = {
   duplicateDecisions: [],
 };
 describe("confirmation and concurrent app changes", () => {
-  it("publishes only after persistence and retains a concurrent settings edit", async () => {
+  it("recovers a lost acknowledgement without losing a concurrent import or settings edit", async () => {
     const values = new Map([
       [STORAGE_KEY, JSON.stringify(createInitialData())],
     ]);
@@ -71,7 +71,8 @@ describe("confirmation and concurrent app changes", () => {
       async (before, after) => {
         started();
         await gate;
-        return actual(before, after);
+        await actual(before, after);
+        throw new Error("Synthetic acknowledgement loss");
       },
     );
     let app!: ReturnType<typeof useAppData>;
