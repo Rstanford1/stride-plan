@@ -1,0 +1,356 @@
+//! Atomic publication of a logical-activity revision inside the canonical snapshot.
+//! This does not introduce a separate database or physical SQLite migration.
+use crate::plan_draft_store::{check_schema, error, guard, Result, Store};
+use serde::Deserialize;
+use serde_json::{json, Value};
+use sqlx::Connection;
+use std::collections::{BTreeMap, BTreeSet};
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ActivitySaveRequest {
+    pub contract_version: u32,
+    pub before: String,
+    pub after: String,
+}
+
+fn invalid() -> crate::plan_draft_store::DraftError {
+    error("invalid")
+}
+fn array<'a>(value: &'a Value, field: &str) -> Result<&'a Vec<Value>> {
+    value
+        .get(field)
+        .and_then(Value::as_array)
+        .ok_or_else(invalid)
+}
+fn string<'a>(value: &'a Value, field: &str) -> Result<&'a str> {
+    value
+        .get(field)
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(invalid)
+}
+fn state(snapshot: &Value) -> Result<Value> {
+    match snapshot.get("schemaVersion").and_then(Value::as_i64) {
+        Some(4 | 5) if snapshot.get("logicalActivities").is_none() => {
+            Ok(json!({"activities":[],"commands":[]}))
+        }
+        Some(7) => snapshot
+            .get("logicalActivities")
+            .cloned()
+            .ok_or_else(invalid),
+        _ => Err(invalid()),
+    }
+}
+fn source_key(source: &Value) -> Result<String> {
+    match string(source, "kind")? {
+        "manual" => Ok(format!("manual:{}", string(source, "sourceId")?)),
+        "fit" => Ok(format!(
+            "fit:{}:{}",
+            string(source, "sourceHash")?,
+            string(source, "activityId")?
+        )),
+        "garmin" => Ok(format!("garmin:{}", string(source, "providerId")?)),
+        _ => Err(invalid()),
+    }
+}
+fn indexed<'a>(values: &'a [Value]) -> Result<BTreeMap<&'a str, &'a Value>> {
+    let mut map = BTreeMap::new();
+    for item in values {
+        if map.insert(string(item, "id")?, item).is_some() {
+            return Err(invalid());
+        }
+    }
+    Ok(map)
+}
+
+/// Enforce append-only history and reject any changes outside this command.
+fn validate_transition(before: &Value, after: &Value) -> Result<Value> {
+    if after["schemaVersion"] != 7 {
+        return Err(invalid());
+    }
+    let old_state = state(before)?;
+    let new_state = state(after)?;
+    let mut base_before = before.as_object().cloned().ok_or_else(invalid)?;
+    let mut base_after = after.as_object().cloned().ok_or_else(invalid)?;
+    base_before.remove("schemaVersion");
+    base_after.remove("schemaVersion");
+    base_before.remove("logicalActivities");
+    base_after.remove("logicalActivities");
+    if base_before != base_after {
+        return Err(invalid());
+    }
+    let old_commands = array(&old_state, "commands")?;
+    let new_commands = array(&new_state, "commands")?;
+    if new_commands.len() != old_commands.len() + 1 || !new_commands.starts_with(old_commands) {
+        return Err(invalid());
+    }
+    let commands = indexed(new_commands)?;
+    let command = new_commands.last().ok_or_else(invalid)?;
+    let command_id = string(command, "id")?;
+    string(command, "fingerprint")?;
+    let receipt = command.get("receipt").ok_or_else(invalid)?;
+    if string(receipt, "commandId")? != command_id {
+        return Err(invalid());
+    }
+    let activity_id = string(receipt, "logicalActivityId")?;
+    let event_id = string(receipt, "confirmationEventId")?;
+    let confirmed_at = string(receipt, "confirmedAt")?;
+    let revision = receipt
+        .get("committedRevision")
+        .and_then(Value::as_u64)
+        .filter(|r| *r > 0)
+        .ok_or_else(invalid)?;
+    let old = indexed(array(&old_state, "activities")?)?;
+    let new = indexed(array(&new_state, "activities")?)?;
+    if old.keys().any(|id| !new.contains_key(id)) || new.len() > old.len() + 1 {
+        return Err(invalid());
+    }
+    let mut sources = BTreeSet::new();
+    let mut events = BTreeSet::new();
+    for (id, item) in &new {
+        if item["confirmationState"] != "confirmed" {
+            return Err(invalid());
+        }
+        let initial = item.get("confirmed").ok_or_else(invalid)?;
+        if string(initial, "logicalActivityId")? != *id
+            || !events.insert(string(initial, "confirmationEventId")?)
+        {
+            return Err(invalid());
+        }
+        let versions = array(item, "versions")?;
+        if versions.is_empty() {
+            return Err(invalid());
+        }
+        let initial_command = string(initial, "commandId")?;
+        if commands.get(initial_command).and_then(|c| c.get("receipt")) != Some(initial) {
+            return Err(invalid());
+        }
+        let mut prior_sources = BTreeMap::new();
+        for (i, version) in versions.iter().enumerate() {
+            if version["revision"].as_u64() != Some(i as u64 + 1) {
+                return Err(invalid());
+            }
+            let mut current_sources = BTreeMap::new();
+            for source in array(version, "sources")? {
+                if current_sources
+                    .insert(source_key(source)?, source)
+                    .is_some()
+                {
+                    return Err(invalid());
+                }
+            }
+            if current_sources.is_empty()
+                || prior_sources
+                    .iter()
+                    .any(|(key, value)| current_sources.get(key) != Some(value))
+            {
+                return Err(invalid());
+            }
+            prior_sources = current_sources;
+        }
+        for key in prior_sources.keys() {
+            if !sources.insert(key.clone()) {
+                return Err(invalid());
+            }
+        }
+        if *id == activity_id {
+            if string(initial, "confirmationEventId")? != event_id
+                || string(initial, "confirmedAt")? != confirmed_at
+                || revision != versions.len() as u64
+            {
+                return Err(invalid());
+            }
+            if let Some(previous) = old.get(id) {
+                let old_versions = array(previous, "versions")?;
+                let mut old_item = previous.as_object().cloned().ok_or_else(invalid)?;
+                let mut new_item = item.as_object().cloned().ok_or_else(invalid)?;
+                old_item.remove("versions");
+                new_item.remove("versions");
+                if old_item != new_item
+                    || versions.len() != old_versions.len() + 1
+                    || !versions.starts_with(old_versions)
+                {
+                    return Err(invalid());
+                }
+            } else if versions.len() != 1 || initial != receipt {
+                return Err(invalid());
+            }
+        } else if old.get(id).copied() != Some(*item) {
+            return Err(invalid());
+        }
+    }
+    if !new.contains_key(activity_id) {
+        return Err(invalid());
+    }
+    Ok(receipt.clone())
+}
+
+impl Store {
+    /// Returns a receipt only after FULL-synchronous SQLite commit. An identical
+    /// command retry returns its already committed receipt even after later edits.
+    pub async fn save_logical_activity(&self, request: ActivitySaveRequest) -> Result<Value> {
+        if request.contract_version != 1
+            || request.before.len() > 32 * 1024 * 1024
+            || request.after.len() > 32 * 1024 * 1024
+        {
+            return Err(invalid());
+        }
+        let before: Value = serde_json::from_str(&request.before).map_err(|_| invalid())?;
+        let after: Value = serde_json::from_str(&request.after).map_err(|_| invalid())?;
+        let receipt = validate_transition(&before, &after)?;
+        let command = array(&state(&after)?, "commands")?
+            .last()
+            .cloned()
+            .ok_or_else(invalid)?;
+        let _guards = guard(&self.database, false)?;
+        let mut db = self.connect(false).await?;
+        sqlx::query("PRAGMA synchronous=FULL")
+            .execute(&mut db)
+            .await?;
+        let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
+        check_schema(&mut tx).await?;
+        let current: String = sqlx::query_scalar("SELECT payload FROM app_state WHERE id=1")
+            .fetch_one(&mut *tx)
+            .await?;
+        if current != request.before {
+            let snapshot: Value = serde_json::from_str(&current).map_err(|_| error("corrupt"))?;
+            let current_state = state(&snapshot)?;
+            if let Some(existing) = array(&current_state, "commands")?
+                .iter()
+                .find(|entry| entry["id"] == command["id"])
+            {
+                if existing != &command {
+                    return Err(invalid());
+                }
+                return Ok(existing["receipt"].clone());
+            }
+            return Err(error("conflict"));
+        }
+        let changed = sqlx::query("UPDATE app_state SET payload=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=1 AND payload=?")
+            .bind(&request.after).bind(&request.before).execute(&mut *tx).await?;
+        if changed.rows_affected() != 1 {
+            return Err(error("conflict"));
+        }
+        #[cfg(test)]
+        if self.fault == Some("activity_before_commit") {
+            return Err(error("storage"));
+        }
+        tx.commit().await?;
+        Ok(receipt)
+    }
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+    use sqlx::sqlite::SqliteConnectOptions;
+    use std::{fs, path::PathBuf};
+
+    struct Profile(PathBuf);
+    impl Profile {
+        async fn new() -> Self {
+            let path =
+                std::env::temp_dir().join(format!("stride-d3-synthetic-{}", uuid::Uuid::new_v4()));
+            fs::create_dir(&path).unwrap();
+            let profile = Self(path);
+            let mut db = sqlx::SqliteConnection::connect_with(
+                &SqliteConnectOptions::new()
+                    .filename(profile.store(None).database)
+                    .create_if_missing(true),
+            )
+            .await
+            .unwrap();
+            sqlx::query("CREATE TABLE app_state (id INTEGER PRIMARY KEY CHECK (id = 1), payload TEXT NOT NULL, updated_at TEXT NOT NULL)").execute(&mut db).await.unwrap();
+            sqlx::query("INSERT INTO app_state VALUES(1,?,'synthetic')")
+                .bind(Self::before().to_string())
+                .execute(&mut db)
+                .await
+                .unwrap();
+            db.close().await.unwrap();
+            profile
+        }
+        fn store(&self, fault: Option<&'static str>) -> Store {
+            Store {
+                database: self.0.join("synthetic.sqlite"),
+                sources: self.0.join("sources"),
+                fault,
+            }
+        }
+        fn before() -> Value {
+            json!({"schemaVersion":4,"history":"synthetic"})
+        }
+        fn after() -> Value {
+            let receipt = json!({"commandId":"cmd","logicalActivityId":"activity","committedRevision":1,"confirmationEventId":"event","confirmedAt":"2026-11-24T12:00:00Z"});
+            json!({"schemaVersion":7,"history":"synthetic","logicalActivities":{"activities":[{"id":"activity","confirmationState":"confirmed","confirmed":receipt,"versions":[{"revision":1,"sources":[{"kind":"manual","sourceId":"manual"}]}]}],"commands":[{"id":"cmd","fingerprint":"synthetic","receipt":receipt}]}})
+        }
+        fn request() -> ActivitySaveRequest {
+            ActivitySaveRequest {
+                contract_version: 1,
+                before: Self::before().to_string(),
+                after: Self::after().to_string(),
+            }
+        }
+    }
+    impl Drop for Profile {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    #[tokio::test]
+    async fn commits_then_retries_identically_after_reopen() {
+        let profile = Profile::new().await;
+        let receipt = profile
+            .store(None)
+            .save_logical_activity(Profile::request())
+            .await
+            .unwrap();
+        assert_eq!(receipt["commandId"], "cmd");
+        let retry = profile
+            .store(None)
+            .save_logical_activity(Profile::request())
+            .await
+            .unwrap();
+        assert_eq!(retry, receipt);
+        let mut db = profile.store(None).connect(true).await.unwrap();
+        let persisted: String = sqlx::query_scalar("SELECT payload FROM app_state WHERE id=1")
+            .fetch_one(&mut db)
+            .await
+            .unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(&persisted).unwrap(),
+            Profile::after()
+        );
+    }
+    #[tokio::test]
+    async fn fails_without_acknowledgement_or_published_data() {
+        let profile = Profile::new().await;
+        assert!(profile
+            .store(Some("activity_before_commit"))
+            .save_logical_activity(Profile::request())
+            .await
+            .is_err());
+        let mut db = profile.store(None).connect(true).await.unwrap();
+        let persisted: String = sqlx::query_scalar("SELECT payload FROM app_state WHERE id=1")
+            .fetch_one(&mut db)
+            .await
+            .unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(&persisted).unwrap(),
+            Profile::before()
+        );
+    }
+    #[test]
+    fn rejects_unrelated_edits_and_reused_source_identities() {
+        let before = Profile::before();
+        let mut after = Profile::after();
+        after["history"] = json!("changed");
+        assert!(validate_transition(&before, &after).is_err());
+        after = Profile::after();
+        after["logicalActivities"]["activities"][0]["versions"][0]["sources"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"kind":"manual","sourceId":"manual"}));
+        assert!(validate_transition(&before, &after).is_err());
+    }
+}

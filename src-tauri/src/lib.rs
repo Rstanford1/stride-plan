@@ -5,6 +5,7 @@ mod fit_source_store;
 mod garmin;
 mod garmin_commands;
 mod garmin_credentials;
+mod logical_activity_store;
 mod plan_conversion_commands;
 mod plan_draft_commands;
 mod plan_draft_export;
@@ -19,6 +20,7 @@ pub fn run() {
             active_plan_commands::inspect_active_plan,
             active_plan_commands::activate_training_plan,
             active_plan_commands::save_active_snapshot,
+            active_plan_commands::save_logical_activity,
             fit_source_commands::store_fit_source,
             fit_source_commands::read_fit_source,
             plan_draft_commands::inspect_plan_draft,
