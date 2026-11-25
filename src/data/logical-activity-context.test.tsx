@@ -4,6 +4,10 @@ import { AppProvider, useAppData } from "./app-context";
 import { BrowserRepository, STORAGE_KEY } from "./repository";
 import { createInitialData } from "../domain/seed";
 import type { ConfirmationCommand } from "../domain/logical-activity";
+import { runFitImportBatch } from "./fit-import-controller";
+import { FitFileParserDecoder } from "../domain/fit-decoder";
+import { MemoryFitSourceStore } from "./fit-source-store";
+import { createFitFixture } from "../test/fit-fixture";
 
 const command: ConfirmationCommand = {
   commandId: "command",
@@ -76,6 +80,16 @@ describe("confirmation and concurrent app changes", () => {
       </AppProvider>,
     );
     await waitFor(() => expect(app.ready).toBe(true));
+    const importing = app.beginFitImportBatch();
+    const batch = await runFitImportBatch({
+      files: [
+        { name: "synthetic.fit", loadBytes: async () => createFitFixture() },
+      ],
+      existingSources: importing.existingSources,
+      decoder: new FitFileParserDecoder(),
+      sourceStore: new MemoryFitSourceStore(),
+      createdAt: "2026-11-24T12:00:00Z",
+    });
     let pending!: ReturnType<typeof app.confirmLogicalActivity>;
     act(() => {
       pending = app.confirmLogicalActivity(command);
@@ -84,6 +98,7 @@ describe("confirmation and concurrent app changes", () => {
     expect(app.data.logicalActivities).toBeUndefined();
     act(() => {
       app.updateSettings({ easyHrHigh: 146 });
+      expect(importing.commitFitImportBatch(batch)).not.toBeNull();
     });
     await act(async () => {
       release();
@@ -98,5 +113,7 @@ describe("confirmation and concurrent app changes", () => {
     expect(app.data.logicalActivities?.activities).toHaveLength(1);
     const stored = JSON.parse(values.get(STORAGE_KEY)!);
     expect(stored.logicalActivities.commands).toHaveLength(1);
+    expect(stored.fitSources).toHaveLength(1);
+    expect(stored.fitSourceActivities).toHaveLength(1);
   });
 });

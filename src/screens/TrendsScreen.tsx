@@ -32,6 +32,7 @@ export function TrendsScreen() {
           planSessions,
           data.activities,
           data.journals,
+          data.logicalActivities,
         );
         return {
           week: `W${index + 1}`,

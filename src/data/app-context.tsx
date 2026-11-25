@@ -32,7 +32,10 @@ import { sha256Hex } from "../domain/fit-hash";
 import { validatorFingerprint } from "./plan-validator-registry";
 import type { PlanPreview } from "./plan-draft-store";
 import type { FitImportBatchResult } from "./fit-import-controller";
-import type { ConfirmationCommand } from "../domain/logical-activity";
+import type {
+  ConfirmationCommand,
+  CorrectionCommand,
+} from "../domain/logical-activity";
 import type { DurableConfirmationResult } from "./logical-activity-service";
 import type {
   Activity,
@@ -54,6 +57,9 @@ interface AppContextValue {
   restoreBackup: (raw: string) => Promise<void>;
   confirmLogicalActivity: (
     command: ConfirmationCommand,
+  ) => Promise<DurableConfirmationResult>;
+  correctLogicalActivity: (
+    command: CorrectionCommand,
   ) => Promise<DurableConfirmationResult>;
   saveSession: (
     sessionId: string,
@@ -337,14 +343,16 @@ export function AppProvider({
     [repository, fail],
   );
 
-  const confirmLogicalActivity = useCallback(
+  const changeLogicalActivity = useCallback(
     async (
-      command: ConfirmationCommand,
+      command: ConfirmationCommand | CorrectionCommand,
     ): Promise<DurableConfirmationResult> => {
       if (
         !writable.current ||
         restoring.current ||
-        !repository.confirmLogicalActivity
+        ("eventId" in command
+          ? !repository.confirmLogicalActivity
+          : !repository.correctLogicalActivity)
       )
         throw new DataIntegrityError(
           "inaccessible",
@@ -355,7 +363,10 @@ export function AppProvider({
         // Flush the current optimistic snapshot. The serialized repository merges
         // already-committed identities into any older saves queued during this wait.
         await repository.save(currentData.current);
-        const confirmed = await repository.confirmLogicalActivity(command);
+        const confirmed =
+          "eventId" in command
+            ? await repository.confirmLogicalActivity!(command)
+            : await repository.correctLogicalActivity!(command);
         if (confirmed.result.status === "confirmed") {
           const latest = currentData.current;
           const next =
@@ -376,6 +387,14 @@ export function AppProvider({
       }
     },
     [repository],
+  );
+  const confirmLogicalActivity = useCallback(
+    (command: ConfirmationCommand) => changeLogicalActivity(command),
+    [changeLogicalActivity],
+  );
+  const correctLogicalActivity = useCallback(
+    (command: CorrectionCommand) => changeLogicalActivity(command),
+    [changeLogicalActivity],
   );
 
   const beginFitImportBatch = useCallback(() => {
@@ -606,6 +625,7 @@ export function AppProvider({
       retryLoading,
       restoreBackup,
       confirmLogicalActivity,
+      correctLogicalActivity,
       saveSession,
       moveSession,
       addSession,
@@ -632,6 +652,7 @@ export function AppProvider({
       retryLoading,
       restoreBackup,
       confirmLogicalActivity,
+      correctLogicalActivity,
       saveSession,
       moveSession,
       addSession,

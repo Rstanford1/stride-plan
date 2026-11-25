@@ -14,9 +14,11 @@ import Database from "@tauri-apps/plugin-sql";
 import { invoke } from "@tauri-apps/api/core";
 import {
   applyConfirmation,
+  applyCorrection,
   commandFingerprint,
   type ConfirmationCommand,
   type ConfirmationReceipt,
+  type CorrectionCommand,
   type LogicalActivityState,
 } from "../domain/logical-activity";
 import type { DurableConfirmationResult } from "./logical-activity-service";
@@ -35,6 +37,9 @@ export interface AppRepository {
   save(data: AppData): Promise<void>;
   confirmLogicalActivity?(
     command: ConfirmationCommand,
+  ): Promise<{ result: DurableConfirmationResult; data: AppData }>;
+  correctLogicalActivity?(
+    command: CorrectionCommand,
   ): Promise<{ result: DurableConfirmationResult; data: AppData }>;
   restore?(raw: string): Promise<AppData>;
   activate?(input: {
@@ -170,6 +175,16 @@ abstract class SnapshotRepository implements AppRepository {
   async confirmLogicalActivity(
     command: ConfirmationCommand,
   ): Promise<{ result: DurableConfirmationResult; data: AppData }> {
+    return this.changeLogicalActivity(command);
+  }
+  async correctLogicalActivity(
+    command: CorrectionCommand,
+  ): Promise<{ result: DurableConfirmationResult; data: AppData }> {
+    return this.changeLogicalActivity(command);
+  }
+  private async changeLogicalActivity(
+    command: ConfirmationCommand | CorrectionCommand,
+  ): Promise<{ result: DurableConfirmationResult; data: AppData }> {
     this.assertWritable();
     await this.compatible();
     const raw = await this.read();
@@ -201,11 +216,14 @@ abstract class SnapshotRepository implements AppRepository {
       activities: [],
       commands: [],
     };
-    const candidate = applyConfirmation(
-      logical,
-      command,
-      new Date().toISOString(),
-    );
+    const now = new Date().toISOString();
+    const candidate =
+      "eventId" in command
+        ? applyConfirmation(logical, command, now)
+        : {
+            status: "confirmed" as const,
+            ...applyCorrection(logical, command, now),
+          };
     if (candidate.status !== "confirmed")
       return { result: candidate, data: parsed };
     const next: AppData = {
@@ -682,6 +700,20 @@ export class SerializedRepository implements AppRepository {
           "Durable activity confirmation is unavailable.",
         );
       const result = await this.repository.confirmLogicalActivity(request);
+      if (result.data.logicalActivities)
+        this.logical = structuredClone(result.data.logicalActivities);
+      return result;
+    });
+  }
+  correctLogicalActivity(command: CorrectionCommand) {
+    const request = structuredClone(command);
+    return this.enqueue(async () => {
+      if (!this.repository.correctLogicalActivity)
+        throw new DataIntegrityError(
+          "unsupported",
+          "Durable activity correction is unavailable.",
+        );
+      const result = await this.repository.correctLogicalActivity(request);
       if (result.data.logicalActivities)
         this.logical = structuredClone(result.data.logicalActivities);
       return result;

@@ -28,11 +28,19 @@ export function WeeklyReviewScreen() {
         planSessions,
         data.activities,
         data.journals,
+        data.logicalActivities,
       ),
     [week, data, planSessions],
   );
   const observations = useMemo(
-    () => buildObservations(week, planSessions, data.activities, data.journals),
+    () =>
+      buildObservations(
+        week,
+        planSessions,
+        data.activities,
+        data.journals,
+        data.logicalActivities,
+      ),
     [week, data, planSessions],
   );
   const sessions = planSessions.filter(

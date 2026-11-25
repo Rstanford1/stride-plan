@@ -36,6 +36,7 @@ export function TodayScreen({
         data.sessions,
         data.activities,
         data.journals,
+        data.logicalActivities,
       ),
     [data, session.week],
   );

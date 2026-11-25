@@ -20,7 +20,12 @@ export async function inspectLegacyRestore(
 ): Promise<RestorePreview> {
   const parsed = parseSnapshotJson(raw);
   validateSnapshot(parsed);
-  if ([5, 7].includes((parsed as AppData).schemaVersion))
+  if ((parsed as AppData).schemaVersion === 5)
+    throw new DataIntegrityError(
+      "unsupported",
+      "Version-5 snapshots require their immutable activation records. Legacy JSON restore cannot safely recreate them.",
+    );
+  if ((parsed as AppData).schemaVersion === 7)
     throw new DataIntegrityError(
       "unsupported",
       "This snapshot requires its associated source records. Legacy JSON restore cannot safely recreate them.",

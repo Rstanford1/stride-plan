@@ -1,6 +1,9 @@
 //! Atomic publication of a logical-activity revision inside the canonical snapshot.
 //! This does not introduce a separate database or physical SQLite migration.
-use crate::plan_draft_store::{check_schema, error, guard, integrity, inventory, Result, Store};
+use crate::{
+    fit_source_store::FitSourceStorage,
+    plan_draft_store::{check_schema, error, guard, integrity, inventory, Result, Store},
+};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sqlx::Connection;
@@ -187,6 +190,56 @@ fn validate_transition(before: &Value, after: &Value) -> Result<Value> {
 }
 
 impl Store {
+    fn verify_activity_sources(&self, snapshot: &Value, receipt: &Value) -> Result<()> {
+        let logical = state(snapshot)?;
+        let activity_id = string(receipt, "logicalActivityId")?;
+        let activity = array(&logical, "activities")?
+            .iter()
+            .find(|item| item["id"] == activity_id)
+            .ok_or_else(invalid)?;
+        let current = array(activity, "versions")?.last().ok_or_else(invalid)?;
+        let storage = FitSourceStorage::new(self.sources.clone());
+        for source in array(current, "sources")? {
+            match string(source, "kind")? {
+                "manual" => (),
+                "fit" => {
+                    let hash = string(source, "sourceHash")?;
+                    let source_id = string(source, "sourceId")?;
+                    let activity_id = string(source, "activityId")?;
+                    let original = array(snapshot, "fitSources")?
+                        .iter()
+                        .find(|item| {
+                            item["id"] == source_id
+                                && item["sourceHash"] == hash
+                                && item["preservationStatus"] == "verified"
+                        })
+                        .ok_or_else(invalid)?;
+                    let recording = array(snapshot, "fitSourceActivities")?
+                        .iter()
+                        .find(|item| item["id"] == activity_id && item["sourceId"] == source_id)
+                        .ok_or_else(invalid)?;
+                    if source["occurredAt"] != recording["occurredAt"]
+                        || (source["localDate"] != Value::Null
+                            && source["localDate"] != recording["localDate"])
+                    {
+                        return Err(invalid());
+                    }
+                    let bytes = storage.read(hash).map_err(|_| error("source"))?;
+                    if original["byteLength"].as_u64() != Some(bytes.len() as u64) {
+                        return Err(error("source"));
+                    }
+                }
+                "garmin" => storage
+                    .verify_garmin_receipt(
+                        string(source, "providerId")?,
+                        string(source, "sourceHash")?,
+                    )
+                    .map_err(|_| error("source"))?,
+                _ => return Err(invalid()),
+            }
+        }
+        Ok(())
+    }
     async fn backup_before_activity_upgrade(&self, expected: &str) -> Result<()> {
         let _guards = guard(&self.database, false)?;
         let mut source = self.connect(true).await?;
@@ -283,6 +336,7 @@ impl Store {
             }
             return Err(error("conflict"));
         }
+        self.verify_activity_sources(&after, &receipt)?;
         let changed = sqlx::query("UPDATE app_state SET payload=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=1 AND payload=?")
             .bind(&request.after).bind(&request.before).execute(&mut *tx).await?;
         if changed.rows_affected() != 1 {
@@ -422,6 +476,50 @@ mod tests {
             serde_json::from_str::<Value>(&persisted).unwrap(),
             Profile::before()
         );
+    }
+    #[tokio::test]
+    async fn accepts_only_verified_original_fit_and_garmin_receipts() {
+        for kind in ["fit", "garmin"] {
+            let profile = Profile::new().await;
+            fs::create_dir(profile.0.join("sources")).unwrap();
+            let bytes = b"\x0c\x20\x00\x00\x00\x00\x00\x00.FITsynthetic\x00\xff";
+            let hash = crate::plan_draft_store::hash(bytes);
+            let storage = FitSourceStorage::new(profile.0.join("sources"));
+            storage.store(&hash, bytes).unwrap();
+            if kind == "garmin" {
+                storage.store_garmin_receipt("123", &hash).unwrap();
+            }
+            let source_id = format!("fit-source:{hash}");
+            let mut before = Profile::before();
+            before["fitSources"] = json!([{ "id": source_id, "sourceHash":hash, "byteLength":bytes.len(), "preservationStatus":"verified" }]);
+            before["fitSourceActivities"] = json!([{ "id":"recording", "sourceId":source_id, "occurredAt":"2026-11-24T10:00:00Z" }]);
+            let mut after = before.clone();
+            after["schemaVersion"] = json!(7);
+            after["logicalActivities"] = Profile::after()["logicalActivities"].clone();
+            after["logicalActivities"]["activities"][0]["versions"][0]["sources"] = if kind == "fit"
+            {
+                json!([{ "kind":"fit", "sourceId":source_id, "sourceHash":hash, "activityId":"recording", "occurredAt":"2026-11-24T10:00:00Z", "localDate":null }])
+            } else {
+                json!([{ "kind":"garmin", "providerId":"123", "sourceHash":hash }])
+            };
+            let mut db = profile.store(None).connect(false).await.unwrap();
+            sqlx::query("UPDATE app_state SET payload=? WHERE id=1")
+                .bind(before.to_string())
+                .execute(&mut db)
+                .await
+                .unwrap();
+            db.close().await.unwrap();
+            let request = ActivitySaveRequest {
+                contract_version: 1,
+                before: before.to_string(),
+                after: after.to_string(),
+            };
+            assert!(profile
+                .store(None)
+                .save_logical_activity(request)
+                .await
+                .is_ok());
+        }
     }
     #[test]
     fn rejects_unrelated_edits_and_reused_source_identities() {

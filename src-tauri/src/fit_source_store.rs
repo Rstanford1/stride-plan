@@ -232,10 +232,21 @@ impl FitSourceStorage {
         }
         self.receipt_inner(activity_id, source_hash)
     }
+
+    pub fn verify_garmin_receipt(&self, activity_id: &str, source_hash: &str) -> Result<()> {
+        validate_request(CONTRACT_VERSION, source_hash)?;
+        if !crate::garmin::valid_id(activity_id) {
+            return Err(SourceError::new(ErrorCode::InvalidSourceId));
+        }
+        self.verify_receipt_inner(activity_id, source_hash)
+    }
 }
 
 #[cfg(not(windows))]
 impl FitSourceStorage {
+    fn verify_receipt_inner(&self, _: &str, _: &str) -> Result<()> {
+        Err(SourceError::new(ErrorCode::StorageUnavailable))
+    }
     fn receipt_inner(&self, _: &str, _: &str) -> Result<()> {
         Err(SourceError::new(ErrorCode::StorageUnavailable))
     }
@@ -344,6 +355,40 @@ mod windows {
             })
         }
 
+        fn verify_garmin_receipt(&self, activity_id: &str, source_hash: &str) -> Result<()> {
+            let destination = self
+                .path
+                .join(format!("{source_hash}.garmin-{activity_id}.json"));
+            let expected = format!("{{\"version\":1,\"provider\":\"garmin\",\"activityId\":\"{activity_id}\",\"sourceHash\":\"{source_hash}\"}}\n").into_bytes();
+            let mut file = OpenOptions::new()
+                .read(true)
+                .share_mode(FILE_SHARE_READ)
+                .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+                .open(&destination)
+                .map_err(|e| io_error(e, false))?;
+            let metadata = file.metadata().map_err(|e| io_error(e, false))?;
+            let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
+            // SAFETY: live handle and valid writable output structure.
+            if unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) } == 0 {
+                return Err(SourceError::new(ErrorCode::StorageUnavailable));
+            }
+            if !metadata.is_file()
+                || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+                || info.nNumberOfLinks != 1
+            {
+                return Err(SourceError::new(ErrorCode::UnsafePath));
+            }
+            let mut bytes = Vec::new();
+            Read::by_ref(&mut file)
+                .take(1024)
+                .read_to_end(&mut bytes)
+                .map_err(|e| io_error(e, false))?;
+            if bytes != expected {
+                return Err(SourceError::new(ErrorCode::Conflict));
+            }
+            Ok(())
+        }
+
         fn read(&self, source_hash: &str) -> Result<Vec<u8>> {
             let mut file = OpenOptions::new()
                 .read(true)
@@ -413,6 +458,15 @@ mod windows {
     }
 
     impl FitSourceStorage {
+        pub(super) fn verify_receipt_inner(
+            &self,
+            activity_id: &str,
+            source_hash: &str,
+        ) -> Result<()> {
+            let directory = Directory::open(&self.app_local_data, source_hash, false)?;
+            directory.read(source_hash)?;
+            directory.verify_garmin_receipt(activity_id, source_hash)
+        }
         pub(super) fn receipt_inner(&self, activity_id: &str, source_hash: &str) -> Result<()> {
             let directory = Directory::open(&self.app_local_data, source_hash, false)?;
             // Verify source before creating provenance; never manufacture a
@@ -421,35 +475,7 @@ mod windows {
             let name = format!("{source_hash}.garmin-{activity_id}.json");
             let destination = directory.path.join(name);
             let expected = format!("{{\"version\":1,\"provider\":\"garmin\",\"activityId\":\"{activity_id}\",\"sourceHash\":\"{source_hash}\"}}\n").into_bytes();
-            let verify = || -> Result<()> {
-                let mut file = OpenOptions::new()
-                    .read(true)
-                    .share_mode(FILE_SHARE_READ)
-                    .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
-                    .open(&destination)
-                    .map_err(|e| io_error(e, false))?;
-                let metadata = file.metadata().map_err(|e| io_error(e, false))?;
-                let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
-                // SAFETY: live handle, valid writable output structure.
-                if unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) } == 0 {
-                    return Err(SourceError::new(ErrorCode::StorageUnavailable));
-                }
-                if !metadata.is_file()
-                    || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
-                    || info.nNumberOfLinks != 1
-                {
-                    return Err(SourceError::new(ErrorCode::UnsafePath));
-                }
-                let mut bytes = Vec::new();
-                Read::by_ref(&mut file)
-                    .take(1024)
-                    .read_to_end(&mut bytes)
-                    .map_err(|e| io_error(e, false))?;
-                if bytes != expected {
-                    return Err(SourceError::new(ErrorCode::Conflict));
-                }
-                Ok(())
-            };
+            let verify = || directory.verify_garmin_receipt(activity_id, source_hash);
             match verify() {
                 Ok(()) => return Ok(()),
                 Err(e) if e.code == ErrorCode::Missing => (),
@@ -588,6 +614,44 @@ mod windows {
         }
         fn fit() -> Vec<u8> {
             b"\x0c\x20\x00\x00\x00\x00\x00\x00.FITsynthetic\x00\xff".to_vec()
+        }
+
+        #[test]
+        fn garmin_verification_never_creates_receipts_and_rejects_tampering() {
+            let profile = Profile::new();
+            let bytes = fit();
+            let id = hash(&bytes);
+            profile.store().store(&id, &bytes).unwrap();
+            assert_eq!(
+                profile
+                    .store()
+                    .verify_garmin_receipt("123", &id)
+                    .unwrap_err()
+                    .code,
+                ErrorCode::Missing
+            );
+            assert_eq!(
+                fs::read_dir(profile.final_path(&id).parent().unwrap())
+                    .unwrap()
+                    .count(),
+                1
+            );
+            profile.store().store_garmin_receipt("123", &id).unwrap();
+            profile.store().verify_garmin_receipt("123", &id).unwrap();
+            let receipt = profile
+                .final_path(&id)
+                .parent()
+                .unwrap()
+                .join(format!("{id}.garmin-123.json"));
+            fs::write(&receipt, b"altered").unwrap();
+            assert_eq!(
+                profile
+                    .store()
+                    .verify_garmin_receipt("123", &id)
+                    .unwrap_err()
+                    .code,
+                ErrorCode::Conflict
+            );
         }
 
         #[test]

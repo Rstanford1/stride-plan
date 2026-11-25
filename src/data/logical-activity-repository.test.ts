@@ -99,4 +99,37 @@ describe("confirmed activities in the canonical snapshot", () => {
     ).rejects.toThrow(/Legacy restore/);
     expect(JSON.parse(f.values.get(STORAGE_KEY)!).schemaVersion).toBe(7);
   });
+  it("preserves confirmation time and earlier values after an acknowledged correction", async () => {
+    const f = fixture();
+    await f.repository.load();
+    const first = await f.repository.confirmLogicalActivity(command);
+    if (first.result.status !== "confirmed")
+      throw new Error("Expected a confirmation");
+    const correction = {
+      commandId: "correction",
+      activityId: "activity",
+      expectedRevision: 1,
+      assignedDate: "2026-11-25",
+      plannedSessionId: null,
+      recorded: { ...command.recorded, distanceMiles: 5, note: "Corrected" },
+      reason: "Distance correction",
+    };
+    const changed = await f.repository.correctLogicalActivity(correction);
+    if (changed.result.status !== "confirmed")
+      throw new Error("Expected a correction");
+    expect(changed.result.receipt.confirmedAt).toBe(
+      first.result.receipt.confirmedAt,
+    );
+    expect(changed.result.receipt.confirmationEventId).toBe(
+      first.result.receipt.confirmationEventId,
+    );
+    expect(
+      changed.data.logicalActivities?.activities[0].versions.map(
+        (version) => version.recorded.distanceMiles,
+      ),
+    ).toEqual([4, 5]);
+    expect(
+      (await f.repository.correctLogicalActivity(correction)).result,
+    ).toEqual(changed.result);
+  });
 });
