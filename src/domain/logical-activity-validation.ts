@@ -31,6 +31,14 @@ const evidence = z.discriminatedUnion("kind", [
       kind: z.literal("manual"),
       sourceId: id,
       original: journalSchema,
+      legacyShoeCredit: z
+        .object({
+          shoeId: id,
+          distanceMiles: z.number().finite().nonnegative(),
+        })
+        .strict()
+        .nullable()
+        .optional(),
       ...evidenceFields,
     })
     .strict(),
@@ -59,6 +67,7 @@ const recorded = z
     averageHr: z.number().finite().nonnegative().max(300).nullable(),
     outcome: z.enum(["completed", "modified", "unplanned"]),
     note: z.string().nullable(),
+    replacementDescription: z.string().optional(),
     shoeAllocations: z.array(
       z
         .object({

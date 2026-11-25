@@ -441,6 +441,32 @@ export function validateSnapshot(value: unknown): void {
           );
           for (const allocation of version.recorded.shoeAllocations)
             reference(allocation.shoeId, shoes, "logical activity shoe");
+          if (version.recorded.manualEntry) {
+            reference(
+              version.recorded.manualEntry.sessionId,
+              sessions,
+              "manual entry session",
+            );
+            reference(
+              version.recorded.manualEntry.shoeId,
+              shoes,
+              "manual entry shoe",
+            );
+          }
+          for (const source of version.sources)
+            if (source.kind === "manual") {
+              reference(
+                source.original.sessionId,
+                sessions,
+                "manual source session",
+              );
+              reference(source.original.shoeId, shoes, "manual source shoe");
+              reference(
+                source.legacyShoeCredit?.shoeId,
+                shoes,
+                "historical shoe attribution",
+              );
+            }
         }
       }
     }

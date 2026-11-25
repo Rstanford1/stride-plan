@@ -7,6 +7,7 @@ export type ActivityEvidence =
       kind: "manual";
       sourceId: string;
       original: JournalEntry;
+      legacyShoeCredit?: { shoeId: string; distanceMiles: number } | null;
       occurredAt: string | null;
       localDate: string | null;
       timezone: string | null;
@@ -35,6 +36,7 @@ export interface RecordedValues {
   averageHr: number | null;
   outcome: "completed" | "modified" | "unplanned";
   note: string | null;
+  replacementDescription?: string;
   shoeAllocations: { shoeId: string; distanceMiles: number }[];
   manualEntry?: JournalEntry;
 }
@@ -73,6 +75,10 @@ export interface ConfirmationCommand {
     activityId: string;
     decision: "merge" | "keep-both" | "review-later";
   }[];
+  legacyDuplicateDecisions?: {
+    candidateId: string;
+    decision: "merge" | "keep-both" | "review-later";
+  }[];
 }
 export interface ActivityCommandRecord {
   id: string;
@@ -99,9 +105,11 @@ export type ConfirmationPreparation =
   | { status: "ready"; activityId: string; merged: boolean };
 
 function stable(value: unknown): string {
+  if (value === undefined) return "null";
   if (Array.isArray(value)) return `[${value.map(stable).join(",")}]`;
   if (value && typeof value === "object")
     return `{${Object.entries(value)
+      .filter(([, entry]) => entry !== undefined)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([key, entry]) => `${JSON.stringify(key)}:${stable(entry)}`)
       .join(",")}}`;
@@ -172,6 +180,14 @@ function validate(command: ConfirmationCommand) {
         !Number.isFinite(Date.parse(source.occurredAt)))
     )
       throw new Error("Invalid source evidence.");
+    if (
+      source.kind === "manual" &&
+      source.legacyShoeCredit &&
+      (!source.legacyShoeCredit.shoeId ||
+        !Number.isFinite(source.legacyShoeCredit.distanceMiles) ||
+        source.legacyShoeCredit.distanceMiles < 0)
+    )
+      throw new Error("Invalid historical shoe attribution.");
   }
   if (new Set(command.sources.map(sourceKey)).size !== command.sources.length)
     throw new Error("Duplicate source identity.");

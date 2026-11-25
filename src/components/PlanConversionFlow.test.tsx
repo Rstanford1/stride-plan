@@ -119,9 +119,11 @@ describe("T07 guided conversion", () => {
     expect(tab("Import")).toHaveAttribute("aria-selected", "true");
     await select("ready.json", saved.preview.bytes);
     expect(tab("Review")).toHaveAttribute("aria-selected", "true");
-    expect(
-      screen.getByRole("heading", { name: "Review & Save Draft" }),
-    ).toHaveFocus();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "Review & Save Draft" }),
+      ).toHaveFocus(),
+    );
     expect(screen.getByText("Reviewing: ready.json")).toBeVisible();
     fireEvent.click(tab("Start"));
     fireEvent.click(tab("Review"));

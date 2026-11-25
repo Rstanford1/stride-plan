@@ -1,13 +1,21 @@
-import type { ActivityEvidence } from "../domain/logical-activity";
+import type {
+  ActivityEvidence,
+  ConfirmationCommand,
+  RecordedValues,
+} from "../domain/logical-activity";
 import type { AppData, JournalEntry } from "../domain/types";
 import type { GarminRetrieval } from "./garmin";
 
 /** Manual entry time is not assumed to be the time the run took place. */
-export function manualEvidence(entry: JournalEntry): ActivityEvidence {
+export function manualEvidence(
+  entry: JournalEntry,
+  legacyShoeCredit?: { shoeId: string; distanceMiles: number } | null,
+): ActivityEvidence {
   return {
     kind: "manual",
     sourceId: entry.id,
     original: structuredClone(entry),
+    ...(legacyShoeCredit !== undefined ? { legacyShoeCredit } : {}),
     occurredAt: null,
     localDate: entry.date,
     timezone: null,
@@ -56,4 +64,44 @@ export function garminEvidence(result: GarminRetrieval): ActivityEvidence {
     localDate: null,
     timezone: null,
   };
+}
+
+export interface ConfirmationDetails {
+  commandId: string;
+  logicalActivityId: string;
+  confirmationEventId: string;
+  assignedDate: string;
+  plannedSessionId: string | null;
+  recorded: RecordedValues;
+}
+function sourceConfirmation(
+  source: ActivityEvidence,
+  details: ConfirmationDetails,
+): ConfirmationCommand {
+  return {
+    commandId: details.commandId,
+    activityId: details.logicalActivityId,
+    eventId: details.confirmationEventId,
+    expectedRevision: null,
+    assignedDate: details.assignedDate,
+    plannedSessionId: details.plannedSessionId,
+    sources: [source],
+    recorded: structuredClone(details.recorded),
+    duplicateDecisions: [],
+  };
+}
+/** Consumers supply the assigned date and optional association explicitly. */
+export function fitConfirmation(
+  data: AppData,
+  recordingId: string,
+  details: ConfirmationDetails,
+): ConfirmationCommand {
+  return sourceConfirmation(fitEvidence(data, recordingId), details);
+}
+/** Garmin confirmation remains separate from credential and synchronization flows. */
+export function garminConfirmation(
+  result: GarminRetrieval,
+  details: ConfirmationDetails,
+): ConfirmationCommand {
+  return sourceConfirmation(garminEvidence(result), details);
 }

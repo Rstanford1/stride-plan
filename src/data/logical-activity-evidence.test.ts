@@ -2,7 +2,9 @@ import { expect, it } from "vitest";
 import { createInitialData } from "../domain/seed";
 import type { GarminRetrieval } from "./garmin";
 import {
+  fitConfirmation,
   fitEvidence,
+  garminConfirmation,
   garminEvidence,
   manualEvidence,
 } from "./logical-activity-evidence";
@@ -77,5 +79,61 @@ it("keeps Garmin provider ID distinct from FIT hash", () => {
     occurredAt: null,
     localDate: null,
     timezone: null,
+  });
+});
+it("requires callers to supply the assigned date and plan association for FIT and Garmin commands", () => {
+  const data = createInitialData();
+  data.fitSources.push({
+    id: "source",
+    sourceHash: "a".repeat(64),
+    originalFileName: "synthetic.fit",
+    byteLength: 1,
+    importedAt: "2026-11-24T12:00:00Z",
+    decoderId: "test",
+    decoderVersion: "1",
+    preservationStatus: "verified",
+  });
+  data.fitSourceActivities.push({
+    id: "recording",
+    sourceId: "source",
+    sourceIndex: 0,
+    occurredAt: "2026-11-23T23:30:00Z",
+    sport: "running",
+    distanceMeters: 1000,
+    recordCount: 0,
+    laps: [],
+    samples: [],
+  });
+  const details = {
+    commandId: "command",
+    logicalActivityId: "logical",
+    confirmationEventId: "event",
+    assignedDate: "2026-11-24",
+    plannedSessionId: "chosen-session",
+    recorded: {
+      distanceMiles: 1,
+      durationSeconds: 600,
+      averageHr: null,
+      outcome: "completed" as const,
+      note: null,
+      shoeAllocations: [],
+    },
+  };
+  expect(fitConfirmation(data, "recording", details)).toMatchObject({
+    assignedDate: "2026-11-24",
+    plannedSessionId: "chosen-session",
+    sources: [{ occurredAt: "2026-11-23T23:30:00Z" }],
+  });
+  const garmin = {
+    provider: "garmin",
+    activityId: "123",
+    source: { sourceHash: "a".repeat(64) },
+  } as GarminRetrieval;
+  expect(
+    garminConfirmation(garmin, { ...details, plannedSessionId: null }),
+  ).toMatchObject({
+    assignedDate: "2026-11-24",
+    plannedSessionId: null,
+    sources: [{ providerId: "123" }],
   });
 });

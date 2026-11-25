@@ -22,6 +22,7 @@ import {
   type LogicalActivityState,
 } from "../domain/logical-activity";
 import type { DurableConfirmationResult } from "./logical-activity-service";
+import { reviewLegacyCandidates } from "./legacy-activity-review";
 
 export const STORAGE_KEY = "stride-plan:data:v1";
 function canonical(value: unknown): string {
@@ -241,11 +242,26 @@ abstract class SnapshotRepository implements AppRepository {
     try {
       validateCurrentSnapshot(data);
       await this.assertCurrent();
-      if (this.expected && JSON.parse(this.expected).schemaVersion === 7)
-        assertLinkedEvidenceUnchanged(
-          JSON.parse(this.expected) as AppData,
-          data,
-        );
+      if (this.expected) {
+        const before = JSON.parse(this.expected) as AppData;
+        if (before.schemaVersion === 7) {
+          if (
+            data.schemaVersion !== 7 ||
+            canonical(before.logicalActivities) !==
+              canonical(data.logicalActivities)
+          )
+            throw new DataIntegrityError(
+              "corrupted",
+              "Confirmed activity history can change only through an acknowledged activity command.",
+            );
+          assertLinkedEvidenceUnchanged(before, data);
+        } else if (data.schemaVersion === 7) {
+          throw new DataIntegrityError(
+            "unsupported",
+            "Activity confirmation requires an acknowledged activity command.",
+          );
+        }
+      }
       await this.publish(JSON.stringify(data));
       this.state = "valid";
     } catch (error) {
@@ -308,7 +324,9 @@ abstract class SnapshotRepository implements AppRepository {
       activities: [],
       commands: [],
     };
-    if ("eventId" in command)
+    if ("eventId" in command) {
+      const review = reviewLegacyCandidates(parsed, command);
+      if (review.status !== "ready") return { result: review, data: parsed };
       for (const source of command.sources) {
         if (source.kind !== "manual") continue;
         const existingJournal = parsed.journals.find(
@@ -322,6 +340,7 @@ abstract class SnapshotRepository implements AppRepository {
             "Manual source evidence does not match the preserved journal.",
           );
       }
+    }
     const now = new Date().toISOString();
     const candidate =
       "eventId" in command

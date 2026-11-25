@@ -191,6 +191,26 @@ describe("confirmed activity candidate rules", () => {
       candidates: ["activity-fit"],
     });
   });
+  it("keeps two distinct recordings in one FIT source separate after explicit review", () => {
+    const first = committed(
+      applyConfirmation(
+        empty(),
+        command("first", [source("fit", "recording-1")]),
+        time,
+      ),
+    );
+    const next = command("second", [source("fit", "recording-2")]);
+    expect(prepareConfirmation(first.state, next)).toEqual({
+      status: "review-required",
+      candidates: ["activity-first"],
+    });
+    next.duplicateDecisions = [
+      { activityId: "activity-first", decision: "keep-both" },
+    ];
+    const both = committed(applyConfirmation(first.state, next, time));
+    expect(both.state.activities).toHaveLength(2);
+    expect(confirmedDistance(both.state)).toBe(8);
+  });
   it("merges explicit evidence once or keeps both only by an explicit decision", () => {
     const first = committed(
       applyConfirmation(

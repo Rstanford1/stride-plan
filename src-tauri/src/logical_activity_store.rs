@@ -255,6 +255,30 @@ impl Store {
                             if existing != original {
                                 return Err(invalid());
                             }
+                            if let Some(shoe) = existing.get("shoeId").and_then(Value::as_str) {
+                                let attribution =
+                                    source.get("legacyShoeCredit").ok_or_else(invalid)?;
+                                if !attribution.is_null() {
+                                    if string(attribution, "shoeId")? != shoe
+                                        || attribution["distanceMiles"]
+                                            != existing["actualDistanceMiles"]
+                                    {
+                                        return Err(invalid());
+                                    }
+                                    let miles = attribution["distanceMiles"]
+                                        .as_f64()
+                                        .filter(|value| *value >= 0.0)
+                                        .ok_or_else(invalid)?;
+                                    let balance = array(snapshot, "shoes")?
+                                        .iter()
+                                        .find(|item| item["id"] == shoe)
+                                        .and_then(|item| item["mileageMiles"].as_f64())
+                                        .ok_or_else(invalid)?;
+                                    if balance < miles {
+                                        return Err(invalid());
+                                    }
+                                }
+                            }
                         }
                     }
                 }

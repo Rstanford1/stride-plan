@@ -157,6 +157,20 @@ describe("confirmed activities in the canonical snapshot", () => {
     ).rejects.toThrow(/Legacy restore/);
     expect(JSON.parse(f.values.get(STORAGE_KEY)!).schemaVersion).toBe(7);
   });
+  it("rejects attempts to erase confirmed history through a generic save", async () => {
+    const f = fixture();
+    await f.repository.load();
+    const confirmed = await f.repository.confirmLogicalActivity(command);
+    await expect(
+      f.base.save({
+        ...confirmed.data,
+        logicalActivities: { activities: [], commands: [] },
+      }),
+    ).rejects.toThrow(/acknowledged activity command/);
+    expect(
+      JSON.parse(f.values.get(STORAGE_KEY)!).logicalActivities.activities,
+    ).toHaveLength(1);
+  });
   it("preserves confirmation time and earlier values after an acknowledged correction", async () => {
     const f = fixture();
     await f.repository.load();
@@ -197,7 +211,12 @@ describe("confirmed activities in the canonical snapshot", () => {
     f.initial.journals = [original.original];
     f.values.set(STORAGE_KEY, JSON.stringify(f.initial));
     await f.repository.load();
-    const confirmed = await f.repository.confirmLogicalActivity(command);
+    const confirmed = await f.repository.confirmLogicalActivity({
+      ...command,
+      legacyDuplicateDecisions: [
+        { candidateId: "journal:manual", decision: "merge" },
+      ],
+    });
     const changed = {
       ...confirmed.data,
       journals: [{ ...original.original, note: "overwritten" }],
@@ -214,9 +233,14 @@ describe("confirmed activities in the canonical snapshot", () => {
     f.initial.journals = [{ ...source.original, note: "original note" }];
     f.values.set(STORAGE_KEY, JSON.stringify(f.initial));
     await f.repository.load();
-    await expect(f.repository.confirmLogicalActivity(command)).rejects.toThrow(
-      /does not match/,
-    );
+    await expect(
+      f.repository.confirmLogicalActivity({
+        ...command,
+        legacyDuplicateDecisions: [
+          { candidateId: "journal:manual", decision: "merge" },
+        ],
+      }),
+    ).rejects.toThrow(/does not match/);
     expect(JSON.parse(f.values.get(STORAGE_KEY)!).schemaVersion).toBe(4);
   });
 });
