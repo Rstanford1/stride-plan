@@ -7,7 +7,12 @@ import { formatDuration } from "../domain/run-entry";
 import { Modal } from "../components/Modal";
 import { RunEntryWorkflow } from "../components/RunEntryWorkflow";
 import { StatusBadge } from "../components/StatusBadge";
+import type { TrainingPlan } from "../domain/training-plan-contract";
 import type { ProjectedSession } from "../domain/active-plan-projection";
+import {
+  StructuredWorkout,
+  StructuredWorkoutSummary,
+} from "../components/StructuredWorkout";
 
 export function isoDate(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -29,26 +34,37 @@ function WorkoutCard({
   past,
   onLog,
   projected,
+  historical = false,
+  moveSession,
+  sourcePlan,
 }: {
   session: PlannedSession;
   journal?: JournalEntry;
   past: boolean;
   onLog: () => void;
   projected?: ProjectedSession;
+  historical?: boolean;
+  sourcePlan?: TrainingPlan | null;
+  moveSession?: (id: string, date: string) => string | null;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [moveDate, setMoveDate] = useState(session.scheduledDate);
+  const [moveMessage, setMoveMessage] = useState("");
   const instructionRevision = session.revisions.find(
     (revision) => revision.field === "instructions",
   );
-  const originalInstructions = instructionRevision
-    ? typeof instructionRevision.from === "string"
-      ? instructionRevision.from
-      : undefined
-    : session.instructions;
+  const originalInstructions = projected?.source
+    ? projected.source.coachText.join("\n")
+    : instructionRevision
+      ? typeof instructionRevision.from === "string"
+        ? instructionRevision.from
+        : undefined
+      : session.instructions;
   if (session.kind === "rest")
     return (
       <section className="primary-panel f2-card">
-        <h2>Rest day</h2>
+        <h2>{historical ? "Historical rest day" : "Rest day"}</h2>
+        {historical && <p>Historical</p>}
         <p>{originalInstructions || "Rest is planned for this day."}</p>
         {instructionRevision && session.instructions && (
           <p>Revised instructions: {session.instructions}</p>
@@ -61,21 +77,55 @@ function WorkoutCard({
         <div>
           <span className="session-kind">
             {session.kind} · {session.flexible ? "Flexible" : "Core"}
+            {projected?.source?.priorityClass === "supporting"
+              ? " · Supporting"
+              : projected?.source?.priorityClass === "priority"
+                ? " · Priority"
+                : ""}
+            {projected?.source?.participation === "optional"
+              ? " · Optional"
+              : ""}
+            {projected?.role === "double"
+              ? " · Linked double"
+              : projected?.role === "independent"
+                ? " · Independent"
+                : ""}
+            {historical
+              ? " · Historical"
+              : projected && !projected.source
+                ? " · Legacy"
+                : ""}
           </span>
           <h2>{session.title}</h2>
         </div>
-        <StatusBadge status={session.status} />
+        {historical ? (
+          <div>
+            <span className="status">Historical</span>
+            {session.status !== "planned" && (
+              <StatusBadge status={session.status} />
+            )}
+          </div>
+        ) : (
+          <StatusBadge status={session.status} />
+        )}
       </div>
       <p>
         <strong>
-          {formatPrescription(
-            session.plannedDistanceMiles,
-            session.plannedDistance,
-          )}{" "}
-          planned
+          {session.plannedDistanceMiles === null && !session.plannedDistance
+            ? "Distance not prescribed"
+            : `${formatPrescription(session.plannedDistanceMiles, session.plannedDistance)} planned`}
+          {session.plannedDuration && (
+            <> · {formatPrescription(null, session.plannedDuration)} duration</>
+          )}
         </strong>
         {session.guidance && <> · {session.guidance}</>}
       </p>
+      {projected?.source?.workout && (
+        <StructuredWorkoutSummary
+          workout={projected.source.workout}
+          references={sourcePlan?.paceReferences}
+        />
+      )}
       {session.revisions.length > 0 && <p>Plan or outcome revised</p>}
       {journal && (
         <p>
@@ -90,6 +140,7 @@ function WorkoutCard({
         </p>
       )}
       {!journal &&
+        !historical &&
         past &&
         session.status !== "completed" &&
         session.status !== "modified" && (
@@ -104,19 +155,84 @@ function WorkoutCard({
         >
           {expanded ? "Collapse" : "Expand"} {session.title}
         </button>
-        <button type="button" className="button secondary" onClick={onLog}>
-          {journal ? "Update entry" : "Log this run"}
-        </button>
+        {!historical && (
+          <button type="button" className="button secondary" onClick={onLog}>
+            {journal ? "Update entry" : "Log this run"}
+          </button>
+        )}
       </div>
       {expanded && (
         <div className="instruction">
-          {projected?.source?.coachText.map((line, index) => (
-            <p key={index}>{line}</p>
-          ))}
           {projected?.source?.workout && (
+            <StructuredWorkout
+              workout={projected.source.workout}
+              references={sourcePlan?.paceReferences}
+            />
+          )}
+          {projected?.sourcePlanId && (
             <p>
-              Workout structure: {projected.source.workout.structureStatus} ·{" "}
-              {projected.source.workout.blocks.length} blocks
+              Source plan: {projected.sourcePlanId} · version{" "}
+              {projected.sourceVersionId}
+            </p>
+          )}
+          {projected?.source &&
+            sourcePlan?.progressions
+              .filter(
+                (item) => item.workoutSessionId === projected.sourceSessionId,
+              )
+              .map((item) => (
+                <div key={item.id}>
+                  <strong>Progression ({item.scope})</strong>
+                  {item.coachText.map((text, i) => (
+                    <p key={i}>{text}</p>
+                  ))}
+                  {item.parameters?.paceIncrement && (
+                    <p>
+                      Pace increment: {item.parameters.paceIncrement.value}{" "}
+                      {item.parameters.paceIncrement.unit}
+                    </p>
+                  )}
+                  {item.parameters?.quantityIncrement && (
+                    <p>
+                      Quantity increment:{" "}
+                      {item.parameters.quantityIncrement.value}{" "}
+                      {item.parameters.quantityIncrement.unit}
+                    </p>
+                  )}
+                </div>
+              ))}
+          {projected?.source && sourcePlan && (
+            <p>
+              Plan sources:{" "}
+              {sourcePlan.sources
+                .map((source) =>
+                  source.kind === "authored"
+                    ? "Authored source"
+                    : source.fileName,
+                )
+                .join(", ")}
+            </p>
+          )}
+          {projected?.role === "double" && (
+            <p>
+              Linked to primary session:{" "}
+              {sourcePlan?.weeks
+                .flatMap((week) => week.days)
+                .flatMap((day) => day.sessions)
+                .find((item) => item.id === projected.primarySessionId)
+                ?.title ?? "Unavailable"}
+            </p>
+          )}
+          {session.originalDate !== session.scheduledDate && (
+            <p>
+              Scheduled: {formatDate(session.scheduledDate)} · Original date:{" "}
+              {formatDate(session.originalDate)}
+            </p>
+          )}
+          {projected?.originalDuration && (
+            <p>
+              Original duration:{" "}
+              {formatPrescription(null, projected.originalDuration)}
             </p>
           )}
           <p>
@@ -135,6 +251,30 @@ function WorkoutCard({
             )}{" "}
             on {formatDate(session.originalDate)}
           </p>
+          {projected?.source && moveSession && !historical && (
+            <div>
+              <label>
+                Move {session.title}{" "}
+                <input
+                  type="date"
+                  value={moveDate}
+                  onChange={(event) => setMoveDate(event.target.value)}
+                />
+              </label>{" "}
+              <button
+                type="button"
+                className="button secondary"
+                disabled={!moveDate || moveDate === session.scheduledDate}
+                onClick={() => {
+                  const error = moveSession(session.id, moveDate);
+                  setMoveMessage(error ?? "Move requested.");
+                }}
+              >
+                Move session
+              </button>
+              {moveMessage && <p role="status">{moveMessage}</p>}
+            </div>
+          )}
         </div>
       )}
     </section>
@@ -147,18 +287,78 @@ export function TodayDashboard({
   openActivityReview: () => void;
   openPlan: () => void;
 }) {
-  const { data, activeProjection } = useAppData();
+  const { data, activeProjection, moveSession } = useAppData();
   const sourceDays = activeProjection?.days ?? [];
   const today = isoDate(new Date());
   const [selectedDate, setSelectedDate] = useState(today);
   const [displayedWeek, setDisplayedWeek] = useState(today);
   const [editing, setEditing] = useState<PlannedSession | null>(null);
   const dates = weekDates(displayedWeek);
-  const sessions = data.sessions.filter(
-    (item) => !item.retiredAt && item.scheduledDate === selectedDate,
+  const projectedSessions = activeProjection
+    ? [
+        ...sourceDays.flatMap((day) => day.sessions),
+        ...activeProjection.legacySessions,
+      ]
+    : [];
+  const projectedById = new Map(
+    projectedSessions.map((item) => [item.id, item]),
   );
+  const visibleSessions = activeProjection
+    ? projectedSessions.flatMap((item) => {
+        const session = data.sessions.find(
+          (candidate) => candidate.id === item.id,
+        );
+        return session ? [session] : [];
+      })
+    : data.sessions.filter((item) => !item.retiredAt);
+  const selectedSessions = visibleSessions.filter(
+    (item) => item.scheduledDate === selectedDate,
+  );
+  const sessions: PlannedSession[] = [];
+  const placed = new Set<string>();
+  for (const item of selectedSessions) {
+    const projected = projectedById.get(item.id);
+    if (
+      projected?.role === "double" &&
+      selectedSessions.some((candidate) => {
+        const parent = projectedById.get(candidate.id);
+        return (
+          parent?.sourceSessionId === projected.primarySessionId &&
+          parent.sourceDayId === projected.sourceDayId &&
+          parent.sourcePlanId === projected.sourcePlanId &&
+          parent.sourceVersionId === projected.sourceVersionId
+        );
+      })
+    )
+      continue;
+    if (!placed.has(item.id)) {
+      sessions.push(item);
+      placed.add(item.id);
+    }
+    if (projected?.role === "main")
+      for (const candidate of selectedSessions) {
+        const linked = projectedById.get(candidate.id);
+        if (
+          linked?.role === "double" &&
+          linked.primarySessionId === projected.sourceSessionId &&
+          linked.sourceDayId === projected.sourceDayId &&
+          !placed.has(candidate.id)
+        ) {
+          sessions.push(candidate);
+          placed.add(candidate.id);
+        }
+      }
+  }
+  const historical = (activeProjection?.historicalSessions ?? [])
+    .filter((item) => item.scheduledDate === selectedDate)
+    .flatMap((item) => {
+      const session = data.sessions.find(
+        (candidate) => candidate.id === item.id,
+      );
+      return session ? [{ session, projected: item }] : [];
+    });
   const sourceDay = sourceDays.find((day) => day.originalDate === selectedDate);
-  const next = data.sessions
+  const next = visibleSessions
     .filter(
       (item) =>
         !item.retiredAt &&
@@ -223,7 +423,7 @@ export function TodayDashboard({
       </div>
       <nav className="week-date-picker f2-date-picker" aria-label="Week dates">
         {dates.map((date) => {
-          const daySessions = data.sessions.filter(
+          const daySessions = visibleSessions.filter(
             (item) => !item.retiredAt && item.scheduledDate === date,
           );
           const recorded = daySessions.some((session) =>
@@ -246,13 +446,11 @@ export function TodayDashboard({
               <strong>{new Date(`${date}T12:00:00`).getDate()}</strong>
               <small>
                 {daySessions.length === 0
-                  ? data.days?.find(
-                      (day) => !day.retiredAt && day.originalDate === date,
-                    )?.kind === "rest"
+                  ? sourceDays.find((day) => day.originalDate === date)
+                      ?.kind === "rest"
                     ? "Rest"
-                    : data.days?.find(
-                          (day) => !day.retiredAt && day.originalDate === date,
-                        )?.kind === "unspecified"
+                    : sourceDays.find((day) => day.originalDate === date)
+                          ?.kind === "unspecified"
                       ? "Unspecified"
                       : "—"
                   : daySessions.every((s) => s.kind === "rest")
@@ -288,9 +486,9 @@ export function TodayDashboard({
               )}
               past={selectedDate < today}
               onLog={() => setEditing(session)}
-              projected={sourceDays
-                .flatMap((day) => day.sessions)
-                .find((item) => item.id === session.id)}
+              projected={projectedById.get(session.id)}
+              moveSession={moveSession}
+              sourcePlan={activeProjection?.sourcePlan}
             />
           ))
         ) : sourceDay?.kind === "rest" ? (
@@ -329,6 +527,24 @@ export function TodayDashboard({
           </section>
         )}
       </div>
+      {historical.length > 0 && (
+        <section aria-label="Historical sessions">
+          <h2>Historical sessions</h2>
+          {historical.map(({ session, projected }) => (
+            <WorkoutCard
+              key={session.id}
+              session={session}
+              projected={projected}
+              historical
+              past={selectedDate < today}
+              journal={data.journals.find(
+                (entry) => entry.sessionId === session.id,
+              )}
+              onLog={() => {}}
+            />
+          ))}
+        </section>
+      )}
       {next && (
         <p className="f2-next">
           Next scheduled · {formatDate(next.scheduledDate)} · {next.title}{" "}

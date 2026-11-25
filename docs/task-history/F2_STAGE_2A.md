@@ -1,0 +1,17 @@
+# F2 Stage 2A: Today active schedule integration
+
+Baseline: `1d9a9a298b4024de9c4c0ae7afad9f7b224fd1a1` (D1 PR #30 merged). Stage 2A follows the owner-approved F2 v1.1 Today specification and preserves Stage 1 navigation and visual foundation. Full F2 remains in progress and awaits separate acceptance.
+
+Today consumes `activeProjection.days`, `legacySessions`, and `historicalSessions` and delegates movement to the existing `moveSession` command. It presents supplied distances, duration, structured repetitions, inherited and overridden targets, explicit recovery, progression text, coach instructions, source plan and legacy/historical status. Source-linked doubles remain grouped; historical sessions do not receive logging or move controls. Tests use only synthetic fixtures and isolated browser storage.
+
+Deliberate limits: count ranges not represented by the contract are not invented; progression targets are not calculated; consecutive identical rounds are compressed only when all represented details agree; differing rounds remain separate. Existing D1 projection exposes source data for the current activation only, so retired source-specific structure may be unavailable. Confirmed-activity presentation, unplanned logging, GPS, Garmin review, durable save feedback, one-hour focus and authoritative weekly metrics remain separately dependent work. The result of `moveSession` is an accepted request, not a durable-save confirmation. This slice does not change persistence, schemas, native code, or the paused I13 Phase 2.
+
+## Acceptance follow-up
+
+Retired sessions display Historical in place of Planned, retaining any non-planned recorded outcome; their prescription remains inspectable and their move/log actions stay unavailable. The compact structured-workout view lists explicitly supplied recovery beneath repetition boxes, with per-repetition/set/block recovery and supplied notes and targets in the expanded view. Tests cover legacy projection, independent same-day sessions versus linked doubles, retired status, and absent and differing recovery. The I13 browser workflow publishes synthetic desktop-light, narrow-dark, and collapsed-card screenshots as a 14-day CI artifact. No native QA workflow or backend data contract changed.
+
+## D1 schedule authority check
+
+D1 persists the editable v5 schedule as the `app_state` snapshot. Native `save_active` validates and atomically writes that snapshot alongside any schedule event; its source activation records preserve the original plan, not a second editable schedule. `AppProvider` derives `activeProjection` from the same `data` object with `projectActivePlan` on data changes; active, legacy, and historical projected scheduled dates are copied directly from the matched snapshot session. All context updates that publish a new snapshot therefore recompute both views together, including `moveSession`. This is an in-memory synchronization guarantee, not proof that an asynchronous save has already succeeded. On reload, the persisted snapshot and verified source are used to rebuild the projection.
+
+The focused `TodayMoveIntegration` regression checks snapshot/projection date equality before and after a source-aware move, selected-date display, date-strip counts, next-session selection, and reload using a synthetic repository. Existing native tests cover source-aware fixed-date/week/double write guards; this frontend test does not exercise packaged SQLite.
