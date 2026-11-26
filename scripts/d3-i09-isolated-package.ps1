@@ -93,10 +93,24 @@ New-Item -ItemType Directory -Path $artifact -ErrorAction Stop | Out-Null
 Copy-Item -LiteralPath $installers[0].FullName -Destination $artifact
 $installerHash = FileHash $installers[0].FullName
 Require ((FileHash (Join-Path $artifact $installers[0].Name)) -ceq $installerHash) 'The staged installer hash does not match.'
+# Tauri reports patching the executable for NSIS during bundling. Measure the
+# executable actually extracted by this installer on the disposable hosted
+# runner; its hash previously differed from the post-build output.
+Require ($env:CI -ceq 'true' -and $env:RUNNER_ENVIRONMENT -ceq 'github-hosted') 'Installer extraction is restricted to a hosted CI runner.'
+$installedDirectory = Join-Path $env:LOCALAPPDATA $product
+$installedBinary = Join-Path $installedDirectory "$binaryName.exe"
+Require (-not (Test-Path -LiteralPath $installedDirectory) -and -not (Test-Path -LiteralPath (Join-Path $env:APPDATA $identifier)) -and -not (Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA $identifier))) 'Test locations are not fresh.'
+$process = Start-Process -FilePath $installers[0].FullName -ArgumentList '/S' -WindowStyle Hidden -Wait -PassThru
+Require ($process.ExitCode -eq 0 -and (Test-Path -LiteralPath $installedBinary)) 'Isolated installer extraction failed.'
+$installedBytes = [IO.File]::ReadAllBytes($installedBinary)
+$installedAscii = [Text.Encoding]::UTF8.GetString($installedBytes)
+$installedWide = [Text.Encoding]::Unicode.GetString($installedBytes)
+Require ($installedAscii.Contains($credential) -or $installedWide.Contains($credential)) 'Installed binary lacks the isolated credential target.'
+Require (-not $installedAscii.Contains('com.strideplan.desktop/garmin-personal-api/v1') -and -not $installedWide.Contains('com.strideplan.desktop/garmin-personal-api/v1')) 'Installed binary contains the normal credential target.'
 $manifest = [ordered]@{
   sourceCommit = $commit; workflowCommit = $env:GITHUB_SHA; runId = $env:GITHUB_RUN_ID
   productName = $product; identifier = $identifier; binaryName = $binaryName; credentialTarget = $credential
-  installerName = $installers[0].Name; installerSha256 = $installerHash; binarySha256 = FileHash $binary.FullName
+  installerName = $installers[0].Name; installerSha256 = $installerHash; binarySha256 = FileHash $installedBinary; buildBinarySha256 = FileHash $binary.FullName
   installation = '%LOCALAPPDATA%\Stride Plan D3 I09 Acceptance'
   configuration = '%APPDATA%\com.strideplan.d3i09test'
   localData = '%LOCALAPPDATA%\com.strideplan.d3i09test'
