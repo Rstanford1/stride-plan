@@ -623,6 +623,21 @@ mod tests {
     use sqlx::sqlite::SqliteConnectOptions;
     use std::{fs, path::PathBuf};
 
+    fn copy_synthetic_tree(from: &std::path::Path, to: &std::path::Path) {
+        fs::create_dir(to).unwrap();
+        for entry in fs::read_dir(from).unwrap() {
+            let entry = entry.unwrap();
+            let kind = entry.file_type().unwrap();
+            let destination = to.join(entry.file_name());
+            if kind.is_dir() {
+                copy_synthetic_tree(&entry.path(), &destination);
+            } else {
+                assert!(kind.is_file());
+                fs::copy(entry.path(), destination).unwrap();
+            }
+        }
+    }
+
     struct Profile(PathBuf);
     impl Profile {
         async fn new() -> Self {
@@ -915,6 +930,67 @@ mod tests {
                 .save_logical_activity(request)
                 .await
                 .is_ok());
+
+            // Back up the committed snapshot together with its original source
+            // objects and provider receipt, then make a later unrelated edit.
+            let backup = profile.0.join("complete-backup");
+            fs::create_dir(&backup).unwrap();
+            let mut db = profile.store(None).connect(false).await.unwrap();
+            sqlx::query("VACUUM INTO ?")
+                .bind(backup.join("snapshot.sqlite").to_str().unwrap())
+                .execute(&mut db)
+                .await
+                .unwrap();
+            db.close().await.unwrap();
+            copy_synthetic_tree(&profile.0.join("sources"), &backup.join("sources"));
+
+            let mut later = after.clone();
+            later["history"] = json!("later synthetic edit");
+            profile
+                .store(None)
+                .save_active(crate::active_plan_store::SaveRequest {
+                    contract_version: 1,
+                    before: after.to_string(),
+                    after: later.to_string(),
+                })
+                .await
+                .unwrap();
+
+            let recovered = profile.0.join("complete-recovered");
+            fs::create_dir(&recovered).unwrap();
+            fs::copy(
+                backup.join("snapshot.sqlite"),
+                recovered.join("snapshot.sqlite"),
+            )
+            .unwrap();
+            copy_synthetic_tree(&backup.join("sources"), &recovered.join("sources"));
+            let mut restored = sqlx::SqliteConnection::connect_with(
+                &SqliteConnectOptions::new()
+                    .filename(recovered.join("snapshot.sqlite"))
+                    .read_only(true),
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                sqlx::query_scalar::<_, String>("PRAGMA integrity_check")
+                    .fetch_one(&mut restored)
+                    .await
+                    .unwrap(),
+                "ok"
+            );
+            let raw: String = sqlx::query_scalar("SELECT payload FROM app_state WHERE id=1")
+                .fetch_one(&mut restored)
+                .await
+                .unwrap();
+            assert_eq!(serde_json::from_str::<Value>(&raw).unwrap(), after);
+            restored.close().await.unwrap();
+            let restored_sources = FitSourceStorage::new(recovered.join("sources"));
+            assert_eq!(restored_sources.read(&hash).unwrap(), bytes);
+            if kind == "garmin" {
+                restored_sources
+                    .verify_garmin_receipt("123", &hash)
+                    .unwrap();
+            }
         }
     }
     #[tokio::test]
