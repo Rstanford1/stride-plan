@@ -14,6 +14,7 @@ export interface GarminRetrieval {
   provider: "garmin";
   activityId: string;
   source: NativeSourceMetadata;
+  relatedSourceHashes?: string[];
 }
 const messages = {
   browser:

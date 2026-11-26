@@ -58,6 +58,36 @@ fn source_key(source: &Value) -> Result<String> {
         _ => Err(invalid()),
     }
 }
+fn garmin_hashes(source: &Value) -> Result<BTreeSet<String>> {
+    let mut hashes = BTreeSet::from([string(source, "sourceHash")?.to_owned()]);
+    if let Some(related) = source.get("relatedSourceHashes") {
+        for hash in related.as_array().ok_or_else(invalid)? {
+            hashes.insert(hash.as_str().ok_or_else(invalid)?.to_owned());
+        }
+    }
+    Ok(hashes)
+}
+fn source_preserved(old: &Value, new: &Value, pending: bool) -> Result<bool> {
+    if old["kind"] == "garmin" && new["kind"] == "garmin" {
+        let mut old_facts = old.as_object().cloned().ok_or_else(invalid)?;
+        let mut new_facts = new.as_object().cloned().ok_or_else(invalid)?;
+        old_facts.remove("relatedSourceHashes");
+        new_facts.remove("relatedSourceHashes");
+        if pending {
+            old_facts.remove("sourceHash");
+            new_facts.remove("sourceHash");
+        }
+        return Ok(old_facts == new_facts && garmin_hashes(old)?.is_subset(&garmin_hashes(new)?));
+    }
+    if pending && old["kind"] == "manual" && new["kind"] == "manual" {
+        let mut old_facts = old.as_object().cloned().ok_or_else(invalid)?;
+        let mut new_facts = new.as_object().cloned().ok_or_else(invalid)?;
+        old_facts.remove("legacyShoeCredit");
+        new_facts.remove("legacyShoeCredit");
+        return Ok(old_facts == new_facts);
+    }
+    Ok(old == new)
+}
 fn indexed<'a>(values: &'a [Value]) -> Result<BTreeMap<&'a str, &'a Value>> {
     let mut map = BTreeMap::new();
     for item in values {
@@ -186,11 +216,7 @@ fn validate_transition(before: &Value, after: &Value) -> Result<Value> {
                 .iter()
                 .find(|source| source_key(source).is_ok_and(|current_key| current_key == key))
                 .ok_or_else(invalid)?;
-            let mut old_facts = old_source.as_object().cloned().ok_or_else(invalid)?;
-            let mut new_facts = current_source.as_object().cloned().ok_or_else(invalid)?;
-            old_facts.remove("legacyShoeCredit");
-            new_facts.remove("legacyShoeCredit");
-            if old_facts != new_facts {
+            if !source_preserved(old_source, current_source, true)? {
                 return Err(invalid());
             }
         }
@@ -230,9 +256,11 @@ fn validate_transition(before: &Value, after: &Value) -> Result<Value> {
                 }
             }
             if current_sources.is_empty()
-                || prior_sources
-                    .iter()
-                    .any(|(key, value)| current_sources.get(key) != Some(value))
+                || prior_sources.iter().any(|(key, value)| {
+                    current_sources.get(key).is_none_or(|current| {
+                        !source_preserved(value, current, false).unwrap_or(false)
+                    })
+                })
             {
                 return Err(invalid());
             }
@@ -414,12 +442,34 @@ impl Store {
                         return Err(error("source"));
                     }
                 }
-                "garmin" => storage
-                    .verify_garmin_receipt(
-                        string(source, "providerId")?,
-                        string(source, "sourceHash")?,
-                    )
-                    .map_err(|_| error("source"))?,
+                "garmin" => {
+                    let provider_id = string(source, "providerId")?;
+                    let primary_hash = string(source, "sourceHash")?;
+                    storage
+                        .verify_garmin_receipt(provider_id, primary_hash)
+                        .map_err(|_| error("source"))?;
+                    let mut declared = match source.get("relatedSourceHashes") {
+                        Some(value) => value
+                            .as_array()
+                            .ok_or_else(invalid)?
+                            .iter()
+                            .map(|item| item.as_str().map(str::to_owned).ok_or_else(invalid))
+                            .collect::<Result<Vec<_>>>()?,
+                        None => vec![primary_hash.to_owned()],
+                    };
+                    let count = declared.len();
+                    declared.sort();
+                    declared.dedup();
+                    if declared.len() != count
+                        || !declared.contains(&primary_hash.to_owned())
+                        || storage
+                            .garmin_source_hashes(provider_id)
+                            .map_err(|_| error("source"))?
+                            != declared
+                    {
+                        return Err(error("source"));
+                    }
+                }
                 _ => return Err(invalid()),
             }
         }
@@ -767,7 +817,6 @@ mod tests {
                 contract_version: 1,
                 before: before.to_string(),
                 after: after.to_string(),
-                operation: None,
             })
             .await
             .unwrap();
@@ -859,6 +908,7 @@ mod tests {
                 contract_version: 1,
                 before: before.to_string(),
                 after: after.to_string(),
+                operation: None,
             };
             assert!(profile
                 .store(None)
@@ -866,6 +916,45 @@ mod tests {
                 .await
                 .is_ok());
         }
+    }
+    #[tokio::test]
+    async fn refuses_to_omit_an_older_receipt_for_the_same_garmin_identity() {
+        let profile = Profile::new().await;
+        fs::create_dir(profile.0.join("sources")).unwrap();
+        let first = b"\x0c\x20\x00\x00\x00\x00\x00\x00.FITsynthetic\x00\xff".to_vec();
+        let mut second = first.clone();
+        second.push(42);
+        let first_hash = crate::plan_draft_store::hash(&first);
+        let second_hash = crate::plan_draft_store::hash(&second);
+        let storage = FitSourceStorage::new(profile.0.join("sources"));
+        storage.store(&first_hash, &first).unwrap();
+        storage.store(&second_hash, &second).unwrap();
+        storage.store_garmin_receipt("123", &first_hash).unwrap();
+        storage.store_garmin_receipt("123", &second_hash).unwrap();
+        let before = Profile::before();
+        let mut after = Profile::after();
+        after["logicalActivities"]["activities"][0]["versions"][0]["sources"] =
+            json!([{ "kind":"garmin", "providerId":"123", "sourceHash":first_hash }]);
+        let request = |value: &Value| ActivitySaveRequest {
+            contract_version: 1,
+            before: before.to_string(),
+            after: value.to_string(),
+            operation: None,
+        };
+        assert!(profile
+            .store(None)
+            .save_logical_activity(request(&after))
+            .await
+            .is_err());
+        let mut hashes = vec![first_hash, second_hash];
+        hashes.sort();
+        after["logicalActivities"]["activities"][0]["versions"][0]["sources"][0]
+            ["relatedSourceHashes"] = json!(hashes);
+        assert!(profile
+            .store(None)
+            .save_logical_activity(request(&after))
+            .await
+            .is_ok());
     }
     #[test]
     fn rejects_unrelated_edits_and_reused_source_identities() {

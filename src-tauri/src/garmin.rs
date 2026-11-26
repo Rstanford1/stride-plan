@@ -108,6 +108,7 @@ pub struct Retrieval {
     pub provider: &'static str,
     pub activity_id: String,
     pub source: crate::fit_source_store::SourceMetadata,
+    pub related_source_hashes: Vec<String>,
 }
 pub struct Token {
     value: Zeroizing<String>,
@@ -563,10 +564,14 @@ pub fn preserve(
     storage
         .store_garmin_receipt(&id, &hash)
         .map_err(|_| Error::new(Code::Storage))?;
+    let related_source_hashes = storage
+        .garmin_source_hashes(&id)
+        .map_err(|_| Error::new(Code::Storage))?;
     Ok(Retrieval {
         provider: "garmin",
         activity_id: id,
         source,
+        related_source_hashes,
     })
 }
 

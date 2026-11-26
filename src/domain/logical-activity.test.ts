@@ -211,6 +211,47 @@ describe("confirmed activity candidate rules", () => {
     expect(both.state.activities).toHaveLength(2);
     expect(confirmedDistance(both.state)).toBe(8);
   });
+  it("associates additional verified hashes for the same Garmin identity without another credit", () => {
+    const first = committed(
+      applyConfirmation(
+        empty(),
+        command("first", [source("garmin", "123")]),
+        time,
+      ),
+    );
+    const newSource: ActivityEvidence = {
+      kind: "garmin",
+      providerId: "123",
+      sourceHash: "b".repeat(64),
+      relatedSourceHashes: ["a".repeat(64), "b".repeat(64)],
+      occurredAt: "2026-11-24T10:00:00Z",
+      localDate: null,
+      timezone: null,
+    };
+    const next = command("second", [newSource]);
+    expect(prepareConfirmation(first.state, next)).toEqual({
+      status: "review-required",
+      candidates: ["activity-first"],
+    });
+    next.duplicateDecisions = [
+      { activityId: "activity-first", decision: "keep-both" },
+    ];
+    expect(() => applyConfirmation(first.state, next, time)).toThrow(
+      /cannot belong/,
+    );
+    next.duplicateDecisions = [
+      { activityId: "activity-first", decision: "merge" },
+    ];
+    next.expectedRevision = 1;
+    const merged = committed(applyConfirmation(first.state, next, time));
+    expect(merged.state.activities).toHaveLength(1);
+    expect(merged.state.activities[0].versions[1].sources[0]).toMatchObject({
+      sourceHash: "a".repeat(64),
+      relatedSourceHashes: ["a".repeat(64), "b".repeat(64)],
+    });
+    expect(confirmedDistance(merged.state)).toBe(4);
+    expect(() => validateLogicalActivityState(merged.state)).not.toThrow();
+  });
   it("merges explicit evidence once or keeps both only by an explicit decision", () => {
     const first = committed(
       applyConfirmation(

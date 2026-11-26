@@ -53,13 +53,23 @@ export function garminEvidence(result: GarminRetrieval): ActivityEvidence {
   if (
     result.provider !== "garmin" ||
     !result.activityId ||
-    !/^[a-f0-9]{64}$/.test(result.source.sourceHash)
+    !/^[a-f0-9]{64}$/.test(result.source.sourceHash) ||
+    (result.relatedSourceHashes !== undefined &&
+      (!result.relatedSourceHashes.includes(result.source.sourceHash) ||
+        new Set(result.relatedSourceHashes).size !==
+          result.relatedSourceHashes.length ||
+        result.relatedSourceHashes.some(
+          (hash) => !/^[a-f0-9]{64}$/.test(hash),
+        )))
   )
     throw new Error("Invalid Garmin provenance.");
   return {
     kind: "garmin",
     providerId: result.activityId,
     sourceHash: result.source.sourceHash,
+    ...(result.relatedSourceHashes && {
+      relatedSourceHashes: [...result.relatedSourceHashes],
+    }),
     occurredAt: null,
     localDate: null,
     timezone: null,

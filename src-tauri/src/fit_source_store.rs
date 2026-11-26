@@ -240,10 +240,20 @@ impl FitSourceStorage {
         }
         self.verify_receipt_inner(activity_id, source_hash)
     }
+
+    pub fn garmin_source_hashes(&self, activity_id: &str) -> Result<Vec<String>> {
+        if !crate::garmin::valid_id(activity_id) {
+            return Err(SourceError::new(ErrorCode::InvalidSourceId));
+        }
+        self.garmin_hashes_inner(activity_id)
+    }
 }
 
 #[cfg(not(windows))]
 impl FitSourceStorage {
+    fn garmin_hashes_inner(&self, _: &str) -> Result<Vec<String>> {
+        Err(SourceError::new(ErrorCode::StorageUnavailable))
+    }
     fn verify_receipt_inner(&self, _: &str, _: &str) -> Result<()> {
         Err(SourceError::new(ErrorCode::StorageUnavailable))
     }
@@ -458,6 +468,43 @@ mod windows {
     }
 
     impl FitSourceStorage {
+        pub(super) fn garmin_hashes_inner(&self, activity_id: &str) -> Result<Vec<String>> {
+            let mut hashes = Vec::new();
+            let suffix = format!(".garmin-{activity_id}.json");
+            for shard in 0..=255u8 {
+                let prefix = format!("{shard:02x}");
+                let probe = format!("{prefix}{}", "0".repeat(62));
+                let directory = match Directory::open(&self.app_local_data, &probe, false) {
+                    Ok(directory) => directory,
+                    Err(error) if error.code == ErrorCode::Missing => continue,
+                    Err(error) => return Err(error),
+                };
+                for entry in fs::read_dir(&directory.path).map_err(|e| io_error(e, false))? {
+                    let entry = entry.map_err(|e| io_error(e, false))?;
+                    let name = entry.file_name();
+                    let Some(name) = name.to_str() else {
+                        continue;
+                    };
+                    let Some(hash) = name.strip_suffix(&suffix) else {
+                        continue;
+                    };
+                    if hash.len() != 64
+                        || !hash.starts_with(&prefix)
+                        || !hash
+                            .bytes()
+                            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+                    {
+                        continue;
+                    }
+                    directory.read(hash)?;
+                    directory.verify_garmin_receipt(activity_id, hash)?;
+                    hashes.push(hash.to_owned());
+                }
+            }
+            hashes.sort();
+            hashes.dedup();
+            Ok(hashes)
+        }
         pub(super) fn verify_receipt_inner(
             &self,
             activity_id: &str,
@@ -648,6 +695,50 @@ mod windows {
                 profile
                     .store()
                     .verify_garmin_receipt("123", &id)
+                    .unwrap_err()
+                    .code,
+                ErrorCode::Conflict
+            );
+        }
+        #[test]
+        fn discovers_and_verifies_all_preserved_hashes_for_a_provider_identity() {
+            let profile = Profile::new();
+            let first = fit();
+            let mut second = first.clone();
+            second.push(42);
+            let first_hash = hash(&first);
+            let second_hash = hash(&second);
+            profile.store().store(&first_hash, &first).unwrap();
+            profile.store().store(&second_hash, &second).unwrap();
+            profile
+                .store()
+                .store_garmin_receipt("123", &first_hash)
+                .unwrap();
+            profile
+                .store()
+                .store_garmin_receipt("123", &second_hash)
+                .unwrap();
+            let mut expected = vec![first_hash.clone(), second_hash.clone()];
+            expected.sort();
+            assert_eq!(
+                profile.store().garmin_source_hashes("123").unwrap(),
+                expected
+            );
+            assert!(profile
+                .store()
+                .garmin_source_hashes("456")
+                .unwrap()
+                .is_empty());
+            let receipt = profile
+                .final_path(&second_hash)
+                .parent()
+                .unwrap()
+                .join(format!("{second_hash}.garmin-123.json"));
+            fs::write(receipt, b"corrupt").unwrap();
+            assert_eq!(
+                profile
+                    .store()
+                    .garmin_source_hashes("123")
                     .unwrap_err()
                     .code,
                 ErrorCode::Conflict

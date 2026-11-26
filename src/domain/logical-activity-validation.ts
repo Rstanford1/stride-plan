@@ -56,6 +56,7 @@ const evidence = z.discriminatedUnion("kind", [
       kind: z.literal("garmin"),
       providerId: id,
       sourceHash: hash,
+      relatedSourceHashes: z.array(hash).min(1).optional(),
       ...evidenceFields,
     })
     .strict(),
@@ -174,6 +175,22 @@ function sourceKey(source: z.infer<typeof evidence>): string {
     return `fit:${source.sourceHash}:${source.activityId}`;
   return `garmin:${source.providerId}`;
 }
+function sourcePreserved(
+  old: z.infer<typeof evidence>,
+  current: z.infer<typeof evidence> | undefined,
+): boolean {
+  if (!current) return false;
+  if (old.kind !== "garmin" || current.kind !== "garmin")
+    return JSON.stringify(old) === JSON.stringify(current);
+  const { relatedSourceHashes: oldHashes, ...oldFacts } = old;
+  const { relatedSourceHashes: newHashes, ...newFacts } = current;
+  const oldAll = [old.sourceHash, ...(oldHashes ?? [])];
+  const newAll = [current.sourceHash, ...(newHashes ?? [])];
+  return (
+    JSON.stringify(oldFacts) === JSON.stringify(newFacts) &&
+    oldAll.every((hash) => newAll.includes(hash))
+  );
+}
 
 /** Validate persisted records without rewriting or discarding their contents. */
 export function validateLogicalActivityState(
@@ -195,20 +212,26 @@ export function validateLogicalActivityState(
       throw new Error("Duplicate or invalid logical activity identity.");
     ids.add(activity.id);
     events.add(activity.confirmed.confirmationEventId);
-    let previous = new Map<string, string>();
+    let previous = new Map<string, z.infer<typeof evidence>>();
     for (let index = 0; index < activity.versions.length; index++) {
       const item = activity.versions[index];
       if (item.revision !== index + 1)
         throw new Error("Invalid activity revision sequence.");
       const current = new Map(
-        item.sources.map((source) => [
-          sourceKey(source),
-          JSON.stringify(source),
-        ]),
+        item.sources.map((source) => [sourceKey(source), source]),
       );
       for (const source of item.sources)
         if (source.kind === "manual" && source.original.id !== source.sourceId)
           throw new Error("Invalid manual source identity.");
+      for (const source of item.sources)
+        if (
+          source.kind === "garmin" &&
+          source.relatedSourceHashes &&
+          (!source.relatedSourceHashes.includes(source.sourceHash) ||
+            new Set(source.relatedSourceHashes).size !==
+              source.relatedSourceHashes.length)
+        )
+          throw new Error("Invalid Garmin source identities.");
       if (
         item.recorded.manualEntry &&
         !item.sources.some(
@@ -220,7 +243,9 @@ export function validateLogicalActivityState(
         throw new Error("Missing manual source evidence.");
       if (
         current.size !== item.sources.length ||
-        [...previous].some(([key, source]) => current.get(key) !== source)
+        [...previous].some(
+          ([key, source]) => !sourcePreserved(source, current.get(key)),
+        )
       )
         throw new Error("Original source evidence was changed or removed.");
       previous = current;
@@ -276,6 +301,15 @@ export function validateLogicalActivityState(
       )
     )
       throw new Error("Invalid pending source evidence.");
+    for (const source of item.command.sources)
+      if (
+        source.kind === "garmin" &&
+        source.relatedSourceHashes &&
+        (!source.relatedSourceHashes.includes(source.sourceHash) ||
+          new Set(source.relatedSourceHashes).size !==
+            source.relatedSourceHashes.length)
+      )
+        throw new Error("Invalid pending Garmin source identities.");
     if (
       item.command.recorded.manualEntry &&
       !item.command.sources.some(

@@ -80,6 +80,12 @@ it("keeps Garmin provider ID distinct from FIT hash", () => {
     localDate: null,
     timezone: null,
   });
+  expect(
+    garminEvidence({
+      ...result,
+      relatedSourceHashes: ["a".repeat(64), "b".repeat(64)],
+    }),
+  ).toMatchObject({ relatedSourceHashes: ["a".repeat(64), "b".repeat(64)] });
 });
 it("requires callers to supply the assigned date and plan association for FIT and Garmin commands", () => {
   const data = createInitialData();

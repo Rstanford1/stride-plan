@@ -25,6 +25,7 @@ export type ActivityEvidence =
       kind: "garmin";
       providerId: string;
       sourceHash: string;
+      relatedSourceHashes?: string[];
       occurredAt: string | null;
       localDate: string | null;
       timezone: string | null;
@@ -132,6 +133,13 @@ function sourceKey(source: ActivityEvidence): string {
     return `fit:${source.sourceHash}:${source.activityId}`;
   return `garmin:${source.providerId}`;
 }
+function garminHashes(
+  source: Extract<ActivityEvidence, { kind: "garmin" }>,
+): string[] {
+  return [
+    ...new Set([source.sourceHash, ...(source.relatedSourceHashes ?? [])]),
+  ].sort();
+}
 function current(activity: LogicalActivity): ActivityVersion {
   const version = activity.versions.at(-1);
   if (!version) throw new Error("Logical activity has no revision.");
@@ -146,7 +154,14 @@ export function possiblyRelatedEvidence(
   if (
     a.kind !== "manual" &&
     b.kind !== "manual" &&
-    a.sourceHash === b.sourceHash
+    (a.sourceHash === b.sourceHash ||
+      (a.kind === "garmin" && a.relatedSourceHashes?.includes(b.sourceHash)) ||
+      (b.kind === "garmin" && b.relatedSourceHashes?.includes(a.sourceHash)) ||
+      (a.kind === "garmin" &&
+        b.kind === "garmin" &&
+        a.relatedSourceHashes?.some((hash) =>
+          b.relatedSourceHashes?.includes(hash),
+        )))
   )
     return true;
   if (a.occurredAt && b.occurredAt) {
@@ -196,6 +211,15 @@ function validate(command: ConfirmationCommand) {
   )
     throw new Error("Invalid assigned training date.");
   for (const source of command.sources) {
+    const invalidGarminHashes =
+      source.kind === "garmin" &&
+      source.relatedSourceHashes !== undefined &&
+      (!source.relatedSourceHashes.includes(source.sourceHash) ||
+        new Set(source.relatedSourceHashes).size !==
+          source.relatedSourceHashes.length ||
+        source.relatedSourceHashes.some(
+          (hash) => !/^[a-f0-9]{64}$/.test(hash),
+        ));
     if (
       (source.kind === "manual" &&
         (!source.sourceId ||
@@ -206,7 +230,9 @@ function validate(command: ConfirmationCommand) {
           !source.activityId ||
           !/^[a-f0-9]{64}$/.test(source.sourceHash))) ||
       (source.kind === "garmin" &&
-        (!source.providerId || !/^[a-f0-9]{64}$/.test(source.sourceHash))) ||
+        (!source.providerId ||
+          !/^[a-f0-9]{64}$/.test(source.sourceHash) ||
+          invalidGarminHashes)) ||
       (source.occurredAt !== null &&
         !Number.isFinite(Date.parse(source.occurredAt)))
     )
@@ -286,8 +312,22 @@ export function prepareConfirmation(
       "Source identities belong to different logical activities.",
     );
   if (exact.length === 1 && !existing) {
-    const owned = new Set(current(exact[0]).sources.map(sourceKey));
-    if (command.sources.every((source) => owned.has(sourceKey(source))))
+    const owned = new Map(
+      current(exact[0]).sources.map((source) => [sourceKey(source), source]),
+    );
+    if (
+      command.sources.every((source) => {
+        const previous = owned.get(sourceKey(source));
+        return (
+          previous &&
+          (source.kind !== "garmin" ||
+            previous.kind !== "garmin" ||
+            garminHashes(source).every((hash) =>
+              garminHashes(previous).includes(hash),
+            ))
+        );
+      })
+    )
       return { status: "exact-duplicate", activityId: exact[0].id };
   }
   if (exact.length === 1 && existing && exact[0].id !== command.activityId)
@@ -420,16 +460,34 @@ export function applyConfirmation(
       "A merge cannot silently change recorded values; choose which values to keep.",
     );
   const sources = previous
-    ? [
-        ...previous.sources,
-        ...command.sources.filter(
-          (source) =>
-            !previous.sources.some(
-              (old) => sourceKey(old) === sourceKey(source),
-            ),
-        ),
-      ]
-    : command.sources;
+    ? structuredClone(previous.sources)
+    : structuredClone(command.sources);
+  if (previous)
+    for (const incoming of command.sources) {
+      const index = sources.findIndex(
+        (old) => sourceKey(old) === sourceKey(incoming),
+      );
+      if (index < 0) {
+        sources.push(structuredClone(incoming));
+        continue;
+      }
+      const old = sources[index];
+      if (old.kind === "garmin" && incoming.kind === "garmin") {
+        if (
+          old.occurredAt !== incoming.occurredAt ||
+          old.localDate !== incoming.localDate ||
+          old.timezone !== incoming.timezone
+        )
+          throw new Error(
+            "Garmin timestamp provenance differs and needs separate review.",
+          );
+        const hashes = [
+          ...new Set([...garminHashes(old), ...garminHashes(incoming)]),
+        ].sort();
+        if (hashes.length > garminHashes(old).length)
+          sources[index] = { ...old, relatedSourceHashes: hashes };
+      }
+    }
   const revision = (previous?.revision ?? 0) + 1;
   const receipt: ConfirmationReceipt = {
     commandId: command.commandId,

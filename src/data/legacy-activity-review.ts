@@ -48,7 +48,10 @@ export function legacyCandidates(
     if (ownedFit.has(activity.id) || activity.role === "unrelated") continue;
     const sameHash = command.sources.some(
       (source) =>
-        source.kind !== "manual" && source.sourceHash === activity.sourceHash,
+        source.kind !== "manual" &&
+        (source.sourceHash === activity.sourceHash ||
+          (source.kind === "garmin" &&
+            source.relatedSourceHashes?.includes(activity.sourceHash))),
     );
     if (
       sameHash ||
