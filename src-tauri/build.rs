@@ -14,6 +14,7 @@ fn main() {
             "inspect_active_plan",
             "activate_training_plan",
             "save_active_snapshot",
+            "save_logical_activity",
             "garmin_status",
             "garmin_connect",
             "garmin_verify",

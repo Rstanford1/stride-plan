@@ -1,5 +1,10 @@
 import { z } from "zod";
 import type { AppData } from "./types";
+import { journalSchema as journal } from "./journal-schema";
+import {
+  logicalActivityStateSchema,
+  validateLogicalActivityState,
+} from "./logical-activity-validation";
 
 export type DataErrorKind = "unsupported" | "corrupted" | "inaccessible";
 export class DataIntegrityError extends Error {
@@ -156,32 +161,6 @@ const activity = z
         })
         .strict(),
     ),
-  })
-  .strict();
-const journal = z
-  .object({
-    id,
-    sessionId: id.optional(),
-    date,
-    actualDistanceMiles: positive.optional(),
-    durationSeconds: positive.optional(),
-    timeEntryMode: z.enum(["duration", "pace"]).optional(),
-    paceSecondsPerUnit: positive.optional(),
-    paceUnit: z.enum(["min-mi", "min-km"]).optional(),
-    averageHr: hr,
-    rpe: integer.min(1).max(10).optional(),
-    sleep: z
-      .enum(["restorative", "adequate", "limited", "severely-limited"])
-      .optional(),
-    sleepEntryMode: z.enum(["subjective", "garmin"]).optional(),
-    sleepScore: integer.max(100).optional(),
-    sleepDurationMinutes: positive.max(1440).optional(),
-    soreness: z.enum(["none", "mild", "moderate", "severe"]).optional(),
-    sorenessLocation: text.optional(),
-    shoeId: id.optional(),
-    note: text.optional(),
-    createdAt: time.optional(),
-    updatedAt: time,
   })
   .strict();
 const shoe = z
@@ -347,6 +326,19 @@ const versions = {
       fitImportBatches: z.array(batch),
     })
     .strict(),
+  7: z
+    .object({
+      ...common,
+      schemaVersion: z.literal(7),
+      days: z.array(dayV5).optional(),
+      sessions: z.array(sessionV5),
+      shoes: z.array(shoe),
+      fitSources: z.array(source),
+      fitSourceActivities: z.array(sourceActivity),
+      fitImportBatches: z.array(batch),
+      logicalActivities: logicalActivityStateSchema,
+    })
+    .strict(),
 };
 export function parseSnapshotJson(raw: string): unknown {
   try {
@@ -368,10 +360,16 @@ export function validateSnapshot(value: unknown): void {
       "corrupted",
       "Saved data has no valid schema version.",
     );
-  if (version !== 2 && version !== 3 && version !== 4 && version !== 5)
+  if (
+    version !== 2 &&
+    version !== 3 &&
+    version !== 4 &&
+    version !== 5 &&
+    version !== 7
+  )
     throw new DataIntegrityError(
       "unsupported",
-      `Snapshot version ${version} is unsupported. Use a compatible application; this build supports versions 2–5 and cannot downgrade newer data.`,
+      `Snapshot version ${version} is unsupported. Use a compatible application; this build supports versions 2–5 and 7 and cannot downgrade newer data.`,
     );
   const result = versions[version].safeParse(value);
   if (!result.success)
@@ -424,7 +422,76 @@ export function validateSnapshot(value: unknown): void {
       "lap",
     );
   }
-  if (data.schemaVersion === 5) {
+  if (data.schemaVersion === 5 || data.schemaVersion === 7) {
+    if (data.schemaVersion === 7) {
+      try {
+        validateLogicalActivityState(data.logicalActivities);
+      } catch {
+        throw new DataIntegrityError(
+          "corrupted",
+          "Logical activity history is invalid. No data was replaced.",
+        );
+      }
+      for (const item of data.logicalActivities.activities) {
+        for (const version of item.versions) {
+          reference(
+            version.plannedSessionId ?? undefined,
+            sessions,
+            "logical activity session",
+          );
+          for (const allocation of version.recorded.shoeAllocations)
+            reference(allocation.shoeId, shoes, "logical activity shoe");
+          if (version.recorded.manualEntry) {
+            reference(
+              version.recorded.manualEntry.sessionId,
+              sessions,
+              "manual entry session",
+            );
+            reference(
+              version.recorded.manualEntry.shoeId,
+              shoes,
+              "manual entry shoe",
+            );
+          }
+          for (const source of version.sources)
+            if (source.kind === "manual") {
+              reference(
+                source.original.sessionId,
+                sessions,
+                "manual source session",
+              );
+              reference(source.original.shoeId, shoes, "manual source shoe");
+              reference(
+                source.legacyShoeCredit?.shoeId,
+                shoes,
+                "historical shoe attribution",
+              );
+            }
+        }
+      }
+      for (const pending of data.logicalActivities.pending ?? []) {
+        reference(
+          pending.command.plannedSessionId ?? undefined,
+          sessions,
+          "pending activity session",
+        );
+        for (const allocation of pending.command.recorded.shoeAllocations)
+          reference(allocation.shoeId, shoes, "pending activity shoe");
+        for (const source of pending.command.sources)
+          if (source.kind === "manual") {
+            reference(
+              source.original.sessionId,
+              sessions,
+              "pending manual source session",
+            );
+            reference(
+              source.original.shoeId,
+              shoes,
+              "pending manual source shoe",
+            );
+          }
+      }
+    }
     for (const item of data.sessions) {
       const linked = [
         item.sourceSessionId,
@@ -439,7 +506,7 @@ export function validateSnapshot(value: unknown): void {
             "Incomplete plan source identity.",
           );
         if (
-          !data.days.some(
+          !(data.days ?? []).some(
             (day) =>
               day.sourceDayId === item.sourceDayId &&
               day.sourcePlanId === item.sourcePlanId &&
@@ -478,7 +545,11 @@ export function validateSnapshot(value: unknown): void {
       }
     }
   }
-  if (data.schemaVersion === 4 || data.schemaVersion === 5) {
+  if (
+    data.schemaVersion === 4 ||
+    data.schemaVersion === 5 ||
+    data.schemaVersion === 7
+  ) {
     const sources = new Set(data.fitSources.map((x) => x.id));
     const activities = new Map(data.fitSourceActivities.map((x) => [x.id, x]));
     unique(
@@ -514,9 +585,13 @@ export function validateSnapshot(value: unknown): void {
 }
 export function validateCurrentSnapshot(value: AppData): void {
   validateSnapshot(value);
-  if (value.schemaVersion !== 4 && value.schemaVersion !== 5)
+  if (
+    value.schemaVersion !== 4 &&
+    value.schemaVersion !== 5 &&
+    value.schemaVersion !== 7
+  )
     throw new DataIntegrityError(
       "unsupported",
-      "Writes require a validated version-4 or version-5 snapshot.",
+      "Writes require a validated current snapshot.",
     );
 }

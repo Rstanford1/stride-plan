@@ -33,6 +33,11 @@ import { validatorFingerprint } from "./plan-validator-registry";
 import type { PlanPreview } from "./plan-draft-store";
 import type { FitImportBatchResult } from "./fit-import-controller";
 import type {
+  ConfirmationCommand,
+  CorrectionCommand,
+} from "../domain/logical-activity";
+import type { DurableConfirmationResult } from "./logical-activity-service";
+import type {
   Activity,
   AppData,
   AppSettings,
@@ -50,6 +55,12 @@ interface AppContextValue {
   recoveryError: DataIntegrityError | null;
   retryLoading: () => void;
   restoreBackup: (raw: string) => Promise<void>;
+  confirmLogicalActivity: (
+    command: ConfirmationCommand,
+  ) => Promise<DurableConfirmationResult>;
+  correctLogicalActivity: (
+    command: CorrectionCommand,
+  ) => Promise<DurableConfirmationResult>;
   saveSession: (
     sessionId: string,
     update: SessionUpdate,
@@ -121,6 +132,8 @@ export function AppProvider({
   const [attempt, setAttempt] = useState(0);
   const writable = useRef(false);
   const restoring = useRef(false);
+  const confirming = useRef(0);
+  const uncertainCommands = useRef(new Set<string>());
   const persisted = useRef<AppData | null>(null);
   const currentData = useRef(data);
   const importEpoch = useRef(0);
@@ -167,7 +180,11 @@ export function AppProvider({
             );
           source = result.plan;
         }
-        if (loaded.schemaVersion === 5 && !source)
+        if (
+          (loaded.schemaVersion === 5 ||
+            (loaded.schemaVersion === 7 && loaded.days)) &&
+          !source
+        )
           throw new DataIntegrityError(
             "corrupted",
             "The active schedule has no verified source record.",
@@ -223,7 +240,12 @@ export function AppProvider({
   }, [data, ready, repository, fail]);
   const restoreBackup = useCallback(
     async (raw: string) => {
-      if (!writable.current || restoring.current || !repository.restore)
+      if (
+        !writable.current ||
+        restoring.current ||
+        confirming.current ||
+        !repository.restore
+      )
         throw new DataIntegrityError(
           "inaccessible",
           "Safe restore is unavailable while data is unresolved.",
@@ -250,7 +272,7 @@ export function AppProvider({
   );
   const activatePlan = useCallback(
     async (preview: PlanPreview) => {
-      if (!writable.current || restoring.current)
+      if (!writable.current || restoring.current || confirming.current)
         throw new DataIntegrityError(
           "inaccessible",
           "Plan activation is unavailable while data is being saved or restored.",
@@ -320,6 +342,71 @@ export function AppProvider({
       }
     },
     [repository, fail],
+  );
+
+  const changeLogicalActivity = useCallback(
+    async (
+      command: ConfirmationCommand | CorrectionCommand,
+    ): Promise<DurableConfirmationResult> => {
+      if (
+        !writable.current ||
+        restoring.current ||
+        ("eventId" in command
+          ? !repository.confirmLogicalActivity
+          : !repository.correctLogicalActivity)
+      )
+        throw new DataIntegrityError(
+          "inaccessible",
+          "Activity confirmation is unavailable while data is unresolved.",
+        );
+      confirming.current += 1;
+      try {
+        // Flush the current optimistic snapshot. The serialized repository merges
+        // already-committed identities into any older saves queued during this wait.
+        if (!uncertainCommands.current.has(command.commandId))
+          await repository.save(currentData.current);
+        let confirmed;
+        try {
+          confirmed =
+            "eventId" in command
+              ? await repository.confirmLogicalActivity!(command)
+              : await repository.correctLogicalActivity!(command);
+        } catch (error) {
+          uncertainCommands.current.add(command.commandId);
+          throw error;
+        }
+        uncertainCommands.current.delete(command.commandId);
+        if (
+          confirmed.result.status === "confirmed" ||
+          confirmed.result.status === "review-later"
+        ) {
+          const latest = currentData.current;
+          const next =
+            latest === persisted.current
+              ? confirmed.data
+              : {
+                  ...latest,
+                  schemaVersion: 7,
+                  logicalActivities: confirmed.data.logicalActivities,
+                };
+          persisted.current = confirmed.data;
+          currentData.current = next;
+          publishData(next);
+        }
+        return confirmed.result;
+      } finally {
+        confirming.current -= 1;
+      }
+    },
+    [repository],
+  );
+  const confirmLogicalActivity = useCallback(
+    (command: ConfirmationCommand) => changeLogicalActivity(command),
+    [changeLogicalActivity],
+  );
+  const correctLogicalActivity = useCallback(
+    (command: CorrectionCommand) => changeLogicalActivity(command),
+    [changeLogicalActivity],
   );
 
   const beginFitImportBatch = useCallback(() => {
@@ -549,6 +636,8 @@ export function AppProvider({
       recoveryError,
       retryLoading,
       restoreBackup,
+      confirmLogicalActivity,
+      correctLogicalActivity,
       saveSession,
       moveSession,
       addSession,
@@ -574,6 +663,8 @@ export function AppProvider({
       recoveryError,
       retryLoading,
       restoreBackup,
+      confirmLogicalActivity,
+      correctLogicalActivity,
       saveSession,
       moveSession,
       addSession,

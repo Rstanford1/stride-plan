@@ -329,9 +329,11 @@ describe("T05 focused Data workflow", () => {
       "aria-selected",
       "true",
     );
-    expect(
-      screen.getByRole("heading", { name: "Review & Save Draft" }),
-    ).toHaveFocus();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "Review & Save Draft" }),
+      ).toHaveFocus(),
+    );
     fireEvent.click(
       screen.getByText(/Weekly targets, scheduling and priority/),
     );

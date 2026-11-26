@@ -12,8 +12,101 @@ import { inspectLegacyRestore } from "./restore";
 import { createFitSourceStore, type FitSourceStore } from "./fit-source-store";
 import Database from "@tauri-apps/plugin-sql";
 import { invoke } from "@tauri-apps/api/core";
+import {
+  applyConfirmation,
+  applyCorrection,
+  commandFingerprint,
+  pendingCandidateIds,
+  type ConfirmationCommand,
+  type ConfirmationReceipt,
+  type CorrectionCommand,
+  type LogicalActivityState,
+} from "../domain/logical-activity";
+import type { DurableConfirmationResult } from "./logical-activity-service";
+import { reviewLegacyCandidates } from "./legacy-activity-review";
 
 export const STORAGE_KEY = "stride-plan:data:v1";
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (value && typeof value === "object")
+    return `{${Object.entries(value)
+      .filter(([, entry]) => entry !== undefined)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`)
+      .join(",")}}`;
+  return JSON.stringify(value);
+}
+function sameSnapshotOutsideActivity(a: AppData, b: AppData): boolean {
+  const {
+    schemaVersion: _aVersion,
+    logicalActivities: _aActivity,
+    ...aBase
+  } = a;
+  const {
+    schemaVersion: _bVersion,
+    logicalActivities: _bActivity,
+    ...bBase
+  } = b;
+  return canonical(aBase) === canonical(bBase);
+}
+function assertLinkedEvidenceUnchanged(before: AppData, after: AppData): void {
+  const sources = [
+    ...(before.logicalActivities?.activities ?? []).flatMap((activity) => {
+      const current = activity.versions.at(-1);
+      if (!current) throw new Error("Confirmed activity has no revision.");
+      return current.sources;
+    }),
+    ...(before.logicalActivities?.pending ?? []).flatMap(
+      (item) => item.command.sources,
+    ),
+  ];
+  for (const source of sources) {
+    const refs: Array<{
+      old: Array<{ id: string }>;
+      next: Array<{ id: string }>;
+      id: string;
+    }> =
+      source.kind === "manual"
+        ? [
+            {
+              old: before.journals,
+              next: after.journals,
+              id: source.sourceId,
+            },
+          ]
+        : source.kind === "fit"
+          ? [
+              {
+                old: before.fitSources,
+                next: after.fitSources,
+                id: source.sourceId,
+              },
+              {
+                old: before.fitSourceActivities,
+                next: after.fitSourceActivities,
+                id: source.activityId,
+              },
+              {
+                old: before.activities,
+                next: after.activities,
+                id: source.activityId,
+              },
+            ]
+          : [];
+    for (const ref of refs) {
+      const previous = ref.old.find((item) => item.id === ref.id);
+      if (
+        previous &&
+        canonical(previous) !==
+          canonical(ref.next.find((item) => item.id === ref.id))
+      )
+        throw new DataIntegrityError(
+          "corrupted",
+          "Confirmed source evidence cannot be changed by an ordinary save.",
+        );
+    }
+  }
+}
 /** Candidate-only rejection: the active repository has not been invalidated. */
 export class RestoreInputError extends DataIntegrityError {
   constructor(error: unknown) {
@@ -25,6 +118,12 @@ export class RestoreInputError extends DataIntegrityError {
 export interface AppRepository {
   load(): Promise<AppData>;
   save(data: AppData): Promise<void>;
+  confirmLogicalActivity?(
+    command: ConfirmationCommand,
+  ): Promise<{ result: DurableConfirmationResult; data: AppData }>;
+  correctLogicalActivity?(
+    command: CorrectionCommand,
+  ): Promise<{ result: DurableConfirmationResult; data: AppData }>;
   restore?(raw: string): Promise<AppData>;
   activate?(input: {
     before: AppData;
@@ -62,6 +161,23 @@ abstract class SnapshotRepository implements AppRepository {
   ): Promise<void>;
   protected async compatible(): Promise<void> {}
   protected async assertReplacementAllowed(): Promise<void> {}
+  protected async beforeLogicalUpgrade(raw: string): Promise<void> {
+    await this.copy(raw, "before-confirmed-activity");
+  }
+  protected async commitLogical(
+    before: string,
+    after: string,
+  ): Promise<ConfirmationReceipt | null> {
+    await this.commit(before, after);
+    return null;
+  }
+  protected async commitDeferred(
+    before: string,
+    after: string,
+    _commandId: string,
+  ): Promise<void> {
+    await this.commit(before, after);
+  }
 
   async load(): Promise<AppData> {
     this.state = "unresolved";
@@ -80,7 +196,8 @@ abstract class SnapshotRepository implements AppRepository {
       // Preserve exact stored bytes before running any historical adapter.
       if (
         (parsed as AppData).schemaVersion !== 4 &&
-        (parsed as AppData).schemaVersion !== 5
+        (parsed as AppData).schemaVersion !== 5 &&
+        (parsed as AppData).schemaVersion !== 7
       )
         await this.copy(raw, "before-migration");
       const data = upgradeAppData(parsed);
@@ -139,17 +256,255 @@ abstract class SnapshotRepository implements AppRepository {
     try {
       validateCurrentSnapshot(data);
       await this.assertCurrent();
+      if (this.expected) {
+        const before = JSON.parse(this.expected) as AppData;
+        if (before.schemaVersion === 7) {
+          if (
+            data.schemaVersion !== 7 ||
+            canonical(before.logicalActivities) !==
+              canonical(data.logicalActivities)
+          )
+            throw new DataIntegrityError(
+              "corrupted",
+              "Confirmed activity history can change only through an acknowledged activity command.",
+            );
+          assertLinkedEvidenceUnchanged(before, data);
+        } else if (data.schemaVersion === 7) {
+          throw new DataIntegrityError(
+            "unsupported",
+            "Activity confirmation requires an acknowledged activity command.",
+          );
+        }
+      }
       await this.publish(JSON.stringify(data));
       this.state = "valid";
     } catch (error) {
       throw this.lock(error);
     }
   }
+  async confirmLogicalActivity(
+    command: ConfirmationCommand,
+  ): Promise<{ result: DurableConfirmationResult; data: AppData }> {
+    return this.changeLogicalActivity(command);
+  }
+  async correctLogicalActivity(
+    command: CorrectionCommand,
+  ): Promise<{ result: DurableConfirmationResult; data: AppData }> {
+    return this.changeLogicalActivity(command);
+  }
+  private async changeLogicalActivity(
+    command: ConfirmationCommand | CorrectionCommand,
+  ): Promise<{ result: DurableConfirmationResult; data: AppData }> {
+    this.assertWritable();
+    await this.compatible();
+    const raw = await this.read();
+    if (raw === null)
+      throw new DataIntegrityError(
+        "inaccessible",
+        "No saved snapshot is available.",
+      );
+    const parsed = parseSnapshotJson(raw) as AppData;
+    validateCurrentSnapshot(parsed);
+    const existing = parsed.logicalActivities?.commands.find(
+      (item) => item.id === command.commandId,
+    );
+    if (existing) {
+      if (existing.fingerprint !== commandFingerprint(command))
+        throw new Error("Command ID was already used for a different request.");
+      if (
+        raw !== this.expected &&
+        (!this.expected ||
+          !sameSnapshotOutsideActivity(
+            parseSnapshotJson(this.expected) as AppData,
+            parsed,
+          ))
+      )
+        throw new DataIntegrityError(
+          "inaccessible",
+          "Saved data changed in another window. Reload before retrying.",
+        );
+      this.expected = raw;
+      return {
+        result: { status: "confirmed", receipt: existing.receipt },
+        data: parsed,
+      };
+    }
+    const existingPending = parsed.logicalActivities?.pending?.find(
+      (item) => item.id === command.commandId,
+    );
+    if (
+      existingPending &&
+      "eventId" in command &&
+      commandFingerprint(existingPending.command) ===
+        commandFingerprint(command)
+    ) {
+      if (
+        raw !== this.expected &&
+        (!this.expected ||
+          !sameSnapshotOutsideActivity(
+            parseSnapshotJson(this.expected) as AppData,
+            parsed,
+          ))
+      )
+        throw new DataIntegrityError(
+          "inaccessible",
+          "Saved data changed in another window. Reload before retrying.",
+        );
+      this.expected = raw;
+      return { result: { status: "review-later" }, data: parsed };
+    }
+    if (raw !== this.expected)
+      throw new DataIntegrityError(
+        "inaccessible",
+        "Saved data changed in another window. Reload before confirming.",
+      );
+    const logical: LogicalActivityState = parsed.logicalActivities ?? {
+      activities: [],
+      commands: [],
+    };
+    if ("eventId" in command) {
+      const pendingMatches = pendingCandidateIds(logical, command);
+      if (pendingMatches.length)
+        return {
+          result: { status: "review-required", candidates: pendingMatches },
+          data: parsed,
+        };
+      const review = reviewLegacyCandidates(parsed, command);
+      if (review.status === "review-later")
+        return this.deferLogicalActivity(raw, parsed, logical, command);
+      if (review.status !== "ready") return { result: review, data: parsed };
+      for (const source of command.sources) {
+        if (source.kind !== "manual") continue;
+        const existingJournal = parsed.journals.find(
+          (entry) => entry.id === source.sourceId,
+        );
+        if (
+          existingJournal &&
+          canonical(existingJournal) !== canonical(source.original)
+        )
+          throw new Error(
+            "Manual source evidence does not match the preserved journal.",
+          );
+      }
+    }
+    const now = new Date().toISOString();
+    const candidate =
+      "eventId" in command
+        ? applyConfirmation(logical, command, now)
+        : {
+            status: "confirmed" as const,
+            ...applyCorrection(logical, command, now),
+          };
+    if (candidate.status === "review-later" && "eventId" in command)
+      return this.deferLogicalActivity(raw, parsed, logical, command);
+    if (candidate.status !== "confirmed")
+      return { result: candidate, data: parsed };
+    const next: AppData = {
+      ...parsed,
+      schemaVersion: 7,
+      logicalActivities: candidate.state,
+    };
+    validateCurrentSnapshot(next);
+    const after = JSON.stringify(next);
+    if (parsed.schemaVersion !== 7) await this.beforeLogicalUpgrade(raw);
+    let nativeReceipt: ConfirmationReceipt | null;
+    try {
+      nativeReceipt = await this.commitLogical(raw, after);
+    } catch (error) {
+      // An acknowledgement can be lost after commit. Never undo the write:
+      // accept it only when the exact committed snapshot is readable.
+      if ((await this.read().catch(() => null)) !== after) throw error;
+      nativeReceipt = null;
+    }
+    if (
+      nativeReceipt &&
+      (nativeReceipt.commandId !== candidate.receipt.commandId ||
+        nativeReceipt.logicalActivityId !==
+          candidate.receipt.logicalActivityId ||
+        nativeReceipt.confirmationEventId !==
+          candidate.receipt.confirmationEventId ||
+        nativeReceipt.confirmedAt !== candidate.receipt.confirmedAt ||
+        nativeReceipt.committedRevision !== candidate.receipt.committedRevision)
+    )
+      throw new DataIntegrityError(
+        "corrupted",
+        "The committed activity receipt could not be verified.",
+      );
+    const persisted = await this.read();
+    if (persisted !== after)
+      throw new DataIntegrityError(
+        "inaccessible",
+        "The confirmation could not be verified. Retry the same command.",
+      );
+    this.expected = persisted;
+    this.state = "valid";
+    return {
+      result: { status: "confirmed", receipt: candidate.receipt },
+      data: next,
+    };
+  }
+  private async deferLogicalActivity(
+    raw: string,
+    parsed: AppData,
+    logical: LogicalActivityState,
+    command: ConfirmationCommand,
+  ): Promise<{ result: DurableConfirmationResult; data: AppData }> {
+    for (const source of command.sources)
+      if (source.kind === "manual") {
+        const existing = parsed.journals.find(
+          (entry) => entry.id === source.sourceId,
+        );
+        if (existing && canonical(existing) !== canonical(source.original))
+          throw new Error(
+            "Manual source evidence does not match the preserved journal.",
+          );
+      }
+    if (logical.pending?.some((item) => item.id === command.commandId))
+      throw new Error(
+        "This deferred review already exists. Resolve it before saving another version.",
+      );
+    const next: AppData = {
+      ...parsed,
+      schemaVersion: 7,
+      logicalActivities: {
+        ...logical,
+        pending: [
+          ...(logical.pending ?? []),
+          {
+            id: command.commandId,
+            command: structuredClone(command),
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      },
+    };
+    validateCurrentSnapshot(next);
+    const after = JSON.stringify(next);
+    if (parsed.schemaVersion !== 7) await this.beforeLogicalUpgrade(raw);
+    try {
+      await this.commitDeferred(raw, after, command.commandId);
+    } catch (error) {
+      if ((await this.read().catch(() => null)) !== after) throw error;
+    }
+    if ((await this.read()) !== after)
+      throw new DataIntegrityError(
+        "inaccessible",
+        "The deferred review could not be verified. Retry the same command.",
+      );
+    this.expected = after;
+    this.state = "valid";
+    return { result: { status: "review-later" }, data: next };
+  }
   async restore(raw: string): Promise<AppData> {
     this.assertWritable();
     // Invalid candidates do not invalidate the existing valid store.
     let preview;
     try {
+      if (this.expected && JSON.parse(this.expected).schemaVersion === 7)
+        throw new DataIntegrityError(
+          "unsupported",
+          "Legacy restore cannot replace confirmed activity history. Recover a complete compatible database instead.",
+        );
       await this.assertReplacementAllowed();
       preview = await inspectLegacyRestore(raw, this.sources);
       if (preview.missingSources.length)
@@ -237,6 +592,41 @@ export class SqliteRepository extends SnapshotRepository {
       this.database = undefined;
       throw error;
     }));
+  }
+  // The native transaction creates and verifies a complete SQLite safety copy.
+  protected async beforeLogicalUpgrade(): Promise<void> {}
+  protected async commitLogical(
+    before: string,
+    after: string,
+  ): Promise<ConfirmationReceipt | null> {
+    if (!("__TAURI_INTERNALS__" in globalThis))
+      throw new DataIntegrityError(
+        "unsupported",
+        "Durable activity confirmation requires the Windows app.",
+      );
+    return invoke<ConfirmationReceipt>("save_logical_activity", {
+      request: { contractVersion: 1, before, after },
+    });
+  }
+  protected async commitDeferred(
+    before: string,
+    after: string,
+    commandId: string,
+  ): Promise<void> {
+    if (!("__TAURI_INTERNALS__" in globalThis))
+      throw new DataIntegrityError(
+        "unsupported",
+        "Saving an activity review requires the Windows app.",
+      );
+    const result = await invoke<{ status: string; commandId: string }>(
+      "save_logical_activity",
+      { request: { contractVersion: 1, before, after, operation: "defer" } },
+    );
+    if (result.status !== "review-later" || result.commandId !== commandId)
+      throw new DataIntegrityError(
+        "corrupted",
+        "The saved review could not be verified.",
+      );
   }
   async inspectActive(): Promise<{
     activationId: string;
@@ -472,18 +862,18 @@ export class SqliteRepository extends SnapshotRepository {
     }
     if (
       "__TAURI_INTERNALS__" in globalThis &&
-      ((before !== null && JSON.parse(before).schemaVersion === 5) ||
-        (after !== null && JSON.parse(after).schemaVersion === 5))
+      ((before !== null && [5, 7].includes(JSON.parse(before).schemaVersion)) ||
+        (after !== null && [5, 7].includes(JSON.parse(after).schemaVersion)))
     ) {
       if (
         before === null ||
         after === null ||
-        JSON.parse(before).schemaVersion !== 5 ||
-        JSON.parse(after).schemaVersion !== 5
+        ![5, 7].includes(JSON.parse(before).schemaVersion) ||
+        JSON.parse(before).schemaVersion !== JSON.parse(after).schemaVersion
       )
         throw new DataIntegrityError(
           "unsupported",
-          "Version-5 schedules change only through guarded native commands.",
+          "Protected snapshots change only through guarded native commands.",
         );
       await invoke("save_active_snapshot", {
         request: { contractVersion: 1, before, after },
@@ -524,6 +914,7 @@ export class SqliteRepository extends SnapshotRepository {
 
 export class SerializedRepository implements AppRepository {
   private queue: Promise<unknown> = Promise.resolve();
+  private logical: LogicalActivityState | undefined;
   constructor(private readonly repository: AppRepository) {}
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
     const result = this.queue.then(operation);
@@ -531,11 +922,55 @@ export class SerializedRepository implements AppRepository {
     return result;
   }
   load() {
-    return this.enqueue(() => this.repository.load());
+    return this.enqueue(async () => {
+      const data = await this.repository.load();
+      this.logical = data.logicalActivities
+        ? structuredClone(data.logicalActivities)
+        : undefined;
+      return data;
+    });
   }
   save(data: AppData) {
     const snapshot = structuredClone(data);
-    return this.enqueue(() => this.repository.save(snapshot));
+    return this.enqueue(() =>
+      this.repository.save(
+        this.logical
+          ? {
+              ...snapshot,
+              schemaVersion: 7,
+              logicalActivities: structuredClone(this.logical),
+            }
+          : snapshot,
+      ),
+    );
+  }
+  confirmLogicalActivity(command: ConfirmationCommand) {
+    const request = structuredClone(command);
+    return this.enqueue(async () => {
+      if (!this.repository.confirmLogicalActivity)
+        throw new DataIntegrityError(
+          "unsupported",
+          "Durable activity confirmation is unavailable.",
+        );
+      const result = await this.repository.confirmLogicalActivity(request);
+      if (result.data.logicalActivities)
+        this.logical = structuredClone(result.data.logicalActivities);
+      return result;
+    });
+  }
+  correctLogicalActivity(command: CorrectionCommand) {
+    const request = structuredClone(command);
+    return this.enqueue(async () => {
+      if (!this.repository.correctLogicalActivity)
+        throw new DataIntegrityError(
+          "unsupported",
+          "Durable activity correction is unavailable.",
+        );
+      const result = await this.repository.correctLogicalActivity(request);
+      if (result.data.logicalActivities)
+        this.logical = structuredClone(result.data.logicalActivities);
+      return result;
+    });
   }
   restore(raw: string) {
     return this.enqueue(() => {

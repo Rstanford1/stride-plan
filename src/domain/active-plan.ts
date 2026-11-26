@@ -1,4 +1,5 @@
 import type { TrainingPlan, PlanDiagnostic } from "./training-plan-contract";
+import { logicalSessionStatus } from "./logical-activity-accounting";
 import type {
   AppData,
   PlannedDay,
@@ -20,15 +21,24 @@ export function currentPlanSessions(
   activationId: string | null,
   effectiveDate: string | null,
 ): PlannedSession[] {
-  return data.sessions.filter(
-    (session) =>
-      !session.retiredAt &&
-      (!activationId ||
-        session.id.startsWith(`active:${activationId}:session:`) ||
-        (!session.sourceSessionId &&
-          effectiveDate !== null &&
-          session.scheduledDate >= effectiveDate)),
-  );
+  return data.sessions
+    .filter(
+      (session) =>
+        !session.retiredAt &&
+        (!activationId ||
+          session.id.startsWith(`active:${activationId}:session:`) ||
+          (!session.sourceSessionId &&
+            effectiveDate !== null &&
+            session.scheduledDate >= effectiveDate)),
+    )
+    .map((session) => ({
+      ...session,
+      status: logicalSessionStatus(
+        session.id,
+        session.status,
+        data.logicalActivities,
+      ),
+    }));
 }
 
 const issue = (
@@ -110,7 +120,10 @@ export function previewActivation(
       data.activities.some(
         (activity) => activity.plannedSessionId === session.id,
       ) ||
-      data.journals.some((entry) => entry.sessionId === session.id)
+      data.journals.some((entry) => entry.sessionId === session.id) ||
+      data.logicalActivities?.activities.some(
+        (activity) => activity.versions.at(-1)?.plannedSessionId === session.id,
+      )
     )
       diagnostics.push(
         issue(
@@ -224,7 +237,7 @@ export function activationCandidate(
     }
   return {
     ...data,
-    schemaVersion: 5,
+    schemaVersion: data.schemaVersion === 7 ? 7 : 5,
     days: [
       ...(data.days ?? []).map((day) =>
         day.retiredAt || day.originalDate < effectiveDate
@@ -236,7 +249,7 @@ export function activationCandidate(
     sessions: [
       ...data.sessions.map((session) => {
         const migrated =
-          data.schemaVersion === 4
+          data.schemaVersion === 4 || (data.schemaVersion === 7 && !data.days)
             ? {
                 ...session,
                 originalDistance: {

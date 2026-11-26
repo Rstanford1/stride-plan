@@ -1,4 +1,5 @@
 import { calculateWeeklyMetrics } from "./metrics";
+import type { LogicalActivityState } from "./logical-activity";
 import type {
   Activity,
   JournalEntry,
@@ -11,6 +12,8 @@ export function buildObservations(
   sessions: PlannedSession[],
   activities: Activity[],
   journals: JournalEntry[],
+  logical?: LogicalActivityState,
+  weekCalendar?: { startDate: string; endDate: string },
 ): Observation[] {
   const observations: Observation[] = [];
   const weeklySessions = sessions.filter((session) => session.week === week);
@@ -18,7 +21,14 @@ export function buildObservations(
   const weeklyJournals = journals.filter(
     (entry) => entry.sessionId && ids.has(entry.sessionId),
   );
-  const metrics = calculateWeeklyMetrics(week, sessions, activities, journals);
+  const metrics = calculateWeeklyMetrics(
+    week,
+    sessions,
+    activities,
+    journals,
+    logical,
+    weekCalendar,
+  );
   const weeklyActivities = activities.filter(
     (activity) =>
       activity.plannedSessionId && ids.has(activity.plannedSessionId),

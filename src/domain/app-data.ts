@@ -4,6 +4,7 @@ import type { AppData } from "./types";
 export function upgradeAppData(input: unknown): AppData {
   validateSnapshot(input);
   const value = input as AppData;
+  if (value.schemaVersion === 7) return value;
   if (value.schemaVersion === 5 && Array.isArray(value.days)) return value;
   if (
     value.schemaVersion === 4 &&

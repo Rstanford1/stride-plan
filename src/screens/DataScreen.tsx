@@ -259,6 +259,7 @@ export function DataScreen() {
                 restoring ||
                 fitImportProgress !== null ||
                 activePlan !== null ||
+                data.schemaVersion === 7 ||
                 nativeDraftPresent !== false
               }
               onClick={() => restoreInput.current?.click()}
@@ -269,6 +270,12 @@ export function DataScreen() {
               <p>
                 Legacy restore is unavailable while an active plan or native
                 draft exists. Its JSON backup omits immutable plan sources.
+              </p>
+            )}
+            {data.schemaVersion === 7 && (
+              <p>
+                Legacy restore is unavailable after activity confirmation.
+                Recover a complete compatible database and its source files.
               </p>
             )}
             <input
@@ -430,7 +437,11 @@ export function DataScreen() {
       </section>
       <button
         className="text-button danger-link"
-        disabled={nativeDraftPresent !== false || activePlan !== null}
+        disabled={
+          nativeDraftPresent !== false ||
+          activePlan !== null ||
+          data.schemaVersion === 7
+        }
         onClick={() => {
           if (window.confirm("Reset local demo data?")) {
             void resetDemo()

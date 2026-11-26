@@ -25,6 +25,11 @@ export async function inspectLegacyRestore(
       "unsupported",
       "Version-5 snapshots require their immutable activation records. Legacy JSON restore cannot safely recreate them.",
     );
+  if ((parsed as AppData).schemaVersion === 7)
+    throw new DataIntegrityError(
+      "unsupported",
+      "This snapshot requires its associated source records. Legacy JSON restore cannot safely recreate them.",
+    );
   const data = parseBackup(raw);
   const missingSources: string[] = [];
   for (const source of data.fitSources) {

@@ -24,7 +24,7 @@ export function TodayScreen({
   openActivityReview: () => void;
   openPlan: () => void;
 }) {
-  const { data } = useAppData();
+  const { data, activePlan } = useAppData();
   const [editing, setEditing] = useState<PlannedSession | null>(null);
   const session =
     data.sessions.find((item) => item.scheduledDate === TODAY) ??
@@ -36,8 +36,10 @@ export function TodayScreen({
         data.sessions,
         data.activities,
         data.journals,
+        data.logicalActivities,
+        activePlan?.source.weeks.find((item) => item.number === session.week),
       ),
-    [data, session.week],
+    [data, session.week, activePlan],
   );
   const newActivities = data.activities.filter(
     (activity) => activity.importedAt.slice(0, 10) >= "2026-11-03",

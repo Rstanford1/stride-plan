@@ -19,6 +19,7 @@
     "allow-inspect-active-plan",
     "allow-activate-training-plan",
     "allow-save-active-snapshot",
+    "allow-save-logical-activity",
     "allow-garmin-status",
     "allow-garmin-connect",
     "allow-garmin-verify",

@@ -7,6 +7,10 @@ import { formatDuration } from "../domain/run-entry";
 import { Modal } from "../components/Modal";
 import { RunEntryWorkflow } from "../components/RunEntryWorkflow";
 import { StatusBadge } from "../components/StatusBadge";
+import {
+  journalForSession,
+  logicalSessionStatus,
+} from "../domain/logical-activity-accounting";
 import type { TrainingPlan } from "../domain/training-plan-contract";
 import type { ProjectedSession } from "../domain/active-plan-projection";
 import {
@@ -308,9 +312,29 @@ export function TodayDashboard({
         const session = data.sessions.find(
           (candidate) => candidate.id === item.id,
         );
-        return session ? [session] : [];
+        return session
+          ? [
+              {
+                ...session,
+                status: logicalSessionStatus(
+                  session.id,
+                  session.status,
+                  data.logicalActivities,
+                ),
+              },
+            ]
+          : [];
       })
-    : data.sessions.filter((item) => !item.retiredAt);
+    : data.sessions
+        .filter((item) => !item.retiredAt)
+        .map((session) => ({
+          ...session,
+          status: logicalSessionStatus(
+            session.id,
+            session.status,
+            data.logicalActivities,
+          ),
+        }));
   const selectedSessions = visibleSessions.filter(
     (item) => item.scheduledDate === selectedDate,
   );
@@ -355,7 +379,21 @@ export function TodayDashboard({
       const session = data.sessions.find(
         (candidate) => candidate.id === item.id,
       );
-      return session ? [{ session, projected: item }] : [];
+      return session
+        ? [
+            {
+              session: {
+                ...session,
+                status: logicalSessionStatus(
+                  session.id,
+                  session.status,
+                  data.logicalActivities,
+                ),
+              },
+              projected: item,
+            },
+          ]
+        : [];
     });
   const sourceDay = sourceDays.find((day) => day.originalDate === selectedDate);
   const next = visibleSessions
@@ -426,8 +464,13 @@ export function TodayDashboard({
           const daySessions = visibleSessions.filter(
             (item) => !item.retiredAt && item.scheduledDate === date,
           );
-          const recorded = daySessions.some((session) =>
-            data.journals.some((entry) => entry.sessionId === session.id),
+          const recorded = daySessions.some(
+            (session) =>
+              !!journalForSession(data, session.id) ||
+              data.logicalActivities?.activities.some(
+                (activity) =>
+                  activity.versions.at(-1)?.plannedSessionId === session.id,
+              ),
           );
           return (
             <button
@@ -481,9 +524,7 @@ export function TodayDashboard({
             <WorkoutCard
               key={session.id}
               session={session}
-              journal={data.journals.find(
-                (entry) => entry.sessionId === session.id,
-              )}
+              journal={journalForSession(data, session.id)}
               past={selectedDate < today}
               onLog={() => setEditing(session)}
               projected={projectedById.get(session.id)}
@@ -537,9 +578,7 @@ export function TodayDashboard({
               projected={projected}
               historical
               past={selectedDate < today}
-              journal={data.journals.find(
-                (entry) => entry.sessionId === session.id,
-              )}
+              journal={journalForSession(data, session.id)}
               onLog={() => {}}
             />
           ))}

@@ -81,7 +81,15 @@ fn guard_save(
     sources: &std::collections::BTreeMap<String, Value>,
     effective_dates: &std::collections::BTreeMap<String, String>,
 ) -> Result<Vec<Value>> {
-    if before["schemaVersion"] != 5 || after["schemaVersion"] != 5 {
+    crate::logical_activity_store::guard_linked_evidence(before, after)?;
+    let versions_match = (before["schemaVersion"] == 5 && after["schemaVersion"] == 5)
+        || (before["schemaVersion"] == 7
+            && after["schemaVersion"] == 7
+            && before
+                .get("logicalActivities")
+                .is_some_and(Value::is_object)
+            && before.get("logicalActivities") == after.get("logicalActivities"));
+    if !versions_match {
         return Err(error("unsupported"));
     }
     let old_days = indexed(before, "days")?;
@@ -414,8 +422,9 @@ fn validate_activation(request: &ActivationRequest) -> Result<(Value, Value, Val
     source_eligible(&source)?;
     let before = value(&request.before)?;
     let after = value(&request.after)?;
-    if ![4, 5].contains(&before["schemaVersion"].as_i64().unwrap_or(-1))
-        || after["schemaVersion"] != 5
+    if ![4, 5, 7].contains(&before["schemaVersion"].as_i64().unwrap_or(-1))
+        || (before["schemaVersion"] == 7 && after["schemaVersion"] != 7)
+        || (before["schemaVersion"] != 7 && after["schemaVersion"] != 5)
     {
         return Err(invalid());
     }
@@ -435,6 +444,7 @@ fn validate_activation(request: &ActivationRequest) -> Result<(Value, Value, Val
         "fitSources",
         "fitSourceActivities",
         "fitImportBatches",
+        "logicalActivities",
     ] {
         if before[key] != after[key] {
             return Err(invalid());
@@ -445,7 +455,9 @@ fn validate_activation(request: &ActivationRequest) -> Result<(Value, Value, Val
     for (key, old) in &previous {
         let new = next.get(key).ok_or_else(invalid)?;
         let mut expected = (*old).clone();
-        if before["schemaVersion"] == 4 {
+        if before["schemaVersion"] == 4
+            || (before["schemaVersion"] == 7 && before.get("days").is_none())
+        {
             expected.as_object_mut().ok_or_else(invalid)?.insert(
                 "originalDistance".into(),
                 json!({"kind":"exact","value":old["originalDistanceMiles"],"unit":"mi"}),
@@ -465,6 +477,17 @@ fn validate_activation(request: &ActivationRequest) -> Result<(Value, Value, Val
                 || items(&before, "journals")?
                     .iter()
                     .any(|j| j["sessionId"] == *key)
+                || before
+                    .get("logicalActivities")
+                    .and_then(|state| state["activities"].as_array())
+                    .is_some_and(|activities| {
+                        activities.iter().any(|activity| {
+                            activity["versions"]
+                                .as_array()
+                                .and_then(|versions| versions.last())
+                                .is_some_and(|version| version["plannedSessionId"] == *key)
+                        })
+                    })
             {
                 return Err(error("conflict"));
             }
@@ -484,7 +507,7 @@ fn validate_activation(request: &ActivationRequest) -> Result<(Value, Value, Val
             return Err(invalid());
         }
     }
-    let before_days = if before["schemaVersion"] == 5 {
+    let before_days = if before.get("days").is_some() {
         indexed(&before, "days")?
     } else {
         Default::default()
@@ -599,9 +622,7 @@ impl Store {
             .execute(&mut db)
             .await?;
         let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
-        if check_schema(&mut tx).await? != 5 {
-            return Err(error("unsupported"));
-        }
+        let db_version = check_schema(&mut tx).await?;
         let current: String = sqlx::query_scalar("SELECT payload FROM app_state WHERE id=1")
             .fetch_one(&mut *tx)
             .await?;
@@ -610,6 +631,28 @@ impl Store {
         }
         let before = value(&request.before)?;
         let after = value(&request.after)?;
+        if db_version != 5 {
+            if ![0, 3, 4].contains(&db_version)
+                || before["schemaVersion"] != 7
+                || after["schemaVersion"] != 7
+                || !before
+                    .get("logicalActivities")
+                    .is_some_and(Value::is_object)
+                || before.get("logicalActivities") != after.get("logicalActivities")
+                || before.get("days").is_some()
+                || after.get("days").is_some()
+            {
+                return Err(error("unsupported"));
+            }
+            crate::logical_activity_store::guard_linked_evidence(&before, &after)?;
+            let changed = sqlx::query("UPDATE app_state SET payload=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=1 AND payload=?")
+                .bind(&request.after).bind(&request.before).execute(&mut *tx).await?;
+            if changed.rows_affected() != 1 {
+                return Err(error("conflict"));
+            }
+            tx.commit().await?;
+            return Ok(());
+        }
         let mut sources = std::collections::BTreeMap::new();
         let mut effective_dates = std::collections::BTreeMap::new();
         let rows = sqlx::query("SELECT record_id,source_hash,payload FROM active_plan_records WHERE record_kind='activation' ORDER BY sequence").fetch_all(&mut *tx).await?;
@@ -800,7 +843,7 @@ impl Store {
         }
         let old_sessions = indexed(&before_snapshot, "sessions")?;
         let new_sessions = indexed(&after_snapshot, "sessions")?;
-        let old_days = if before_snapshot["schemaVersion"] == 5 {
+        let old_days = if before_snapshot.get("days").is_some() {
             indexed(&before_snapshot, "days")?
         } else {
             Default::default()

@@ -216,7 +216,8 @@ impl Store {
             return Err(error("conflict"));
         }
         let value: serde_json::Value = serde_json::from_str(&raw).map_err(|_| error("corrupt"))?;
-        if value["schemaVersion"] != 4 && value["schemaVersion"] != 5 {
+        if value["schemaVersion"] != 4 && value["schemaVersion"] != 5 && value["schemaVersion"] != 7
+        {
             return Err(error("unsupported"));
         }
         if version >= target {
@@ -524,6 +525,11 @@ impl Store {
     // Only the legacy snapshot is replaceable. The native draft check and CAS
     // share a write lock with draft publication, closing the restore/save race.
     pub async fn replace_snapshot(&self, before: &str, after: &str) -> Result<()> {
+        let previous: serde_json::Value =
+            serde_json::from_str(before).map_err(|_| error("invalid"))?;
+        if previous["schemaVersion"] == 7 {
+            return Err(error("legacy_blocked"));
+        }
         let _guards = guard(&self.database, false)?;
         let mut db = self.connect(false).await?;
         let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;

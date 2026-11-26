@@ -1,6 +1,17 @@
 import { ChevronDown, FileUp } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppData } from "../data/app-context";
+import { fitEvidence, manualEvidence } from "../data/logical-activity-evidence";
+import {
+  legacyCandidates,
+  reviewLegacyCandidates,
+} from "../data/legacy-activity-review";
+import { journalForSession } from "../domain/logical-activity-accounting";
+import type {
+  ConfirmationCommand,
+  CorrectionCommand,
+  RecordedValues,
+} from "../domain/logical-activity";
 import { formatPrescription } from "../utils/format";
 import {
   durationFromPace,
@@ -59,9 +70,27 @@ export function RunEntryWorkflow({
   onCancel?: () => void;
   initialMethod?: "fit" | "manual";
 }) {
-  const { data, saveRunEntry } = useAppData();
-  const existing = data.journals.find(
-    (entry) => entry.sessionId === session.id,
+  const { data, saveRunEntry, confirmLogicalActivity, correctLogicalActivity } =
+    useAppData();
+  const deferred = data.logicalActivities?.pending?.find(
+    (item) =>
+      item.command.plannedSessionId === session.id &&
+      item.command.sources.some((source) => source.kind === "manual"),
+  );
+  const existing =
+    deferred?.command.recorded.manualEntry ??
+    journalForSession(data, session.id);
+  const existingLogical = data.logicalActivities?.activities.find(
+    (activity) => {
+      const version = activity.versions.at(-1);
+      return (
+        version?.plannedSessionId === session.id &&
+        version.sources.some(
+          (source) =>
+            source.kind === "manual" && source.sourceId === existing?.id,
+        )
+      );
+    },
   );
   const [method, setMethod] = useState<"fit" | "manual">(initialMethod);
   const [files, setFiles] = useState<string[]>([]);
@@ -72,7 +101,9 @@ export function RunEntryWorkflow({
       : "completed",
   );
   const [modification, setModification] = useState(
-    session.replacementDescription ?? "",
+    existingLogical?.versions.at(-1)?.recorded.replacementDescription ??
+      session.replacementDescription ??
+      "",
   );
   const [distance, setDistance] = useState(
     existing?.actualDistanceMiles?.toString() ?? "",
@@ -122,6 +153,20 @@ export function RunEntryWorkflow({
   );
   const [note, setNote] = useState(existing?.note ?? session.outcomeNote ?? "");
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saveError, setSaveError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [retryOnly, setRetryOnly] = useState(false);
+  const [candidates, setCandidates] = useState<string[]>([]);
+  const [decisions, setDecisions] = useState<
+    Record<string, "merge" | "keep-both" | "review-later" | "">
+  >({});
+  const [shoeAttribution, setShoeAttribution] = useState<
+    Record<string, "included" | "not-included" | "">
+  >({});
+  const [mergeRecordedChoice, setMergeRecordedChoice] = useState<
+    "" | "keep-existing" | "use-incoming"
+  >("");
+  const pending = useRef<ConfirmationCommand | CorrectionCommand | null>(null);
 
   const parsedDistance = numberValue(distance);
   const interpretations = useMemo(
@@ -170,10 +215,20 @@ export function RunEntryWorkflow({
     event.preventDefault();
     const nextErrors = validateRunEntry(session, draft);
     setErrors(nextErrors);
-    if (Object.keys(nextErrors).length === 0) setStep("review");
+    if (Object.keys(nextErrors).length === 0) {
+      pending.current = null;
+      setCandidates([]);
+      setDecisions({});
+      setShoeAttribution({});
+      setMergeRecordedChoice("");
+      setSaveError("");
+      setRetryOnly(false);
+      setStep("review");
+    }
   }
 
-  function confirm() {
+  async function confirm() {
+    if (saving) return;
     const now = new Date().toISOString();
     const entry: JournalEntry = {
       id: existing?.id ?? `journal-${session.id}`,
@@ -200,17 +255,244 @@ export function RunEntryWorkflow({
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
-    saveRunEntry(
-      session.id,
-      {
-        status: draft.status,
-        outcomeNote: draft.note.trim() || undefined,
-        replacementDescription:
-          draft.status === "modified" ? draft.modification.trim() : undefined,
-      },
-      entry,
-    );
-    onSaved();
+    if (draft.status === "skipped") {
+      if (existingLogical) {
+        setSaveError(
+          "A confirmed activity cannot be replaced with a skip. Review the existing activity first.",
+        );
+        return;
+      }
+      saveRunEntry(
+        session.id,
+        { status: draft.status, outcomeNote: draft.note.trim() || undefined },
+        entry,
+      );
+      onSaved();
+      return;
+    }
+    const recorded: RecordedValues = {
+      distanceMiles: draft.distanceMiles ?? null,
+      durationSeconds: draft.durationSeconds ?? null,
+      averageHr: draft.averageHr ?? null,
+      outcome: draft.status,
+      note: draft.note.trim() || null,
+      ...(draft.status === "modified"
+        ? { replacementDescription: draft.modification.trim() }
+        : {}),
+      shoeAllocations:
+        draft.shoeId && draft.distanceMiles !== undefined
+          ? [{ shoeId: draft.shoeId, distanceMiles: draft.distanceMiles }]
+          : [],
+      manualEntry: entry,
+    };
+    if (!pending.current) {
+      pending.current = existingLogical
+        ? {
+            commandId: crypto.randomUUID(),
+            activityId: existingLogical.id,
+            expectedRevision: existingLogical.versions.at(-1)!.revision,
+            assignedDate: entry.date,
+            plannedSessionId: session.id,
+            recorded,
+            reason: "Manual run correction",
+          }
+        : deferred
+          ? {
+              ...structuredClone(deferred.command),
+              recorded,
+              assignedDate: entry.date,
+              plannedSessionId: session.id,
+              duplicateDecisions: [],
+              legacyDuplicateDecisions: [],
+            }
+          : {
+              commandId: crypto.randomUUID(),
+              activityId: crypto.randomUUID(),
+              eventId: crypto.randomUUID(),
+              expectedRevision: null,
+              assignedDate: entry.date,
+              plannedSessionId: session.id,
+              sources: [
+                manualEvidence(
+                  data.journals.find((item) => item.id === entry.id) ?? entry,
+                ),
+              ],
+              recorded,
+              duplicateDecisions: [],
+            };
+    }
+    let request = pending.current;
+    if ("eventId" in request && candidates.length && !retryOnly) {
+      if (candidates.some((id) => !decisions[id])) {
+        setSaveError("Choose a decision for each possible duplicate.");
+        return;
+      }
+      const legacyIds = candidates.filter((id) => id.startsWith("legacy:"));
+      const logicalIds = candidates.filter((id) => !id.startsWith("legacy:"));
+      const merges = logicalIds.filter((id) => decisions[id] === "merge");
+      if (merges.length > 1) {
+        setSaveError("Review one merge at a time.");
+        return;
+      }
+      if (merges.length) {
+        const target = data.logicalActivities?.activities.find(
+          (activity) => activity.id === merges[0],
+        );
+        const version = target?.versions.at(-1);
+        if (
+          !version ||
+          version.assignedDate !== request.assignedDate ||
+          version.plannedSessionId !== request.plannedSessionId
+        ) {
+          setSaveError(
+            "The selected activity has a different date or session. Review it before merging.",
+          );
+          return;
+        }
+        if (!mergeRecordedChoice) {
+          setSaveError(
+            "Choose which recorded values the combined activity should use.",
+          );
+          return;
+        }
+        request = {
+          ...request,
+          expectedRevision: version.revision,
+          mergeRecordedChoice,
+        };
+      }
+      if (legacyIds.length) {
+        const sources = [...request.sources];
+        for (const candidate of legacyIds) {
+          if (decisions[candidate] !== "merge") continue;
+          const key = candidate.slice("legacy:".length);
+          if (key.startsWith("journal:")) {
+            const id = key.slice("journal:".length);
+            const journal = data.journals.find((item) => item.id === id);
+            if (!journal) {
+              setSaveError("The original journal is unavailable.");
+              return;
+            }
+            let attribution:
+              { shoeId: string; distanceMiles: number } | null | undefined;
+            if (journal.shoeId) {
+              const choice = shoeAttribution[candidate];
+              if (!choice) {
+                setSaveError(
+                  "Choose whether the older run is already included in its shoe total.",
+                );
+                return;
+              }
+              if (choice === "included") {
+                if (journal.actualDistanceMiles === undefined) {
+                  setSaveError(
+                    "The older run has no recorded distance. Its shoe attribution needs review before merging.",
+                  );
+                  return;
+                }
+                attribution = {
+                  shoeId: journal.shoeId,
+                  distanceMiles: journal.actualDistanceMiles,
+                };
+              } else attribution = null;
+            }
+            const source = manualEvidence(journal, attribution);
+            const index = sources.findIndex(
+              (item) => item.kind === "manual" && item.sourceId === id,
+            );
+            if (index < 0) sources.push(source);
+            else sources[index] = source;
+          } else if (key.startsWith("activity:")) {
+            const id = key.slice("activity:".length);
+            try {
+              if (
+                !sources.some(
+                  (source) => source.kind === "fit" && source.activityId === id,
+                )
+              )
+                sources.push(fitEvidence(data, id));
+            } catch {
+              setSaveError(
+                "The original FIT source must be preserved and verified before these records can be merged.",
+              );
+              return;
+            }
+          }
+        }
+        request = {
+          ...request,
+          sources,
+          legacyDuplicateDecisions: legacyIds.map((id) => ({
+            candidateId: id.slice("legacy:".length),
+            decision: decisions[id] as "merge" | "keep-both" | "review-later",
+          })),
+        };
+      }
+      if (logicalIds.length)
+        request = {
+          ...request,
+          duplicateDecisions: logicalIds.map((activityId) => ({
+            activityId,
+            decision: decisions[activityId] as
+              "merge" | "keep-both" | "review-later",
+          })),
+        };
+      pending.current = request;
+    }
+    if ("eventId" in request && candidates.length && !retryOnly) {
+      try {
+        reviewLegacyCandidates(data, request);
+      } catch (error) {
+        setSaveError(
+          error instanceof Error
+            ? error.message
+            : "The duplicate decisions are invalid.",
+        );
+        return;
+      }
+    }
+    setSaving(true);
+    setSaveError("");
+    try {
+      const result =
+        "eventId" in request
+          ? await confirmLogicalActivity(request)
+          : await correctLogicalActivity(request);
+      if (result.status === "review-required") {
+        if (
+          result.candidates.some((candidate) =>
+            candidate.startsWith("pending:"),
+          )
+        ) {
+          setSaveError(
+            "An earlier unconfirmed review may describe the same run. Resolve that review before confirming this entry.",
+          );
+          return;
+        }
+        setCandidates(result.candidates);
+        return;
+      }
+      if (result.status === "review-later") {
+        setSaveError(
+          "Saved for review later. No activity was confirmed or credited.",
+        );
+        return;
+      }
+      if (result.status === "exact-duplicate") {
+        setSaveError("This source is already part of a confirmed activity.");
+        return;
+      }
+      onSaved();
+    } catch (error) {
+      setRetryOnly(true);
+      setSaveError(
+        error instanceof Error
+          ? error.message
+          : "The run could not be saved. Retry the same confirmation.",
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
   const methodTabs = (
@@ -352,6 +634,105 @@ export function RunEntryWorkflow({
               </dd>
             </div>
           </dl>
+          {candidates.length > 0 && (
+            <fieldset disabled={saving || retryOnly}>
+              <legend>Review possible duplicate activities</legend>
+              {candidates.map((id) => {
+                const legacy =
+                  "eventId" in (pending.current ?? {})
+                    ? legacyCandidates(
+                        data,
+                        pending.current as ConfirmationCommand,
+                      ).find((item) => `legacy:${item.id}` === id)
+                    : undefined;
+                const candidate = data.logicalActivities?.activities.find(
+                  (item) => item.id === id,
+                );
+                const version = candidate?.versions.at(-1);
+                const legacyJournal = legacy?.id.startsWith("journal:")
+                  ? data.journals.find(
+                      (entry) =>
+                        entry.id === legacy.id.slice("journal:".length),
+                    )
+                  : undefined;
+                return (
+                  <div key={id}>
+                    <label>
+                      {legacy?.label ?? "Activity"} on{" "}
+                      {legacy?.date ?? version?.assignedDate ?? "unknown date"}
+                      {!legacy && (
+                        <>
+                          {" "}
+                          · {version?.recorded.distanceMiles ?? "unknown"} mi
+                        </>
+                      )}
+                      <select
+                        value={decisions[id] ?? ""}
+                        onChange={(event) =>
+                          setDecisions((current) => ({
+                            ...current,
+                            [id]: event.target.value as
+                              "merge" | "keep-both" | "review-later" | "",
+                          }))
+                        }
+                      >
+                        <option value="">Choose a decision</option>
+                        <option value="merge">Merge</option>
+                        <option value="keep-both">Keep both</option>
+                        <option value="review-later">Review later</option>
+                      </select>
+                    </label>
+                    {!legacy && decisions[id] === "merge" && (
+                      <label>
+                        Which recorded values should the combined activity use?
+                        <select
+                          value={mergeRecordedChoice}
+                          onChange={(event) =>
+                            setMergeRecordedChoice(
+                              event.target.value as
+                                "" | "keep-existing" | "use-incoming",
+                            )
+                          }
+                        >
+                          <option value="">Choose which values to keep</option>
+                          <option value="keep-existing">
+                            Keep the existing activity values
+                          </option>
+                          <option value="use-incoming">
+                            Use the values entered here
+                          </option>
+                        </select>
+                        <small>
+                          The other source and the earlier values remain in the
+                          history.
+                        </small>
+                      </label>
+                    )}
+                    {legacyJournal?.shoeId && decisions[id] === "merge" && (
+                      <label>
+                        Was this older run already included in its shoe mileage?
+                        <select
+                          value={shoeAttribution[id] ?? ""}
+                          onChange={(event) =>
+                            setShoeAttribution((current) => ({
+                              ...current,
+                              [id]: event.target.value as
+                                "included" | "not-included" | "",
+                            }))
+                          }
+                        >
+                          <option value="">Choose an answer</option>
+                          <option value="included">Already included</option>
+                          <option value="not-included">Not included</option>
+                        </select>
+                      </label>
+                    )}
+                  </div>
+                );
+              })}
+            </fieldset>
+          )}
+          {saveError && <p role="alert">{saveError}</p>}
         </section>
         <div className="run-entry-footer">
           <span>Actual values will be stored separately from the plan</span>
@@ -359,12 +740,22 @@ export function RunEntryWorkflow({
             <button
               type="button"
               className="button secondary"
+              disabled={saving || retryOnly}
               onClick={() => setStep("entry")}
             >
               Edit entry
             </button>
-            <button type="button" className="button primary" onClick={confirm}>
-              Confirm and save
+            <button
+              type="button"
+              className="button primary"
+              disabled={saving}
+              onClick={() => void confirm()}
+            >
+              {saving
+                ? "Saving…"
+                : retryOnly
+                  ? "Retry confirmation"
+                  : "Confirm and save"}
             </button>
           </div>
         </div>

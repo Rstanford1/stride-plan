@@ -1,0 +1,116 @@
+name: D3 I09 isolated Windows acceptance package
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'codex/d3-i09-confirmed-activity' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      D3_SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out exact pull request revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Install locked dependencies
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed.' }
+          if (git status --porcelain) { throw 'Installation changed the reviewed checkout.' }
+
+      - name: Verify frontend and native code
+        run: |
+          pnpm verify
+          if ($LASTEXITCODE -ne 0) { throw 'Frontend verification failed.' }
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+          if ($LASTEXITCODE -ne 0) { throw 'Rust formatting failed.' }
+          cargo test --manifest-path src-tauri/Cargo.toml --locked -- --test-threads=1
+          if ($LASTEXITCODE -ne 0) { throw 'Native tests failed.' }
+          if (git status --porcelain) { throw 'Verification changed the reviewed checkout.' }
+
+      - name: Prepare isolated application identity
+        run: ./scripts/d3-i09-isolated-package.ps1 -Mode Prepare
+
+      - name: Build without launching the application
+        run: |
+          pnpm tauri build --ci --bundles nsis --config src-tauri/tauri.d3i09test.conf.json -- --locked
+          if ($LASTEXITCODE -ne 0) { throw 'Isolated package build failed.' }
+
+      - name: Verify installer and application identities
+        run: ./scripts/d3-i09-isolated-package.ps1 -Mode Verify
+
+      - name: Publish verified package and manifest
+        uses: actions/upload-artifact@v7
+        with:
+          name: stride-plan-d3-i09-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/d3-i09-verified-installer/*
+          if-no-files-found: error
+          retention-days: 14
+
+  packaged-smoke:
+    needs: package
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      D3_SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+      - name: Install locked dependencies
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed.' }
+      - uses: actions/download-artifact@v8
+        with:
+          name: stride-plan-d3-i09-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/d3-package
+      - name: Install and verify isolated package on the disposable runner
+        run: |
+          $manifest = Get-Content -Raw -LiteralPath "$env:RUNNER_TEMP/d3-package/build-manifest.json" | ConvertFrom-Json
+          if ($manifest.sourceCommit -cne $env:D3_SOURCE_SHA -or $manifest.identifier -cne 'com.strideplan.d3i09test' -or $manifest.productName -cne 'Stride Plan D3 I09 Acceptance') { throw 'Incorrect package identity.' }
+          $installer = Join-Path "$env:RUNNER_TEMP/d3-package" $manifest.installerName
+          if ((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash -cne $manifest.installerSha256) { throw 'Installer hash mismatch.' }
+          foreach ($path in @((Join-Path $env:LOCALAPPDATA 'Stride Plan D3 I09 Acceptance'), (Join-Path $env:APPDATA 'com.strideplan.d3i09test'), (Join-Path $env:LOCALAPPDATA 'com.strideplan.d3i09test'))) { if (Test-Path -LiteralPath $path) { throw 'Test location is not fresh.' } }
+          $process = Start-Process -FilePath $installer -ArgumentList '/S' -WindowStyle Hidden -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw 'Test installer failed.' }
+          $exe = Join-Path $env:LOCALAPPDATA 'Stride Plan D3 I09 Acceptance/stride-plan-d3-i09-acceptance.exe'
+          if ((Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash -cne $manifest.binarySha256) { throw 'Installed executable hash mismatch.' }
+      - name: Probe the packaged application with the existing browser tools
+        run: |
+          node scripts/d3-i09-packaged-smoke.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged UI probe failed; manual acceptance remains required.' }

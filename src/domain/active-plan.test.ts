@@ -23,6 +23,24 @@ function validated(value: unknown) {
 }
 
 describe("active plan candidate", () => {
+  it("preserves activity history through activation from a version-7 snapshot", () => {
+    const plan = validated(independent);
+    const before = {
+      ...createInitialData(),
+      schemaVersion: 7,
+      logicalActivities: { activities: [], commands: [] },
+    };
+    const after = activationCandidate(
+      plan,
+      before,
+      "synthetic-activation",
+      "2026-11-16",
+      "2026-11-20T00:00:00Z",
+    );
+    expect(after.schemaVersion).toBe(7);
+    expect(after.logicalActivities).toEqual(before.logicalActivities);
+    expect(() => validateCurrentSnapshot(after)).not.toThrow();
+  });
   it("preserves missing distance, supplied duration, Rest and source identities", () => {
     const plan = validated(independent);
     const before = JSON.stringify(plan);

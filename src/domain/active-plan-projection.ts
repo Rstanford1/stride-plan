@@ -1,4 +1,5 @@
 import type { TrainingPlan } from "./training-plan-contract";
+import { logicalSessionStatus } from "./logical-activity-accounting";
 import type {
   AppData,
   PlannedSession,
@@ -96,10 +97,18 @@ export function projectActivePlan(
   effectiveDate: string | null = null,
   activationId: string | null = null,
 ): ActivePlanProjection {
-  const current = data.sessions.filter((session) => !session.retiredAt);
+  const sessionsWithStatus = data.sessions.map((session) => ({
+    ...session,
+    status: logicalSessionStatus(
+      session.id,
+      session.status,
+      data.logicalActivities,
+    ),
+  }));
+  const current = sessionsWithStatus.filter((session) => !session.retiredAt);
   const legacy = current.filter((session) => !session.sourceSessionId);
   const projectedLegacy = legacy.map(projectedWithoutSource);
-  const historicalSessions = data.sessions
+  const historicalSessions = sessionsWithStatus
     .filter(
       (session) =>
         session.retiredAt ||
