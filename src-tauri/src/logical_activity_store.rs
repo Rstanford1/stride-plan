@@ -241,7 +241,7 @@ fn validate_transition(before: &Value, after: &Value) -> Result<Value> {
         if commands.get(initial_command).and_then(|c| c.get("receipt")) != Some(initial) {
             return Err(invalid());
         }
-        let mut prior_sources = BTreeMap::new();
+        let mut prior_sources: BTreeMap<String, &Value> = BTreeMap::new();
         for (i, version) in versions.iter().enumerate() {
             if version["revision"].as_u64() != Some(i as u64 + 1) {
                 return Err(invalid());
